@@ -216,16 +216,16 @@ function Question() {
   };
 
   const handleSubmit = async (answerOverride = null) => {
-    if (hasAnswered || isSubmitting) return;
+    if (isSubmitting || hasAnswered) return;
 
     if (!currentQuestion) {
       setError("Question is still loading. Please wait.");
       return;
     }
 
-    const finalAnswer = answerOverride !== null ? answerOverride : selectedAnswer;
+    const answerToSubmit = answerOverride ?? selectedAnswer;
 
-    if (finalAnswer === null || finalAnswer === undefined) {
+    if (answerToSubmit === null || answerToSubmit === undefined) {
       setError("Please select an answer before submitting.");
       return;
     }
@@ -239,7 +239,7 @@ function Question() {
         currentQuestion.correct_option ??
         0;
 
-      const isCorrect = Number(selectedAnswer) === Number(correctAnswer);
+      const isCorrect = Number(answerToSubmit) === Number(correctAnswer);
       const pointsAwarded = isCorrect ? 100 : 0;
 
       const targetQuestionId = currentQuestion.id || currentQuestionId || sessionData.current_question_id;
@@ -249,12 +249,12 @@ function Question() {
         question_id: targetQuestionId,
         player_id: playerId || studentName,
         round_number: currentRound || 1,
-        selected_answer: finalAnswer,
+        selected_answer: answerToSubmit,
         is_correct: isCorrect,
         points_awarded: pointsAwarded,
       };
 
-      console.log("Selected answer before submit:", finalAnswer);
+      console.log("Selected answer before submit:", answerToSubmit);
       console.log("Current question before submit:", currentQuestion);
       console.log("Response insert payload:", responsePayload);
 
@@ -399,11 +399,14 @@ function Question() {
             <button
               type="button"
               key={index}
-              onClick={() => setSelectedAnswer(index)}
-              disabled={hasAnswered}
+              onClick={() => {
+                setSelectedAnswer(index);
+                handleSubmit(index);
+              }}
+              disabled={hasAnswered || isSubmitting}
               className={[
                 "text-left rounded-xl p-4 transition border-2",
-                hasAnswered ? "cursor-not-allowed" : "hover:bg-slate-700",
+                hasAnswered || isSubmitting ? "cursor-not-allowed" : "hover:bg-slate-700",
                 "bg-slate-900",
                 selectedAnswer === index
                   ? "border-cyan-400 bg-cyan-900/30"
@@ -417,17 +420,7 @@ function Question() {
           ))}
         </div>
 
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => handleSubmit()}
-            disabled={hasAnswered || isSubmitting || selectedAnswer === null || !currentQuestion}
-            className="px-8 py-3 rounded-xl bg-cyan-500 text-slate-900 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 transition font-bold text-lg"
-          >
-            Submit Answer
-          </button>
-        </div>
-
+        
         {hasAnswered && (
           <div className="mt-6 p-4 rounded-xl border border-cyan-200 bg-cyan-900/20 text-center">
             <p className="text-cyan-200">

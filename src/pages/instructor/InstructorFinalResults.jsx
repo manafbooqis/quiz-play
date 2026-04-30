@@ -10,6 +10,7 @@ function InstructorFinalResults() {
   
   const [loading, setLoading] = useState(!state?.responses || !state?.questionsByDifficulty);
   const [gameCode, setGameCode] = useState(state?.gameCode ?? "");
+  const [students, setStudents] = useState(state?.students ?? []);
   const [responses, setResponses] = useState(state?.responses ?? []);
   const [questionsByDifficulty, setQuestionsByDifficulty] = useState(state?.questionsByDifficulty ?? {});
 
@@ -23,6 +24,20 @@ function InstructorFinalResults() {
       setLoading(false);
       return;
     }
+
+    // Also load students if missing
+    async function loadStudents() {
+      try {
+        const { data: playersData } = await supabase
+          .from("session_players")
+          .select("*")
+          .eq("session_id", sessionId);
+        if (playersData) setStudents(playersData);
+      } catch (err) {
+        console.error("Error loading students fallback:", err);
+      }
+    }
+    loadStudents();
 
     async function loadFallbackData() {
       try {
@@ -149,12 +164,24 @@ function InstructorFinalResults() {
           <h1 className="text-2xl font-bold text-slate-800">Questions Analysis</h1>
           <p className="text-sm text-slate-500">Game Code: {gameCode}</p>
         </div>
-        <button
-          onClick={() => navigate("/instructor/dashboard-official")}
-          className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition font-semibold text-sm shadow-sm"
-        >
-          Exit to Dashboard
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() =>
+              navigate("/instructor/score-distribution", {
+                state: { sessionId, gameCode, students, responses, questionsByDifficulty },
+              })
+            }
+            className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-sm shadow-sm transition"
+          >
+            View Score Distribution
+          </button>
+          <button
+            onClick={() => navigate("/instructor/dashboard-official")}
+            className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition font-semibold text-sm shadow-sm"
+          >
+            Exit to Dashboard
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -168,7 +195,7 @@ function InstructorFinalResults() {
               Questions
             </h2>
           </div>
-          <div className="p-3 space-y-2">
+          <div className="p-3 space-y-1">
             {allQuestions.map((q, idx) => {
               const qId = q.id || q.question_id || q.qid;
               const isSelected = selectedQuestionId === qId;
@@ -176,29 +203,17 @@ function InstructorFinalResults() {
                 <button
                   key={qId || idx}
                   onClick={() => setSelectedQuestionId(qId)}
-                  className={`w-full text-left p-4 rounded-2xl transition-all duration-200 ${
+                  className={`w-full text-left px-4 py-3 rounded-xl transition-all duration-200 ${
                     isSelected
                       ? "bg-cyan-50 border border-cyan-200 shadow-[0_2px_10px_-4px_rgba(6,182,212,0.3)]"
                       : "hover:bg-slate-50 border border-transparent"
                   }`}
                 >
-                  <div className="flex justify-between items-center mb-2">
-                    <span className={`text-xs font-bold uppercase tracking-wider ${
-                      isSelected ? "text-cyan-700" : "text-slate-400"
-                    }`}>
-                      Question {idx + 1}
-                    </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${
-                      q._difficulty === "easy" ? "bg-emerald-100 text-emerald-700" :
-                      q._difficulty === "medium" ? "bg-amber-100 text-amber-700" :
-                      "bg-red-100 text-red-700"
-                    }`}>
-                      {q._difficulty}
-                    </span>
-                  </div>
-                  <p className={`text-sm line-clamp-2 leading-relaxed ${isSelected ? "text-slate-900 font-medium" : "text-slate-600"}`}>
-                    {getQuestionText(q)}
-                  </p>
+                  <span className={`text-sm font-semibold ${
+                    isSelected ? "text-cyan-700" : "text-slate-600"
+                  }`}>
+                    Question {idx + 1}
+                  </span>
                 </button>
               );
             })}

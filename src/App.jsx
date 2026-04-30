@@ -19,6 +19,7 @@ import LoginTeacher from "./pages/instructor/LoginTeacher";
 import RegisterTeacher from "./pages/instructor/RegisterTeacher";
 import InstructorLiveQuiz from "./pages/instructor/InstructorLiveQuiz";
 import InstructorFinalResults from "./pages/instructor/InstructorFinalResults";
+import InstructorScoreDistribution from "./pages/instructor/InstructorScoreDistribution";
 
 function App() {
   return (
@@ -43,6 +44,7 @@ function App() {
         <Route path="/instructor/create-session" element={<CreateSession />} />
         <Route path="/instructor/live-quiz" element={<InstructorLiveQuiz />} />
         <Route path="/instructor/final-results" element={<InstructorFinalResults />} />
+        <Route path="/instructor/score-distribution" element={<InstructorScoreDistribution />} />
       </Routes>
     </BrowserRouter>
   );

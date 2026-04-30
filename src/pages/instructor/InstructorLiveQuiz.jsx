@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 
@@ -53,6 +53,9 @@ function InstructorLiveQuiz() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [roundResults, setRoundResults] = useState(null);
+
+  // Prevent repeated navigation to results
+  const hasNavigatedToResultsRef = useRef(false);
 
   // Calculate total questions
   const totalQuestions = useMemo(() => {
@@ -170,8 +173,92 @@ function InstructorLiveQuiz() {
     };
   }, [sessionId, navigate]);
 
+  // Polling-based completion check — runs every 2 seconds
+  useEffect(() => {
+    if (!sessionId || !sessionData) return;
+
+    const interval = setInterval(async () => {
+      if (hasNavigatedToResultsRef.current) {
+        clearInterval(interval);
+        return;
+      }
+
+      // Fetch fresh responses from Supabase
+      const { data: freshResponses, error: respError } = await supabase
+        .from("responses")
+        .select("*")
+        .eq("session_id", sessionId);
+
+      if (respError) {
+        console.error("Polling: error fetching responses", respError);
+        return;
+      }
+
+      const questionCount = Number(
+        sessionData.question_count || sessionData.questionCount || 3
+      );
+
+      // Count responses per player
+      const responsesByPlayer = {};
+      (freshResponses || []).forEach((r) => {
+        const pid = r.player_id;
+        responsesByPlayer[pid] = (responsesByPlayer[pid] || 0) + 1;
+      });
+
+      // Check every joined student
+      let allCompleted = students.length > 0;
+      students.forEach((student) => {
+        const pid = student.id || student.student_name;
+        const count = responsesByPlayer[pid] || 0;
+        if (count < questionCount) allCompleted = false;
+      });
+
+      console.log("Instructor completion check:", {
+        sessionId,
+        questionCount,
+        students,
+        freshResponses,
+        responsesByPlayer,
+        allCompleted,
+      });
+
+      if (allCompleted) {
+        clearInterval(interval);
+        if (hasNavigatedToResultsRef.current) return;
+        hasNavigatedToResultsRef.current = true;
+
+        console.log("All students completed quiz. Navigating to final results.");
+
+        // Update session status to finished
+        try {
+          await supabase
+            .from("sessions")
+            .update({ status: "finished", quiz_finished_at: new Date().toISOString() })
+            .eq("id", sessionId);
+        } catch (err) {
+          console.error("Error updating session status:", err);
+        }
+
+        // Update local responses state before navigating
+        setResponses(freshResponses || []);
+
+        navigate("/instructor/final-results", {
+          state: {
+            sessionId,
+            gameCode,
+            students,
+            responses: freshResponses || [],
+            questionsByDifficulty,
+          },
+        });
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [sessionId, sessionData, students, navigate, gameCode, questionsByDifficulty]);
+
   // Check if round is truly active (has both status and question)
-  const isRoundActive = 
+  const isRoundActive =
     sessionData?.status === "active" &&
     Boolean(sessionData?.current_question_id) &&
     Boolean(sessionData?.current_difficulty);
