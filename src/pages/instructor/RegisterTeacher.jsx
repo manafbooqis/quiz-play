@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
-import { auth, db } from "../../firebase";
+import { supabase, upsertProfile } from "../../lib/supabase";
 
 function RegisterTeacher() {
   const [fullName, setFullName] = useState("");
@@ -15,23 +13,18 @@ function RegisterTeacher() {
 
   const navigate = useNavigate();
 
-  const getFirebaseRegisterErrorMessage = (code) => {
-    switch (code) {
-      case "auth/email-already-in-use":
-        return "This email is already in use.";
-      case "auth/invalid-email":
-        return "The email format is invalid.";
-      case "auth/weak-password":
-        return "The password is too weak. Use at least 6 characters.";
-      case "auth/operation-not-allowed":
-        return "Email/Password sign-up is not enabled in Firebase.";
-      case "auth/network-request-failed":
-        return "Network error. Check your internet connection.";
-      case "auth/too-many-requests":
-        return "Too many attempts. Try again later.";
-      default:
-        return "Account creation failed. Please try again.";
+  const getRegisterErrorMessage = (message) => {
+    if (!message) return "Account creation failed. Please try again.";
+    if (message.includes("duplicate key value")) {
+      return "This email is already in use.";
     }
+    if (message.includes("invalid email")) {
+      return "The email format is invalid.";
+    }
+    if (message.includes("Password should be at least")) {
+      return "The password is too weak. Use at least 6 characters.";
+    }
+    return message;
   };
 
   const handleRegister = async (e) => {
@@ -76,28 +69,51 @@ function RegisterTeacher() {
     }
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        email.trim(),
-        password
-      );
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            full_name: fullName.trim(),
+            role: "instructor",
+          },
+        }
+      });
 
-      const user = userCredential.user;
+      if (error) {
+        console.error("Signup error full:", error);
+        console.error("Message:", error?.message);
+        console.error("Code:", error?.code);
+        throw error;
+      }
 
-      await setDoc(doc(db, "teachers", user.uid), {
-        uid: user.uid,
-        fullName: fullName.trim(),
+      const user = data.user;
+
+      if (!user) {
+        throw new Error("Unable to create account. Please try again.");
+      }
+
+      if (!data.session) {
+        // Handle case where email confirmation is enabled in Supabase
+        setError("Account created successfully. Please check your email to verify your account before logging in.");
+        setLoading(false);
+        return; 
+      }
+
+      // If session exists (email confirmation off), proceed to upsert profile
+      await upsertProfile({
+        id: user.id,
+        full_name: fullName.trim(),
         email: user.email,
-        role: "teacher",
-        createdAt: serverTimestamp(),
-        lastLogin: serverTimestamp(),
+        role: "instructor",
+        updated_at: new Date().toISOString(),
       });
 
       navigate("/instructor/dashboard-official");
     } catch (err) {
       console.error("Register error:", err);
-      setErrorCode(err.code || "unknown");
-      setError(getFirebaseRegisterErrorMessage(err.code));
+      setErrorCode(err?.code || "unknown");
+      setError(getRegisterErrorMessage(err?.message || err?.msg || err?.code));
     } finally {
       setLoading(false);
     }
@@ -111,7 +127,7 @@ function RegisterTeacher() {
         </h1>
 
         <p className="text-slate-300 text-center mb-6">
-          Create an account to save your quizzes and sessions
+          Create an account to save your quizzes and sessions.
         </p>
 
         <form onSubmit={handleRegister} className="space-y-4">
@@ -183,7 +199,7 @@ function RegisterTeacher() {
 
         <div className="mt-6 text-center">
           <p className="text-slate-300 text-sm">
-            Already have an account?{" "}
+            Already have an account? {" "}
             <Link
               to="/instructor/login"
               className="text-cyan-400 hover:text-cyan-300 font-semibold"

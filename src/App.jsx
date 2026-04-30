@@ -9,12 +9,16 @@ import Difficulty from "./pages/student/Difficulty";
 import Question from "./pages/student/Question";
 import Result from "./pages/student/Result";
 import FinalResults from "./pages/student/FinalResults";
+import WaitingForOthers from "./pages/student/WaitingForOthers";
+import RoundResults from "./pages/student/RoundResults";
 
 import DashboardOfficial from "./pages/instructor/DashboardOfficial";
 import SessionOfficial from "./pages/instructor/SessionOfficial";
 import QuestionsPreview from "./pages/instructor/questions-preview";
 import LoginTeacher from "./pages/instructor/LoginTeacher";
 import RegisterTeacher from "./pages/instructor/RegisterTeacher";
+import InstructorLiveQuiz from "./pages/instructor/InstructorLiveQuiz";
+import InstructorFinalResults from "./pages/instructor/InstructorFinalResults";
 
 function App() {
   return (
@@ -28,6 +32,8 @@ function App() {
         <Route path="/student/question" element={<Question />} />
         <Route path="/student/result" element={<Result />} />
         <Route path="/student/final-results" element={<FinalResults />} />
+        <Route path="/student/waiting-for-others" element={<WaitingForOthers />} />
+        <Route path="/student/round-results" element={<RoundResults />} />
 
         <Route path="/instructor/login" element={<LoginTeacher />} />
         <Route path="/instructor/register" element={<RegisterTeacher />} />
@@ -35,6 +41,8 @@ function App() {
         <Route path="/instructor/session-official" element={<SessionOfficial />} />
         <Route path="/instructor/questions-preview" element={<QuestionsPreview />} />
         <Route path="/instructor/create-session" element={<CreateSession />} />
+        <Route path="/instructor/live-quiz" element={<InstructorLiveQuiz />} />
+        <Route path="/instructor/final-results" element={<InstructorFinalResults />} />
       </Routes>
     </BrowserRouter>
   );

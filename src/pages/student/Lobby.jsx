@@ -1,8 +1,52 @@
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "../../lib/supabase";
+
+function getTextValue(value) {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  return "";
+}
+
+function getStudentName(student, index) {
+  if (!student) {
+    return `Student ${index + 1}`;
+  }
+
+  if (typeof student === "string") {
+    return student;
+  }
+
+  if (typeof student !== "object") {
+    return `Student ${index + 1}`;
+  }
+
+  const candidates = [
+    student.student_name,
+    student.name,
+    student.full_name,
+    student.nickname,
+    student.display_name,
+  ];
+
+  for (const candidate of candidates) {
+    const text = getTextValue(candidate);
+    if (text) return text;
+  }
+
+  return `Student ${index + 1}`;
+}
 
 function Lobby() {
   const navigate = useNavigate();
   const { state } = useLocation();
+  const [sessionData, setSessionData] = useState(null);
 
   if (!state?.studentName || !state?.gameCode) {
     return (
@@ -23,6 +67,144 @@ function Lobby() {
 
   const { studentName, gameCode } = state;
 
+  // Setup real-time session monitoring
+  useEffect(() => {
+    if (!gameCode) return;
+
+    // Load initial session data
+    async function loadSession() {
+      try {
+        const { data: session, error: sessionError } = await supabase
+          .from("sessions")
+          .select("*")
+          .eq("game_code", gameCode)
+          .single();
+
+        if (sessionError && sessionError.code !== 'PGRST116') {
+          console.error("Session error:", sessionError);
+          return;
+        }
+
+        if (session) {
+          setSessionData(session);
+          console.log("Lobby session status:", session.status);
+          console.log("Lobby current question:", session.current_question_id);
+
+          // If session is already active, navigate to question page
+          if (session.status === "active") {
+            const saved = localStorage.getItem(`quizplay_session_${gameCode}`);
+            const savedSession = saved ? JSON.parse(saved) : null;
+            const questionsByDifficulty = savedSession?.questionsByDifficulty || savedSession?.questions_by_difficulty || session.questions_by_difficulty;
+            
+            console.log("Navigating student to difficulty page (initial load)");
+            navigate("/student/difficulty", {
+              state: {
+                studentName,
+                gameCode,
+                sessionId: session.id,
+                currentRound: session.current_round || 1,
+                currentQuestionId: session.current_question_id,
+                currentDifficulty: session.current_difficulty,
+                questionsByDifficulty
+              }
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Error loading session:", JSON.stringify(err, null, 2));
+        console.error("Message:", err.message);
+        console.error("Details:", err.details);
+        console.error("Hint:", err.hint);
+        console.error("Code:", err.code);
+      }
+    }
+
+    loadSession();
+
+    // Setup real-time subscription
+    const subscription = supabase
+      .channel(`session-${gameCode}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'sessions',
+        filter: `game_code=eq.${gameCode}`
+      }, (payload) => {
+        console.log("Lobby received session update:", payload);
+        const updatedSession = payload.new;
+        setSessionData(updatedSession);
+        console.log("Lobby updated session status:", updatedSession.status);
+        console.log("Lobby updated current question:", updatedSession.current_question_id);
+
+        // Auto-navigate when quiz starts
+        if (updatedSession.status === "active" && updatedSession.current_question_id) {
+          const saved = localStorage.getItem(`quizplay_session_${gameCode}`);
+          const savedSession = saved ? JSON.parse(saved) : null;
+          const questionsByDifficulty = savedSession?.questionsByDifficulty || savedSession?.questions_by_difficulty || updatedSession.questions_by_difficulty;
+
+          console.log("Lobby navigating to difficulty page");
+          console.log("Lobby gameCode:", gameCode);
+          console.log("Lobby loaded session:", updatedSession);
+          console.log("Lobby session status:", updatedSession.status);
+          console.log("Lobby current question:", updatedSession.current_question_id);
+          console.log("Lobby navigating to difficulty");
+          
+          navigate("/student/difficulty", {
+            state: {
+              studentName,
+              gameCode,
+              sessionId: updatedSession.id,
+              currentRound: updatedSession.current_round || 1,
+              currentQuestionId: updatedSession.current_question_id,
+              currentDifficulty: updatedSession.current_difficulty,
+              questionsByDifficulty
+            }
+          });
+        }
+      })
+      .subscribe();
+
+    // Fallback polling in case real-time doesn't fire
+    const pollingInterval = setInterval(async () => {
+      try {
+        const { data: session, error: pollError } = await supabase
+          .from("sessions")
+          .select("id, game_code, status, current_question_id, current_difficulty, current_round")
+          .eq("game_code", gameCode)
+          .single();
+
+        if (!pollError && session) {
+          console.log("Lobby polling session:", session);
+          if (session.status === "active" && session.current_question_id) {
+            const saved = localStorage.getItem(`quizplay_session_${gameCode}`);
+            const savedSession = saved ? JSON.parse(saved) : null;
+            const questionsByDifficulty = savedSession?.questionsByDifficulty || savedSession?.questions_by_difficulty;
+
+            console.log("Lobby polling: navigating to difficulty page");
+            navigate("/student/difficulty", {
+              state: {
+                studentName,
+                gameCode,
+                sessionId: session.id,
+                currentRound: session.current_round || 1,
+                currentQuestionId: session.current_question_id,
+                currentDifficulty: session.current_difficulty,
+                questionsByDifficulty
+              }
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Lobby polling error:", err);
+      }
+    }, 2000);
+
+    return () => {
+      supabase.removeChannel(subscription);
+      clearInterval(pollingInterval);
+    };
+  }, [gameCode, studentName, navigate]);
+
   // Read instructor config (questionCount + timePerQuestion + players)
   const raw = localStorage.getItem(`quizplay_session_${gameCode}`);
   const config = raw ? JSON.parse(raw) : null;
@@ -30,25 +212,14 @@ function Lobby() {
   const totalQuestions = config?.questionCount ?? 3;
   const timePerQuestion = config?.timePerQuestion ?? 15;
 
-  const players = config?.players
-    ? [...config.players, studentName]
-    : ["Radi", "Sara", "Fahad", studentName];
+  const normalizePlayers = (playersArray) => {
+  if (!Array.isArray(playersArray)) return [];
+  return playersArray.map((player, index) => getStudentName(player, index));
+};
 
-  const startQuiz = () => {
-    navigate("/student/difficulty", {
-      state: {
-        studentName,
-        gameCode,
-        totalQuestions,
-        timePerQuestion,
-        players, // Keep the same player list for the quiz
-        totalPoints: 0,
-        totalAnswered: 0,
-        usedCounts: { easy: 0, medium: 0, hard: 0 },
-        answersStatus: [],
-      },
-    });
-  };
+const players = config?.players
+    ? [...normalizePlayers(config.players), studentName]
+    : ["Radi", "Sara", "Fahad", studentName];
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-6">
@@ -87,21 +258,15 @@ function Lobby() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {players.map((p, idx) => (
             <div
-              key={`${p}-${idx}`}
+              key={`${getStudentName(p, idx)}-${idx}`}
               className="bg-slate-900 border border-slate-700 rounded-xl px-4 py-3"
             >
-              <span className="text-white">{p}</span>
+              <span className="text-white">{getStudentName(p, idx)}</span>
             </div>
           ))}
         </div>
 
-        {/* Temporary start button (later instructor triggers this) */}
-        <button
-          onClick={startQuiz}
-          className="w-full mt-8 game-font bg-yellow-300 hover:bg-yellow-200 text-slate-900 py-3 rounded-xl transition"
-        >
-          Start Quiz (Temporary)
-        </button>
+        {/* Waiting for instructor to start the quiz */}
 
         <button
           onClick={() => navigate("/")}

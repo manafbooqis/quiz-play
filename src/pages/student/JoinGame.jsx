@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { doc, getDoc, updateDoc, arrayUnion } from "firebase/firestore";
-import { db } from "../../firebase";
+import {
+  getSessionById,
+  getSessionPlayers,
+  insertSessionPlayer,
+} from "../../lib/supabase";
 
 function JoinGame() {
   const navigate = useNavigate();
@@ -41,50 +44,53 @@ function JoinGame() {
     }
 
     try {
-      const sessionRef = doc(db, "sessions", trimmedCode);
-      const sessionSnap = await getDoc(sessionRef);
+      const { data: sessionData, error: sessionError } = await getSessionById(trimmedCode);
 
-      if (!sessionSnap.exists()) {
+      if (sessionError) {
+        throw sessionError;
+      }
+
+      if (!sessionData) {
         setError("Session not found. Check the game code.");
         setLoading(false);
         return;
       }
 
-      const sessionData = sessionSnap.data();
-      const currentPlayers = Array.isArray(sessionData.players)
-        ? sessionData.players
-        : [];
+      const { data: existingPlayer, error: playerError } = await getSessionPlayers(trimmedCode);
 
-      const alreadyJoined = currentPlayers.some(
-        (player) =>
-          player.name?.trim().toLowerCase() === trimmedName.toLowerCase()
-      );
-
-      if (!alreadyJoined) {
-        await updateDoc(sessionRef, {
-          players: arrayUnion({
-            name: trimmedName,
-            joinedAt: Date.now(),
-          }),
-        });
+      if (playerError) {
+        throw playerError;
       }
 
-      const nextPlayers = alreadyJoined
-        ? currentPlayers
-        : [
-            ...currentPlayers,
-            {
-              name: trimmedName,
-              joinedAt: Date.now(),
-            },
-          ];
+      const matchingPlayer = Array.isArray(existingPlayer)
+        ? existingPlayer.find((player) => player.name === trimmedName)
+        : null;
+
+      if (!matchingPlayer) {
+        const { error: insertError } = await insertSessionPlayer({
+          session_id: sessionData.id, // Use actual session UUID, not game code
+          student_name: trimmedName,
+          joined_at: new Date().toISOString(),
+        });
+
+        if (insertError) {
+          throw insertError;
+        }
+      }
+
+      const { data: updatedPlayers, error: refreshedPlayersError } = await getSessionPlayers(trimmedCode);
+
+      if (refreshedPlayersError) {
+        throw refreshedPlayersError;
+      }
 
       localStorage.setItem(
         `quizplay_session_${trimmedCode}`,
         JSON.stringify({
           ...sessionData,
           gameCode: trimmedCode,
-          players: nextPlayers,
+          players: updatedPlayers ?? [],
+          questionsByDifficulty: sessionData.questions_by_difficulty ?? {},
         })
       );
 
@@ -132,9 +138,7 @@ function JoinGame() {
             />
           </div>
 
-          {error && (
-            <p className="text-red-400 text-sm font-medium">{error}</p>
-          )}
+          {error && <p className="text-red-400 text-sm font-medium">{error}</p>}
 
           <button
             type="submit"

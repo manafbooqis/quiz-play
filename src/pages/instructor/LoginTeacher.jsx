@@ -1,8 +1,6 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "../../firebase";
+import { supabase, upsertProfile } from "../../lib/supabase";
 
 function LoginTeacher() {
   const [email, setEmail] = useState("");
@@ -13,31 +11,18 @@ function LoginTeacher() {
 
   const navigate = useNavigate();
 
-  const getFirebaseLoginErrorMessage = (code) => {
-    switch (code) {
-      case "auth/invalid-email":
-        return "The email format is invalid.";
-      case "auth/missing-password":
-        return "Please enter your password.";
-      case "auth/invalid-credential":
-        return "Incorrect email or password, or this account does not exist.";
-      case "auth/user-not-found":
-        return "No account was found with this email.";
-      case "auth/wrong-password":
-        return "The password is incorrect.";
-      case "auth/user-disabled":
-        return "This account has been disabled.";
-      case "auth/too-many-requests":
-        return "Too many failed attempts. Try again later.";
-      case "auth/network-request-failed":
-        return "Network error. Check your internet connection.";
-      case "auth/internal-error":
-        return "Internal authentication error. Please try again.";
-      case "auth/operation-not-allowed":
-        return "Email/Password sign-in is not enabled in Firebase.";
-      default:
-        return "Login failed. Please try again.";
+  const getLoginErrorMessage = (message) => {
+    if (!message) return "Login failed. Please try again.";
+    if (message.includes("Invalid login credentials")) {
+      return "Incorrect email or password, or this account does not exist.";
     }
+    if (message.includes("Password should be at least")) {
+      return "Password must be at least 6 characters.";
+    }
+    if (message.includes("invalid email")) {
+      return "The email format is invalid.";
+    }
+    return message;
   };
 
   const handleLogin = async (e) => {
@@ -61,30 +46,33 @@ function LoginTeacher() {
     }
 
     try {
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        email.trim(),
-        password
-      );
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-      const user = userCredential.user;
+      if (error) {
+        throw error;
+      }
 
-      await setDoc(
-        doc(db, "teachers", user.uid),
-        {
-          uid: user.uid,
-          email: user.email,
-          role: "teacher",
-          lastLogin: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      const user = data.user;
+
+      if (!user) {
+        throw new Error("Unable to sign in. Please try again.");
+      }
+
+      await upsertProfile({
+        id: user.id,
+        email: user.email,
+        role: "instructor",
+        updated_at: new Date().toISOString(),
+      });
 
       navigate("/instructor/dashboard-official");
     } catch (err) {
       console.error("Login error:", err);
-      setErrorCode(err.code || "unknown");
-      setError(getFirebaseLoginErrorMessage(err.code));
+      setErrorCode(err?.code || "unknown");
+      setError(getLoginErrorMessage(err?.message || err?.msg || err?.code));
     } finally {
       setLoading(false);
     }
@@ -98,7 +86,7 @@ function LoginTeacher() {
         </h1>
 
         <p className="text-slate-300 text-center mb-6">
-          Sign in to save your work and manage your sessions
+          Sign in to save your work and manage your sessions.
         </p>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -156,6 +144,55 @@ function LoginTeacher() {
         <div className="mt-4 text-center">
           <p className="text-slate-400 text-sm">
             New here? Create an account first.
+          </p>
+        </div>
+
+        <div className="mt-6 pt-6 border-t border-slate-600">
+          <button
+            type="button"
+            onClick={async () => {
+              setLoading(true);
+              setError("");
+              setErrorCode("");
+
+              try {
+                const { data, error: anonError } = await supabase.auth.signInAnonymously();
+
+                if (anonError) {
+                  throw anonError;
+                }
+
+                const user = data?.user;
+
+                if (!user) {
+                  throw new Error("Unable to sign in as guest. Please try again.");
+                }
+
+                await upsertProfile({
+                  id: user.id,
+                  full_name: "Guest Instructor",
+                  email: null,
+                  role: "instructor",
+                  is_guest: true,
+                  updated_at: new Date().toISOString(),
+                });
+
+                navigate("/instructor/dashboard-official");
+              } catch (err) {
+                console.error("Guest sign-in error:", err);
+                setErrorCode(err?.code || "unknown");
+                setError(err?.message || "Failed to continue as guest. Please try again.");
+              } finally {
+                setLoading(false);
+              }
+            }}
+            disabled={loading}
+            className="w-full bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 text-slate-300 font-bold py-3 rounded-xl transition"
+          >
+            Continue as Guest
+          </button>
+          <p className="text-slate-500 text-xs text-center mt-2">
+            Guest sessions are saved locally but not linked to an account.
           </p>
         </div>
       </div>

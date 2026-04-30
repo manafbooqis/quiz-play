@@ -1,20 +1,59 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { supabase } from "../../lib/supabase";
 
 function Difficulty() {
   const navigate = useNavigate();
   const { state } = useLocation();
-  const hasSessionData = Boolean(state?.studentName && state?.gameCode);
-  const totalQuestions = state?.totalQuestions ?? 3;
-  const timePerQuestion = state?.timePerQuestion ?? 15;
-  const totalAnswered = state?.totalAnswered ?? 0;
-  const totalPoints = state?.totalPoints ?? 0;
+
+  const studentName = state?.studentName ?? "";
+  const gameCode = state?.gameCode ?? "";
+  const sessionId = state?.sessionId ?? "";
+  const playerId = studentName;
+  const questionsByDifficulty = state?.questionsByDifficulty || {};
+
+  const hasSessionData = Boolean(studentName && gameCode);
+  
+  const [answeredIds, setAnsweredIds] = useState([]);
 
   useEffect(() => {
-    if (hasSessionData && totalAnswered >= totalQuestions) {
-      navigate("/student/final-results", { state });
+    if (!hasSessionData) return;
+    const localKey = `quizplay_answered_questions_${gameCode}_${playerId}`;
+    const stored = localStorage.getItem(localKey);
+    if (stored) {
+      setAnsweredIds(JSON.parse(stored));
     }
-  }, [hasSessionData, navigate, state, totalAnswered, totalQuestions]);
+  }, [hasSessionData, gameCode, playerId]);
+
+  const [session, setSession] = useState(null);
+
+  useEffect(() => {
+    if (!hasSessionData || !sessionId) return;
+    const fetchSession = async () => {
+      const { data } = await supabase
+        .from("sessions")
+        .select("*")
+        .eq("id", sessionId)
+        .maybeSingle();
+      if (data) setSession(data);
+    };
+    fetchSession();
+  }, [hasSessionData, sessionId]);
+
+  const maxQuestions =
+    Number(state?.questionCount) ||
+    Number(session?.question_count) ||
+    Number(session?.questionCount) ||
+    Number(state?.maxQuestions) ||
+    1;
+
+  useEffect(() => {
+    if (!hasSessionData) return;
+    
+    if (answeredIds.length >= maxQuestions) {
+      navigate("/student/final-results", { state: { ...state, questionCount: maxQuestions } });
+    }
+  }, [hasSessionData, answeredIds.length, maxQuestions, navigate, state]);
 
   if (!hasSessionData) {
     return (
@@ -33,16 +72,39 @@ function Difficulty() {
     );
   }
 
-  if (totalAnswered >= totalQuestions) return null;
+  const handleDifficultySelect = (difficulty, points) => {
+    const bank = questionsByDifficulty[difficulty] || [];
+    
+    // Find first unanswered question
+    const unansweredQuestion = bank.find(q => 
+      !answeredIds.includes(q.id) && 
+      !answeredIds.includes(q.question_id) && 
+      !answeredIds.includes(q.qid)
+    );
 
-  const goToQuestion = (difficulty, points) => {
-    navigate("/student/question", {
-      state: {
-        ...state,
-        difficulty,
-        pointsPerQuestion: points,
-      },
-    });
+    if (unansweredQuestion) {
+      const questionId = unansweredQuestion.id || unansweredQuestion.question_id || unansweredQuestion.qid;
+      navigate("/student/question", {
+        state: {
+          ...state,
+          currentDifficulty: difficulty,
+          currentQuestionId: questionId,
+          pointsPerQuestion: points,
+          questionCount: maxQuestions,
+        },
+      });
+    } else {
+      alert(`No questions available for ${difficulty} difficulty. Please choose another.`);
+    }
+  };
+
+  const getAvailableCount = (difficulty) => {
+    const bank = questionsByDifficulty[difficulty] || [];
+    return bank.filter(q => 
+      !answeredIds.includes(q.id) && 
+      !answeredIds.includes(q.question_id) && 
+      !answeredIds.includes(q.qid)
+    ).length;
   };
 
   const cards = [
@@ -58,38 +120,40 @@ function Difficulty() {
           <div>
             <h1 className="game-font text-3xl text-cyan-300">Pick Difficulty</h1>
             <p className="text-slate-300 mt-2">
-              Question{" "}
-              <span className="text-white font-semibold">{totalAnswered + 1}</span> /{" "}
-              <span className="text-white font-semibold">{totalQuestions}</span> • Score{" "}
-              <span className="text-yellow-300 font-semibold">{totalPoints}</span> • Time{" "}
-              <span className="text-white font-semibold">{timePerQuestion}s</span>
+              Answered: <span className="text-white font-semibold">{answeredIds.length}</span> / {maxQuestions}
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-          {cards.map((c) => (
-            <div
-              key={c.diff}
-              className="relative bg-slate-900 border border-slate-700 rounded-2xl p-6"
-            >
-              {/* Top badge */}
+          {cards.map((c) => {
+            const availableCount = getAvailableCount(c.diff);
+            const isExhausted = availableCount === 0;
+
+            return (
               <div
-                className={`absolute -top-4 left-1/2 -translate-x-1/2 ${c.badge} text-slate-900 font-bold rounded-full px-3 py-1 shadow`}
+                key={c.diff}
+                className={`relative border rounded-2xl p-6 transition ${isExhausted ? 'bg-slate-800 border-slate-700 opacity-60' : 'bg-slate-900 border-slate-700'}`}
               >
-                +{c.points}
+                {!isExhausted && (
+                  <div className={`absolute -top-4 left-1/2 -translate-x-1/2 ${c.badge} text-slate-900 font-bold rounded-full px-3 py-1 shadow`}>
+                    +{c.points}
+                  </div>
+                )}
+
+                <h2 className="game-font text-4xl text-white mt-10">{c.label}</h2>
+                <p className="text-slate-400 text-sm mt-2">{availableCount} questions left</p>
+
+                <button
+                  onClick={() => handleDifficultySelect(c.diff, c.points)}
+                  disabled={isExhausted}
+                  className={`w-full mt-8 game-font py-3 rounded-xl transition ${isExhausted ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-yellow-300 hover:bg-yellow-200 text-slate-900'}`}
+                >
+                  {isExhausted ? "Exhausted" : "Select"}
+                </button>
               </div>
-
-              <h2 className="game-font text-4xl text-white mt-10">{c.label}</h2>
-
-              <button
-                onClick={() => goToQuestion(c.diff, c.points)}
-                className="w-full mt-8 game-font bg-yellow-300 hover:bg-yellow-200 text-slate-900 py-3 rounded-xl transition"
-              >
-                Select
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

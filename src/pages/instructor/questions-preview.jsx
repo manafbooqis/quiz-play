@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { db } from "../../firebase";
+import { supabase } from "../../lib/supabase";
 
 const DIFFICULTY_TABS = [
   { key: "easy", label: "Easy" },
@@ -13,9 +12,9 @@ function createEmptyQuestion(difficulty, index = 0) {
   return {
     id: `${difficulty}-manual-${Date.now()}-${index}`,
     difficulty,
-    q: "",
-    choices: ["", "", "", ""],
-    correctIndex: 0,
+    question: "",
+    options: ["", "", "", ""],
+    correctAnswer: 0,
   };
 }
 
@@ -31,6 +30,7 @@ function QuestionsPreview() {
   const navigate = useNavigate();
   const { state } = useLocation();
   const gameCode = state?.gameCode ?? "";
+  const sessionId = state?.sessionId ?? "";
   const [difficulty, setDifficulty] = useState("easy");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [sessionInfo, setSessionInfo] = useState(null);
@@ -43,7 +43,7 @@ function QuestionsPreview() {
   const [loadError, setLoadError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [sessionExistsInFirestore, setSessionExistsInFirestore] = useState(false);
+  const [sessionExistsInDb, setSessionExistsInDb] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -58,35 +58,71 @@ function QuestionsPreview() {
       setLoadError("");
 
       try {
+        // Priority 1: Use navigation state questionsByDifficulty if available
+        if (state?.questionsByDifficulty) {
+          if (isMounted) {
+            setSessionInfo(state);
+            setQuestionsByDifficulty(
+              normalizeQuestionsByDifficulty(state.questionsByDifficulty)
+            );
+            setLoading(false);
+          }
+          return;
+        }
+
+        // Priority 2: Try localStorage if no navigation state
         const localKey = `quizplay_session_${gameCode}`;
         const raw = localStorage.getItem(localKey);
         const localSession = raw ? JSON.parse(raw) : null;
 
-        if (localSession && isMounted) {
+        if (localSession && localSession.questionsByDifficulty && isMounted) {
           setSessionInfo(localSession);
           setQuestionsByDifficulty(
             normalizeQuestionsByDifficulty(localSession.questionsByDifficulty)
           );
+          setLoading(false);
+          return;
         }
 
-        const sessionRef = doc(db, "sessions", gameCode);
-        const snapshot = await getDoc(sessionRef);
+        // Priority 3: Fetch from Supabase only if we have a valid sessionId
+        if (sessionId) {
+          const { data: sessionRecord, error: sessionError } = await supabase
+            .from("sessions")
+            .select("*")
+            .eq("id", sessionId)
+            .maybeSingle();
 
-        if (snapshot.exists()) {
-          const remoteSession = { gameCode, ...snapshot.data() };
-
-          if (!isMounted) {
-            return;
+          if (sessionError) {
+            throw sessionError;
           }
 
-          setSessionExistsInFirestore(true);
-          setSessionInfo(remoteSession);
-          setQuestionsByDifficulty(
-            normalizeQuestionsByDifficulty(remoteSession.questionsByDifficulty)
-          );
-          localStorage.setItem(localKey, JSON.stringify(remoteSession));
-        } else if (!localSession && isMounted) {
-          setLoadError("Session data could not be found.");
+          if (sessionRecord) {
+            const remoteSession = { gameCode, sessionId, ...sessionRecord };
+
+            if (!isMounted) {
+              return;
+            }
+
+            setSessionExistsInDb(true);
+            setSessionInfo(remoteSession);
+            setQuestionsByDifficulty(
+              normalizeQuestionsByDifficulty(remoteSession.questions_by_difficulty)
+            );
+            localStorage.setItem(localKey, JSON.stringify(remoteSession));
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Priority 4: Initialize empty banks if no data found
+        if (isMounted) {
+          setSessionInfo(state || { gameCode });
+          setQuestionsByDifficulty({
+            easy: [],
+            medium: [],
+            hard: [],
+          });
+          setLoading(false);
         }
       } catch (error) {
         console.error("Failed to load questions:", error);
@@ -95,7 +131,12 @@ function QuestionsPreview() {
           return;
         }
 
-        setLoadError("Failed to load the question bank.");
+        // Don't show error if we can initialize empty banks
+        if (state?.questionsByDifficulty || state?.gameCode) {
+          setLoadError("");
+        } else {
+          setLoadError("Failed to load the question bank.");
+        }
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -108,7 +149,7 @@ function QuestionsPreview() {
     return () => {
       isMounted = false;
     };
-  }, [gameCode]);
+  }, [gameCode, sessionId, state]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -153,12 +194,12 @@ function QuestionsPreview() {
 
   function handleChoiceChange(choiceIndex, value) {
     updateCurrentQuestion((question) => {
-      const nextChoices = [...(question.choices ?? ["", "", "", ""])];
+      const nextChoices = [...(question.options ?? question.choices ?? ["", "", "", ""])];
       nextChoices[choiceIndex] = value;
 
       return {
         ...question,
-        choices: nextChoices,
+        options: nextChoices,
       };
     });
   }
@@ -204,22 +245,34 @@ function QuestionsPreview() {
     const nextSession = {
       ...(sessionInfo ?? {}),
       gameCode,
+      sessionId,
+      fileName: sessionInfo?.fileName,
+      questionCount: sessionInfo?.questionCount,
+      timePerQuestion: sessionInfo?.timePerQuestion,
+      students: sessionInfo?.students,
       questionsByDifficulty,
+      fromSession: sessionInfo?.fromSession,
     };
 
     setIsSaving(true);
     setLoadError("");
 
     try {
-      localStorage.setItem(
-        `quizplay_session_${gameCode}`,
-        JSON.stringify(nextSession)
-      );
+      const localKey = `quizplay_session_${gameCode}`;
+      localStorage.setItem(localKey, JSON.stringify(nextSession));
 
-      if (sessionExistsInFirestore) {
-        await updateDoc(doc(db, "sessions", gameCode), {
-          questionsByDifficulty,
-        });
+      if (sessionExistsInDb && sessionId) {
+        const { error } = await supabase
+          .from("sessions")
+          .update({
+            questions_by_difficulty: questionsByDifficulty,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", sessionId);
+
+        if (error) {
+          throw error;
+        }
       }
 
       setSessionInfo(nextSession);
@@ -372,7 +425,7 @@ function QuestionsPreview() {
                 >
                   <div className="font-semibold">Q{index + 1}</div>
                   <div className="text-sm opacity-80 truncate">
-                    {question.q || "Untitled question"}
+                    {question.question || question.q || "Untitled question"}
                   </div>
                 </button>
               ))}
@@ -411,11 +464,11 @@ function QuestionsPreview() {
                       Question Text
                     </label>
                     <textarea
-                      value={currentSafe.q ?? ""}
+                      value={currentSafe.question ?? currentSafe.q ?? ""}
                       onChange={(event) =>
                         updateCurrentQuestion((question) => ({
                           ...question,
-                          q: event.target.value,
+                          question: event.target.value,
                           difficulty,
                         }))
                       }
@@ -426,8 +479,8 @@ function QuestionsPreview() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {(currentSafe.choices || ["", "", "", ""]).map((choice, index) => {
-                      const isCorrect = index === currentSafe.correctIndex;
+                    {(currentSafe.options || currentSafe.choices || ["", "", "", ""]).map((choice, index) => {
+                      const isCorrect = index === (currentSafe.correctAnswer ?? currentSafe.correctIndex);
 
                       return (
                         <div
@@ -452,7 +505,7 @@ function QuestionsPreview() {
                                 onChange={() =>
                                   updateCurrentQuestion((question) => ({
                                     ...question,
-                                    correctIndex: index,
+                                    correctAnswer: index,
                                   }))
                                 }
                               />

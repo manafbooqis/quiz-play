@@ -1,17 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { auth, db } from "../../firebase";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import {
+  supabase,
+  getProfile,
+  getSessionById,
+  getSessionPlayers,
+} from "../../lib/supabase";
 
 function SessionOfficial() {
   const navigate = useNavigate();
   const { state } = useLocation();
+  const params = useParams();
 
-  const gameCode = state?.gameCode || "";
+  const gameCode = state?.gameCode || params.gameCode || params.code || "";
   const localSessionKey = gameCode ? `quizplay_session_${gameCode}` : "";
-  const [sessionData, setSessionData] = useState(null);
-  const [loading, setLoading] = useState(true);
+
+  const [sessionData, setSessionData] = useState(() => state || null);
+  const [sessionPlayers, setSessionPlayers] = useState([]);
+  const [loading, setLoading] = useState(() => !state);
   const [copyMessage, setCopyMessage] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [teacherName, setTeacherName] = useState("");
@@ -50,64 +56,177 @@ function SessionOfficial() {
   }, [gameCode, localSessionKey, state]);
 
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+    let isMounted = true;
+
+    async function handleUserState(user) {
+      if (!isMounted) {
+        return;
+      }
+
       setIsLoggedIn(!!user);
       setAuthError("");
 
-      if (user) {
-        setTeacherEmail(user.email || "");
-
-        try {
-          const teacherRef = doc(db, "teachers", user.uid);
-          const teacherSnap = await getDoc(teacherRef);
-
-          if (teacherSnap.exists()) {
-            const data = teacherSnap.data();
-            setTeacherName(data.fullName || data.name || "Instructor");
-          } else {
-            setTeacherName("Instructor");
-          }
-        } catch (error) {
-          console.error("Failed to load teacher profile:", error);
-          setTeacherName("Instructor");
-        }
-      } else {
+      if (!user) {
         setTeacherName("");
         setTeacherEmail("");
+        return;
       }
-    });
 
-    return () => unsubscribeAuth();
+      const isAnonymous =
+        user.is_anonymous === true || user.user_metadata?.is_guest === true;
+
+      if (isAnonymous) {
+        setTeacherName("Guest Instructor");
+        setTeacherEmail("Guest Account");
+        return;
+      }
+
+      setTeacherEmail(user.email || "");
+
+      try {
+        const { data: profile, error } = await getProfile(user.id);
+
+        if (error) {
+          throw error;
+        }
+
+        const name =
+          profile?.full_name ||
+          profile?.name ||
+          user.user_metadata?.full_name ||
+          "Instructor";
+
+        setTeacherName(String(name));
+      } catch (error) {
+        console.error("Failed to load teacher profile:", error);
+        setTeacherName("Instructor");
+      }
+    }
+
+    async function loadAuth() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      await handleUserState(session?.user ?? null);
+    }
+
+    loadAuth();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_, session) => {
+        handleUserState(session?.user ?? null);
+      }
+    );
+
+    return () => {
+      isMounted = false;
+      authListener?.subscription?.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
-    if (!gameCode) {
-      return;
-    }
+    let isMounted = true;
 
-    const sessionRef = doc(db, "sessions", gameCode);
+    async function loadSessionData() {
+      if (!gameCode) {
+        setLoading(false);
+        return;
+      }
 
-    const unsubscribeSession = onSnapshot(
-      sessionRef,
-      (snapshot) => {
-        if (snapshot.exists()) {
-          setSessionData(snapshot.data());
+      if (state) {
+        setSessionData((prev) => prev || state);
+        setLoading(false);
+        return;
+      }
+
+      if (fallbackSession?.localOnly) {
+        setSessionData(fallbackSession);
+        setLoading(false);
+        return;
+      }
+
+      setAuthError("");
+
+      try {
+        setLoading(true);
+
+        const sessionRow = await getSessionById(gameCode);
+
+        if (!sessionRow) {
+          throw new Error("Session not found");
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        if (sessionRow) {
+          setSessionData(sessionRow);
         } else if (fallbackSession) {
           setSessionData(fallbackSession);
         } else {
           setSessionData(null);
         }
-        setLoading(false);
-      },
-      (error) => {
+      } catch (error) {
         console.error("Error reading session:", error);
-        setSessionData(fallbackSession);
-        setLoading(false);
-      }
-    );
 
-    return () => unsubscribeSession();
-  }, [fallbackSession, gameCode]);
+        if (!isMounted) {
+          return;
+        }
+
+        setSessionData(fallbackSession);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadSessionData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [gameCode]);
+
+  useEffect(() => {
+    if (!gameCode || sessionData?.localOnly || fallbackSession?.localOnly) {
+      return;
+    }
+
+    let isMounted = true;
+
+    async function loadPlayers() {
+      try {
+        const { data: players, error: playersError } =
+          await getSessionPlayers(gameCode);
+
+        if (playersError) {
+          throw playersError;
+        }
+
+        if (isMounted) {
+          setSessionPlayers(Array.isArray(players) ? players : []);
+        }
+      } catch (error) {
+        console.error("Error reading session players:", error);
+
+        if (isMounted) {
+          setSessionPlayers([]);
+        }
+      }
+    }
+
+    loadPlayers();
+
+    const intervalId = setInterval(loadPlayers, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [gameCode, sessionData?.localOnly, fallbackSession?.localOnly]);
 
   useEffect(() => {
     if (!gameCode || !sessionData) {
@@ -120,12 +239,86 @@ function SessionOfficial() {
         JSON.stringify({
           ...sessionData,
           gameCode,
+          questionsByDifficulty: sessionData.questions_by_difficulty || sessionData.questionsByDifficulty,
+          questions_by_difficulty: sessionData.questions_by_difficulty || sessionData.questionsByDifficulty,
         })
       );
     } catch (error) {
       console.error("Failed to sync session locally:", error);
     }
   }, [gameCode, sessionData]);
+
+  function getTextValue(value) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+
+    if (typeof value === "number") {
+      return String(value);
+    }
+
+    return "";
+  }
+
+  function getStudentName(student, index) {
+    if (!student) {
+      return `Student ${index + 1}`;
+    }
+
+    if (typeof student === "string") {
+      return student;
+    }
+
+    if (typeof student !== "object") {
+      return `Student ${index + 1}`;
+    }
+
+    const candidates = [
+      student.student_name,
+      student.name,
+      student.full_name,
+      student.nickname,
+      student.display_name,
+    ];
+
+    for (const candidate of candidates) {
+      const text = getTextValue(candidate);
+
+      if (text) {
+        return text;
+      }
+    }
+
+    return `Student ${index + 1}`;
+  }
+
+  function getStudentJoinedTime(student) {
+    if (!student || typeof student !== "object") {
+      return new Date().toLocaleTimeString();
+    }
+
+    const joinedValue = student.joined_at || student.joinedAt || Date.now();
+    return new Date(joinedValue).toLocaleTimeString();
+  }
+
+  function normalizeStudent(student, index) {
+    if (student && typeof student === "object" && !Array.isArray(student)) {
+      return {
+        id: student.id ?? index,
+        session_id: student.session_id ?? null,
+        name: getStudentName(student, index),
+        joined_at:
+          student.joined_at || student.joinedAt || new Date().toISOString(),
+      };
+    }
+
+    return {
+      id: index,
+      session_id: null,
+      name: getStudentName(student, index),
+      joined_at: new Date().toISOString(),
+    };
+  }
 
   const isMissingGameCode = !gameCode;
   const isPageLoading = !isMissingGameCode && loading;
@@ -168,9 +361,7 @@ function SessionOfficial() {
           <h1 className="text-2xl font-bold text-slate-900 mb-3">
             Session not found
           </h1>
-          <p className="text-slate-500 mb-6">
-            This session does not exist in Firebase.
-          </p>
+          <p className="text-slate-500 mb-6">This session does not exist.</p>
           <button
             onClick={() => navigate("/instructor/dashboard-official")}
             className="w-full px-5 py-3 rounded-2xl bg-slate-900 text-white hover:bg-slate-800 transition font-bold"
@@ -182,10 +373,37 @@ function SessionOfficial() {
     );
   }
 
-  const fileName = sessionData.fileName ?? "No file uploaded";
-  const questionCount = sessionData.questionCount ?? 5;
-  const timePerQuestion = sessionData.timePerQuestion ?? 5;
-  const students = Array.isArray(sessionData.players) ? sessionData.players : [];
+  const fileName =
+    sessionData.file_name ?? sessionData.fileName ?? "No file uploaded";
+  const questionCount =
+    sessionData.question_count ?? sessionData.questionCount ?? 5;
+  const timePerQuestion =
+    sessionData.time_per_question ?? sessionData.timePerQuestion ?? 5;
+
+  const questionsByDifficulty =
+    sessionData.questionsByDifficulty ||
+    sessionData.questions_by_difficulty ||
+    {
+      easy: [],
+      medium: [],
+      hard: [],
+    };
+
+  const totalQuestions =
+    (questionsByDifficulty?.easy?.length || 0) +
+    (questionsByDifficulty?.medium?.length || 0) +
+    (questionsByDifficulty?.hard?.length || 0);
+
+  const rawStudents = sessionPlayers.length
+    ? sessionPlayers
+    : Array.isArray(sessionData.players)
+    ? sessionData.players
+    : [];
+
+  const students = rawStudents.map((student, index) =>
+    normalizeStudent(student, index)
+  );
+
   const isLocalOnlySession = Boolean(sessionData.localOnly);
   const joinUrl = `${window.location.origin}${import.meta.env.BASE_URL}student/join?code=${gameCode}`;
 
@@ -206,7 +424,12 @@ function SessionOfficial() {
 
   async function handleLogout() {
     try {
-      await signOut(auth);
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        throw error;
+      }
+
       setMenuOpen(false);
       navigate("/");
     } catch (error) {
@@ -215,18 +438,76 @@ function SessionOfficial() {
     }
   }
 
-  function handleStartQuiz() {
+  async function handleStartQuiz() {
     if (students.length === 0) return;
 
-    navigate("/instructor/questions-preview", {
-      state: {
-        gameCode,
-        fileName,
-        questionCount,
-        timePerQuestion,
-        students,
-      },
-    });
+    if (totalQuestions === 0) {
+      setAuthError("Add at least one question before starting the quiz.");
+      return;
+    }
+
+    let startingDifficulty = "easy";
+    let startingQuestion = questionsByDifficulty.easy?.[0];
+
+    if (!startingQuestion) {
+      startingDifficulty = "medium";
+      startingQuestion = questionsByDifficulty.medium?.[0];
+    }
+    if (!startingQuestion) {
+      startingDifficulty = "hard";
+      startingQuestion = questionsByDifficulty.hard?.[0];
+    }
+
+    if (!startingQuestion) {
+      setAuthError("Add at least one question before starting the quiz.");
+      return;
+    }
+
+    const questionId = startingQuestion.id || startingQuestion.question_id || startingQuestion.qid || `${startingDifficulty}-${Date.now()}`;
+    const finalSessionId = sessionData?.id || sessionData?.sessionId;
+
+    try {
+      const updatePayload = {
+        status: "active",
+        current_question_id: questionId,
+        current_difficulty: startingDifficulty,
+        current_round: 1,
+        show_round_results: false,
+        current_question_started_at: new Date().toISOString(),
+        current_question_ends_at: new Date(Date.now() + Number(timePerQuestion || 10) * 1000).toISOString(),
+      };
+      
+      // Ensure questions_by_difficulty is populated if missing from the row
+      if (!sessionData?.questions_by_difficulty || Object.keys(sessionData?.questions_by_difficulty || {}).length === 0) {
+        updatePayload.questions_by_difficulty = questionsByDifficulty;
+      }
+
+      const { error } = await supabase
+        .from("sessions")
+        .update(updatePayload)
+        .eq("id", finalSessionId);
+
+      if (error) {
+        console.error("Error starting quiz:", error);
+        setAuthError("Failed to start quiz.");
+        return;
+      }
+
+      navigate("/instructor/live-quiz", {
+        state: {
+          sessionId: finalSessionId,
+          gameCode,
+          fileName,
+          questionCount,
+          timePerQuestion,
+          students,
+          questionsByDifficulty,
+        },
+      });
+    } catch (error) {
+      console.error("Error starting quiz:", error);
+      setAuthError("Failed to start quiz.");
+    }
   }
 
   function handleManageQuestions() {
@@ -237,6 +518,7 @@ function SessionOfficial() {
         questionCount,
         timePerQuestion,
         students,
+        questionsByDifficulty,
         fromSession: true,
       },
     });
@@ -314,13 +596,16 @@ function SessionOfficial() {
 
         {!isLoggedIn && (
           <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-amber-800">
-            You are using guest mode. Your work will not be saved unless you log in.
+            You are using guest mode. Your work will not be saved unless you
+            log in.
           </div>
         )}
 
         {isLocalOnlySession && (
           <div className="mb-6 rounded-2xl border border-cyan-200 bg-cyan-50 px-5 py-4 text-cyan-900">
-            This session is running from local temporary data, not Firebase. To make it available across devices, create it while logged in.
+            This session is running from local temporary data, not saved to the
+            database. To make it available across devices, create it while
+            logged in.
           </div>
         )}
 
@@ -418,80 +703,64 @@ function SessionOfficial() {
                 </button>
 
                 {copyMessage && (
-                  <p className="mt-3 text-sm text-green-600 font-medium">
+                  <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 text-sm">
                     {copyMessage}
-                  </p>
+                  </div>
                 )}
               </div>
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-7 shadow-sm">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-              Joined Students
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm">
+            <h2 className="text-2xl font-bold mb-5">Students Joined</h2>
+            <p className="text-slate-500 mb-6">
+              These students are joined from the session player list.
             </p>
 
-            <div className="mt-6 rounded-3xl bg-slate-50 border border-slate-200 p-5 mb-5">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                Students Joined
-              </p>
-
-              <div className="mt-3 flex items-end justify-between">
-                <p className="text-4xl font-extrabold text-slate-900">
-                  {students.length}
-                </p>
-                <p className="text-sm text-slate-500">
-                  {students.length === 1 ? "student" : "students"}
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-3xl bg-slate-50 border border-slate-200 p-4 mb-5 max-h-72 overflow-y-auto">
-              {students.length > 0 ? (
-                <div className="space-y-3">
-                  {students.map((student, index) => (
-                    <div
-                      key={`${student.name}-${index}`}
-                      className="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-4 py-3"
-                    >
-                      <div>
-                        <p className="font-semibold text-slate-900">
-                          {student.name || `Student ${index + 1}`}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Joined successfully
-                        </p>
-                      </div>
-
-                      <div className="h-9 w-9 rounded-full bg-cyan-500 text-slate-900 flex items-center justify-center font-bold text-sm">
-                        {(student.name || "S").charAt(0).toUpperCase()}
-                      </div>
-                    </div>
-                  ))}
+            <div className="space-y-3">
+              {students.length === 0 ? (
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5 text-slate-500">
+                  No students have joined yet.
                 </div>
               ) : (
-                <p className="text-sm text-slate-500 text-center py-6">
-                  No students have joined yet.
-                </p>
+                students.map((student, index) => (
+                  <div
+                    key={`${getStudentName(student, index)}-${
+                      student.id ?? index
+                    }`}
+                    className="rounded-3xl border border-slate-200 bg-slate-50 p-4"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-slate-900">
+                          {getStudentName(student, index)}
+                        </p>
+                        <p className="text-sm text-slate-500 mt-1">
+                          Joined {getStudentJoinedTime(student)}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
+                        Student #{index + 1}
+                      </span>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
 
+            {totalQuestions === 0 && (
+              <p className="mt-4 text-sm text-red-600 font-semibold">
+                Add at least one question before starting the quiz.
+              </p>
+            )}
+
             <button
               onClick={handleStartQuiz}
-              disabled={students.length === 0}
-              className={[
-                "w-full px-5 py-3.5 rounded-2xl transition font-bold",
-                students.length > 0
-                  ? "bg-slate-900 text-white hover:bg-slate-800"
-                  : "bg-slate-200 text-slate-500 cursor-not-allowed",
-              ].join(" ")}
+              disabled={students.length === 0 || totalQuestions === 0}
+              className="mt-6 w-full px-5 py-3 rounded-2xl bg-cyan-500 text-slate-900 hover:bg-cyan-400 disabled:bg-slate-200 disabled:text-slate-500 transition font-bold"
             >
               Start Quiz
             </button>
-
-            <p className="text-xs text-slate-500 mt-4 leading-5">
-              Start becomes available when at least one student joins the session.
-            </p>
           </div>
         </div>
       </div>

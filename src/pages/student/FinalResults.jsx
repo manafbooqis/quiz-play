@@ -1,5 +1,46 @@
 import { useLocation, useNavigate } from "react-router-dom";
 
+function getTextValue(value) {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  return "";
+}
+
+function getStudentName(student, index) {
+  if (!student) {
+    return `Student ${index + 1}`;
+  }
+
+  if (typeof student === "string") {
+    return student;
+  }
+
+  if (typeof student !== "object") {
+    return `Student ${index + 1}`;
+  }
+
+  const candidates = [
+    student.student_name,
+    student.name,
+    student.full_name,
+    student.nickname,
+    student.display_name,
+  ];
+
+  for (const candidate of candidates) {
+    const text = getTextValue(candidate);
+    if (text) return text;
+  }
+
+  return `Student ${index + 1}`;
+}
+
 function FinalResults() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -21,8 +62,13 @@ function FinalResults() {
   const answersStatus = Array.isArray(state.answersStatus) ? state.answersStatus : [];
   const totalQuestions = state.totalQuestions ?? answersStatus.length ?? 3;
 
-  const players = Array.isArray(state.players)
-    ? state.players
+  const normalizePlayers = (playersArray) => {
+  if (!Array.isArray(playersArray)) return [];
+  return playersArray.map((player, index) => getStudentName(player, index));
+};
+
+const players = Array.isArray(state.players)
+    ? normalizePlayers(state.players)
     : ["Radi", "Sara", "Fahad", state.studentName];
 
   const otherScores = players
@@ -117,7 +163,7 @@ function FinalResults() {
             <div className="space-y-3 max-h-[360px] lg:max-h-none overflow-y-auto pr-1">
               {rightList.map((p, idx) => (
                 <div
-                  key={`${p.name}-${idx}`}
+                  key={`${getStudentName(p, idx)}-${idx}`}
                   className="bg-emerald-700/80 hover:bg-emerald-700 border border-emerald-300/20 rounded-2xl px-4 py-3 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -125,7 +171,7 @@ function FinalResults() {
                       {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : "🎖️"}
                     </span>
                     <span className="game-font text-lg text-white truncate">
-                      {p.name}
+                      {getStudentName(p, idx)}
                     </span>
                   </div>
                   <span className="text-yellow-300 font-semibold">{p.score}</span>

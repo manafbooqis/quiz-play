@@ -1,5 +1,46 @@
 import { useLocation, useNavigate } from "react-router-dom";
 
+function getTextValue(value) {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  return "";
+}
+
+function getStudentName(student, index) {
+  if (!student) {
+    return `Student ${index + 1}`;
+  }
+
+  if (typeof student === "string") {
+    return student;
+  }
+
+  if (typeof student !== "object") {
+    return `Student ${index + 1}`;
+  }
+
+  const candidates = [
+    student.student_name,
+    student.name,
+    student.full_name,
+    student.nickname,
+    student.display_name,
+  ];
+
+  for (const candidate of candidates) {
+    const text = getTextValue(candidate);
+    if (text) return text;
+  }
+
+  return `Student ${index + 1}`;
+}
+
 function Leaderboard() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -34,7 +75,7 @@ function Leaderboard() {
     .map((p, idx) => ({ ...p, rank: idx + 1 }));
 
   const myRank =
-    leaderboard.find((p) => p.name === studentName)?.rank ?? "-";
+    leaderboard.find((p) => getStudentName(p.name, 0) === studentName)?.rank ?? "-";
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-6 py-10">
@@ -64,12 +105,13 @@ function Leaderboard() {
         </div>
 
         <div className="space-y-3">
-          {leaderboard.map((p) => {
-            const isMe = p.name === studentName;
+          {leaderboard.map((p, idx) => {
+            const studentDisplayName = getStudentName(p.name, idx);
+            const isMe = studentDisplayName === studentName;
 
             return (
               <div
-                key={`${p.rank}-${p.name}`}
+                key={`${p.rank}-${studentDisplayName}`}
                 className={[
                   "flex items-center justify-between rounded-2xl px-5 py-4 border",
                   isMe
@@ -83,7 +125,7 @@ function Leaderboard() {
                   </div>
                   <div>
                     <div className={isMe ? "text-cyan-200 font-semibold" : "text-white"}>
-                      {p.name} {isMe ? "(You)" : ""}
+                      {studentDisplayName} {isMe ? "(You)" : ""}
                     </div>
                     <div className="text-slate-400 text-sm">Points</div>
                   </div>
