@@ -2,306 +2,348 @@ import { useEffect, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 
-function getTextValue(value) {
-  if (typeof value === "string" && value.trim()) {
-    return value.trim();
-  }
-  if (typeof value === "number") {
-    return String(value);
-  }
-  return "";
-}
-
-function getStudentName(student, index) {
-  if (!student) {
-    return `Student ${index + 1}`;
-  }
-  if (typeof student === "string") {
-    return student;
-  }
-  if (typeof student !== "object") {
-    return `Student ${index + 1}`;
-  }
-  const candidates = [
-    student.student_name,
-    student.name,
-    student.full_name,
-    student.nickname,
-    student.display_name,
-  ];
-  for (const candidate of candidates) {
-    const text = getTextValue(candidate);
-    if (text) return text;
-  }
-  return `Student ${index + 1}`;
-}
-
 function InstructorFinalResults() {
   const navigate = useNavigate();
   const { state } = useLocation();
   
   const sessionId = state?.sessionId ?? "";
-  const gameCode = state?.gameCode ?? "";
-  const students = state?.students ?? [];
-  const responses = state?.responses ?? [];
-  const questionsByDifficulty = state?.questionsByDifficulty ?? {};
+  
+  const [loading, setLoading] = useState(!state?.responses || !state?.questionsByDifficulty);
+  const [gameCode, setGameCode] = useState(state?.gameCode ?? "");
+  const [responses, setResponses] = useState(state?.responses ?? []);
+  const [questionsByDifficulty, setQuestionsByDifficulty] = useState(state?.questionsByDifficulty ?? {});
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  // Calculate statistics
-  const statistics = useMemo(() => {
-    if (!students.length || !responses.length) {
-      return {
-        averageScore: 0,
-        highestScore: 0,
-        lowestScore: 0,
-        totalParticipants: 0,
-        scoreDistribution: { 0: 0, 25: 0, 50: 0, 75: 0, 100: 0 }
-      };
+  useEffect(() => {
+    if (!sessionId) {
+      setLoading(false);
+      return;
+    }
+    
+    if (state?.responses && state?.questionsByDifficulty) {
+      setLoading(false);
+      return;
     }
 
-    const studentScores = {};
-    students.forEach(student => {
-      const studentId = student.id || student.student_name;
-      studentScores[studentId] = {
-        name: getStudentName(student, 0),
-        totalScore: 0,
-        responses: []
-      };
-    });
+    async function loadFallbackData() {
+      try {
+        const { data: sessionData } = await supabase
+          .from("sessions")
+          .select("*")
+          .eq("id", sessionId)
+          .single();
 
-    responses.forEach(response => {
-      const studentId = response.player_id;
-      if (studentScores[studentId]) {
-        studentScores[studentId].totalScore += response.points_awarded;
-        studentScores[studentId].responses.push(response);
+        if (sessionData) {
+          setQuestionsByDifficulty(sessionData.questions_by_difficulty || {});
+          if (!gameCode) setGameCode(sessionData.game_code);
+        }
+
+        const { data: responsesData } = await supabase
+          .from("responses")
+          .select("*")
+          .eq("session_id", sessionId);
+
+        if (responsesData) {
+          setResponses(responsesData);
+        }
+
+      } catch (err) {
+        console.error("Error loading fallback results data:", err);
+      } finally {
+        setLoading(false);
       }
+    }
+
+    loadFallbackData();
+  }, [sessionId, state]);
+  
+
+
+  // Flatten all questions
+  const allQuestions = useMemo(() => {
+    const list = [];
+    ["easy", "medium", "hard"].forEach((diff) => {
+      const bank = questionsByDifficulty[diff] || [];
+      bank.forEach((q, index) => {
+        list.push({ ...q, _difficulty: diff, _originalIndex: index });
+      });
     });
+    return list;
+  }, [questionsByDifficulty]);
 
-    const scores = Object.values(studentScores).map(s => s.totalScore);
-    const totalParticipants = scores.length;
-    
-    const averageScore = scores.length > 0 
-      ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
-      : 0;
-    
-    const highestScore = scores.length > 0 ? Math.max(...scores) : 0;
-    const lowestScore = scores.length > 0 ? Math.min(...scores) : 0;
+  const [selectedQuestionId, setSelectedQuestionId] = useState(
+    allQuestions.length > 0 ? (allQuestions[0].id || allQuestions[0].question_id || allQuestions[0].qid) : null
+  );
 
-    // Score distribution
-    const scoreDistribution = { 0: 0, 25: 0, 50: 0, 75: 0, 100: 0 };
-    scores.forEach(score => {
-      if (score <= 25) scoreDistribution[0]++;
-      else if (score <= 50) scoreDistribution[25]++;
-      else if (score <= 75) scoreDistribution[50]++;
-      else if (score <= 100) scoreDistribution[75]++;
-      else scoreDistribution[100]++;
+  const selectedQuestion = useMemo(() => {
+    return allQuestions.find((q) => {
+      const qId = q.id || q.question_id || q.qid;
+      return qId === selectedQuestionId;
+    });
+  }, [allQuestions, selectedQuestionId]);
+
+  const analytics = useMemo(() => {
+    if (!selectedQuestion) return null;
+
+    const qId = selectedQuestion.id || selectedQuestion.question_id || selectedQuestion.qid;
+    const qResponses = responses.filter(r => r.question_id === qId);
+
+    const total = qResponses.length;
+    const correctCount = qResponses.filter(r => r.is_correct).length;
+    const correctPercent = total > 0 ? Math.round((correctCount / total) * 100) : 0;
+
+    let avgTime = "N/A";
+    const timeResponses = qResponses.filter(r => r.response_time !== undefined && r.response_time !== null);
+    if (timeResponses.length > 0) {
+      const sum = timeResponses.reduce((acc, r) => acc + Number(r.response_time), 0);
+      avgTime = (sum / timeResponses.length).toFixed(1) + "s";
+    }
+
+    const options = selectedQuestion.options || selectedQuestion.choices || [];
+    
+    const distribution = options.map((opt, index) => {
+      const count = qResponses.filter(r => Number(r.selected_answer) === index).length;
+      const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+      return { index, optionText: opt, count, percentage };
     });
 
     return {
-      averageScore,
-      highestScore,
-      lowestScore,
-      totalParticipants,
-      studentScores: Object.values(studentScores).sort((a, b) => b.totalScore - a.totalScore),
-      scoreDistribution
+      total,
+      correctCount,
+      correctPercent,
+      avgTime,
+      distribution
     };
-  }, [students, responses]);
+  }, [selectedQuestion, responses]);
 
-  // Export results to CSV
-  const exportResults = () => {
-    const headers = ["Rank", "Student Name", "Total Score", "Questions Answered", "Correct Answers"];
-    const rows = statistics.studentScores.map((student, index) => [
-      index + 1,
-      student.name,
-      student.totalScore,
-      student.responses.length,
-      student.responses.filter(r => r.is_correct).length
-    ]);
+  const getQuestionText = (q) => {
+    return q.question || q.q || q.question_text || "Unknown Question";
+  };
 
-    const csvContent = [headers, ...rows]
-      .map(row => row.map(cell => `"${cell}"`).join(","))
-      .join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `quiz-results-${gameCode}-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
+  const getCorrectOptionIndex = (q) => {
+    return Number(q.correctAnswer ?? q.correct_answer ?? q.correct_option ?? 0);
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-slate-700 text-xl font-semibold">Loading results...</div>
+        <div className="text-slate-700 text-xl font-semibold">Loading analysis...</div>
       </div>
     );
   }
 
+  if (!allQuestions.length) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-slate-700 text-xl font-semibold">No questions found.</div>
+      </div>
+    );
+  }
+
+  const correctIndex = selectedQuestion ? getCorrectOptionIndex(selectedQuestion) : null;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900">
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-bold">Final Results</h1>
-            <p className="text-slate-500 mt-2">
-              Game Code: <span className="font-semibold">{gameCode}</span> • 
-              {statistics.totalParticipants} participants
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={exportResults}
-              className="px-4 py-2 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition font-semibold"
-            >
-              Export Results
-            </button>
-            <button
-              onClick={() => navigate("/instructor/dashboard-official")}
-              className="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition font-semibold"
-            >
-              Back to Dashboard
-            </button>
-          </div>
+    <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
+      {/* Header */}
+      <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm z-10">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Questions Analysis</h1>
+          <p className="text-sm text-slate-500">Game Code: {gameCode}</p>
         </div>
+        <button
+          onClick={() => navigate("/instructor/dashboard-official")}
+          className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition font-semibold text-sm shadow-sm"
+        >
+          Exit to Dashboard
+        </button>
+      </header>
 
-        {error && (
-          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
-            {error}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Sidebar */}
+        <aside className="w-1/3 max-w-sm bg-white border-r border-slate-200 overflow-y-auto custom-scrollbar">
+          <div className="p-4 border-b border-slate-100 bg-slate-50/80 sticky top-0 backdrop-blur-sm z-10">
+            <h2 className="font-semibold text-slate-700 flex items-center gap-2">
+              <span className="w-5 h-5 rounded-md bg-cyan-100 text-cyan-600 flex items-center justify-center text-xs">
+                {allQuestions.length}
+              </span>
+              Questions
+            </h2>
           </div>
-        )}
-
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-slate-500">Average Score</h3>
-              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                <span className="text-blue-600 text-sm">📊</span>
-              </div>
-            </div>
-            <p className="text-3xl font-bold text-slate-900">{statistics.averageScore}</p>
-            <p className="text-sm text-slate-500 mt-1">points</p>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-slate-500">Highest Score</h3>
-              <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
-                <span className="text-emerald-600 text-sm">🏆</span>
-              </div>
-            </div>
-            <p className="text-3xl font-bold text-slate-900">{statistics.highestScore}</p>
-            <p className="text-sm text-slate-500 mt-1">points</p>
-          </div>
-
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-slate-500">Lowest Score</h3>
-              <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
-                <span className="text-amber-600 text-sm">📈</span>
-              </div>
-            </div>
-            <p className="text-3xl font-bold text-slate-900">{statistics.lowestScore}</p>
-            <p className="text-sm text-slate-500 mt-1">points</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Score Distribution Chart */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-            <h2 className="text-xl font-bold mb-6">Score Distribution</h2>
-            <div className="space-y-4">
-              {Object.entries(statistics.scoreDistribution).map(([range, count]) => {
-                const percentage = statistics.totalParticipants > 0 
-                  ? Math.round((count / statistics.totalParticipants) * 100)
-                  : 0;
-                
-                return (
-                  <div key={range} className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium">
-                        {range === 0 ? "0-25" : range === 25 ? "26-50" : range === 50 ? "51-75" : range === 75 ? "76-100" : "100+"} points
-                      </span>
-                      <span className="text-slate-500">{count} students ({percentage}%)</span>
-                    </div>
-                    <div className="w-full bg-slate-200 rounded-full h-2">
-                      <div 
-                        className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full transition-all duration-500"
-                        style={{ width: `${percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Ranked Students */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-            <h2 className="text-xl font-bold mb-6">Ranked Students</h2>
-            <div className="space-y-3 max-h-96 overflow-y-auto">
-              {statistics.studentScores.map((student, index) => (
-                <div key={student.name} className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold">
-                      {index + 1}
-                    </div>
-                    <div>
-                      <p className="font-semibold">{student.name}</p>
-                      <p className="text-sm text-slate-500">
-                        {student.responses.filter(r => r.is_correct).length} / {student.responses.length} correct
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-xl">{student.totalScore}</p>
-                    <p className="text-sm text-slate-500">points</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Performance by Difficulty */}
-        <div className="mt-8 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-          <h2 className="text-xl font-bold mb-6">Performance by Difficulty</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {["easy", "medium", "hard"].map((difficulty) => {
-              const difficultyQuestions = Object.values(questionsByDifficulty[difficulty] || []);
-              const difficultyResponses = responses.filter(r => {
-                const question = difficultyQuestions.find(q => q.id === r.question_id);
-                return question;
-              });
-              
-              const correctAnswers = difficultyResponses.filter(r => r.is_correct).length;
-              const totalAnswers = difficultyResponses.length;
-              const accuracy = totalAnswers > 0 ? Math.round((correctAnswers / totalAnswers) * 100) : 0;
-
+          <div className="p-3 space-y-2">
+            {allQuestions.map((q, idx) => {
+              const qId = q.id || q.question_id || q.qid;
+              const isSelected = selectedQuestionId === qId;
               return (
-                <div key={difficulty} className="text-center p-6 rounded-xl border border-slate-200 bg-slate-50">
-                  <h3 className="text-lg font-bold capitalize mb-2">{difficulty}</h3>
-                  <p className="text-3xl font-bold text-slate-900 mb-2">{accuracy}%</p>
-                  <p className="text-sm text-slate-500">
-                    {correctAnswers} / {totalAnswers} correct
-                  </p>
-                  <div className="mt-4 w-full bg-slate-200 rounded-full h-2">
-                    <div 
-                      className="bg-gradient-to-r from-cyan-500 to-blue-500 h-2 rounded-full"
-                      style={{ width: `${accuracy}%` }}
-                    />
+                <button
+                  key={qId || idx}
+                  onClick={() => setSelectedQuestionId(qId)}
+                  className={`w-full text-left p-4 rounded-2xl transition-all duration-200 ${
+                    isSelected
+                      ? "bg-cyan-50 border border-cyan-200 shadow-[0_2px_10px_-4px_rgba(6,182,212,0.3)]"
+                      : "hover:bg-slate-50 border border-transparent"
+                  }`}
+                >
+                  <div className="flex justify-between items-center mb-2">
+                    <span className={`text-xs font-bold uppercase tracking-wider ${
+                      isSelected ? "text-cyan-700" : "text-slate-400"
+                    }`}>
+                      Question {idx + 1}
+                    </span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${
+                      q._difficulty === "easy" ? "bg-emerald-100 text-emerald-700" :
+                      q._difficulty === "medium" ? "bg-amber-100 text-amber-700" :
+                      "bg-red-100 text-red-700"
+                    }`}>
+                      {q._difficulty}
+                    </span>
                   </div>
-                </div>
+                  <p className={`text-sm line-clamp-2 leading-relaxed ${isSelected ? "text-slate-900 font-medium" : "text-slate-600"}`}>
+                    {getQuestionText(q)}
+                  </p>
+                </button>
               );
             })}
           </div>
-        </div>
+        </aside>
+
+        {/* Right Main Area */}
+        <main className="flex-1 overflow-y-auto p-8 bg-[#f8fafc]">
+          {selectedQuestion && analytics && (
+            <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              
+              {/* Difficulty Pills */}
+              <div className="flex items-center gap-3">
+                {["easy", "medium", "hard"].map(diff => {
+                  const isActive = selectedQuestion._difficulty === diff;
+                  return (
+                    <div
+                      key={diff}
+                      className={`px-5 py-1.5 rounded-full text-sm font-bold uppercase tracking-wider border-2 transition-all ${
+                        isActive
+                          ? (diff === "easy" ? "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm" :
+                             diff === "medium" ? "border-amber-500 bg-amber-50 text-amber-700 shadow-sm" :
+                             "border-red-500 bg-red-50 text-red-700 shadow-sm")
+                          : "border-slate-200 bg-white text-slate-400 opacity-60"
+                      }`}
+                    >
+                      {diff}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Question Text */}
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                <h2 className="text-2xl font-medium text-slate-800 leading-relaxed">
+                  {getQuestionText(selectedQuestion)}
+                </h2>
+              </div>
+
+              {/* Stats Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-center relative overflow-hidden group">
+                  <div className="absolute -right-4 -top-4 w-24 h-24 bg-emerald-50 rounded-full transition-transform group-hover:scale-110" />
+                  <div className="relative z-10 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Correct Answers</p>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-4xl font-bold text-slate-800">{analytics.correctPercent}%</span>
+                        <span className="text-sm font-medium text-slate-400">({analytics.correctCount}/{analytics.total})</span>
+                      </div>
+                    </div>
+                    <div className="w-14 h-14 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-600 text-2xl shadow-inner">
+                      ✓
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-center relative overflow-hidden group">
+                  <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-50 rounded-full transition-transform group-hover:scale-110" />
+                  <div className="relative z-10 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Average Time</p>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-4xl font-bold text-slate-800">{analytics.avgTime}</span>
+                      </div>
+                    </div>
+                    <div className="w-14 h-14 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-600 text-2xl shadow-inner">
+                      ⏱
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Response Distribution */}
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-lg font-bold text-slate-800">Response Distribution</h3>
+                  <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+                    {analytics.total} total responses
+                  </span>
+                </div>
+                
+                <div className="space-y-6">
+                  {analytics.distribution.map((dist) => {
+                    const isCorrect = dist.index === correctIndex;
+                    return (
+                      <div key={dist.index} className="relative group">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-4">
+                            <span className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg shadow-sm ${
+                              isCorrect ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-600 border border-slate-200"
+                            }`}>
+                              {String.fromCharCode(65 + dist.index)}
+                            </span>
+                            <span className="text-slate-700 font-medium text-base">{dist.optionText}</span>
+                            {isCorrect && (
+                              <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-bold uppercase tracking-wider">
+                                Correct Option
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-right flex items-baseline gap-2">
+                            <span className="font-bold text-slate-800 text-lg">{dist.percentage}%</span>
+                            <span className="text-sm font-medium text-slate-400 w-8 text-right">({dist.count})</span>
+                          </div>
+                        </div>
+                        
+                        {/* Progress Bar */}
+                        <div className="w-full bg-slate-100 rounded-full h-4 overflow-hidden shadow-inner">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-1000 ease-out relative overflow-hidden ${
+                              isCorrect ? "bg-emerald-500" : "bg-slate-300"
+                            }`}
+                            style={{ width: `${dist.percentage}%` }}
+                          >
+                            {/* Shimmer effect for progress bar */}
+                            <div className="absolute inset-0 bg-white/20 w-full h-full transform -skew-x-12 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+          )}
+        </main>
       </div>
+
+      <style dangerouslySetInnerHTML={{__html: `
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background-color: #cbd5e1;
+          border-radius: 20px;
+        }
+        @keyframes shimmer {
+          100% { transform: translateX(100%); }
+        }
+      `}} />
     </div>
   );
 }

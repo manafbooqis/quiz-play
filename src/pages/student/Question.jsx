@@ -258,11 +258,13 @@ function Question() {
       console.log("Current question before submit:", currentQuestion);
       console.log("Response insert payload:", responsePayload);
 
-      const { error: insertError } = await supabase
+      const { error: upsertError } = await supabase
         .from("responses")
-        .insert(responsePayload);
+        .upsert(responsePayload, {
+          onConflict: "session_id,question_id,player_id"
+        });
 
-      if (insertError) throw insertError;
+      if (upsertError) throw upsertError;
 
       setHasAnswered(true);
 
@@ -318,7 +320,7 @@ function Question() {
 
     } catch (err) {
       console.error("Error submitting answer:", err);
-      setError("Failed to submit answer");
+      setError(err.message || "Failed to submit answer");
       setIsSubmitting(false);
     }
   };

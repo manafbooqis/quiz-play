@@ -158,14 +158,28 @@ function DashboardOfficial() {
           .eq("owner_uid", currentUser.id)
           .not("questions_by_difficulty", "is", null)
           .order("created_at", { ascending: false })
-          .limit(10);
+          .limit(50);
         
         if (!error && data) {
           const validBanks = data.filter(s => 
             s.questions_by_difficulty && Object.keys(s.questions_by_difficulty).length > 0
           );
-          setSavedQuestionBanks(validBanks);
-          console.log("Loaded saved question banks:", validBanks);
+
+          // Deduplicate banks based on file_name + question_count or bank content
+          const uniqueBanksMap = new Map();
+          for (const bank of validBanks) {
+            const stableKey = bank.file_name
+              ? `${bank.file_name}_${bank.question_count}`
+              : JSON.stringify(bank.questions_by_difficulty).substring(0, 100);
+
+            if (!uniqueBanksMap.has(stableKey)) {
+              uniqueBanksMap.set(stableKey, bank);
+            }
+          }
+
+          const uniqueBanks = Array.from(uniqueBanksMap.values()).slice(0, 10);
+          setSavedQuestionBanks(uniqueBanks);
+          console.log("Loaded unique saved question banks:", uniqueBanks);
         }
       } catch (err) {
         console.error("Failed to load saved question banks:", err);

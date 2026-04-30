@@ -53,7 +53,6 @@ function InstructorLiveQuiz() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [roundResults, setRoundResults] = useState(null);
-  const [quizFinished, setQuizFinished] = useState(false);
 
   // Calculate total questions
   const totalQuestions = useMemo(() => {
@@ -298,11 +297,6 @@ function InstructorLiveQuiz() {
 
       if (error) {
         console.error("Start Round Supabase error full:", error);
-        console.error("Start Round caught error:", err);
-        console.error("Error message:", error?.message);
-        console.error("Error details:", error?.details);
-        console.error("Error hint:", error?.hint);
-        console.error("Error code:", error?.code);
         setError("Failed to start round.");
         return;
       }
@@ -322,10 +316,6 @@ function InstructorLiveQuiz() {
 
     } catch (err) {
       console.error("Start round caught error:", err);
-      console.error("Error message:", err?.message);
-      console.error("Error details:", err?.details);
-      console.error("Error hint:", err?.hint);
-      console.error("Error code:", err?.code);
       setError("Failed to start round");
     }
   };
@@ -387,7 +377,7 @@ function InstructorLiveQuiz() {
     }
   };
 
-  // Finish quiz
+  // Finish quiz manually
   const finishQuiz = async () => {
     try {
       const { error: updateError } = await supabase
@@ -400,7 +390,15 @@ function InstructorLiveQuiz() {
 
       if (updateError) throw updateError;
       
-      setQuizFinished(true);
+      navigate("/instructor/final-results", {
+        state: {
+          sessionId,
+          gameCode,
+          students,
+          responses,
+          questionsByDifficulty
+        }
+      });
 
     } catch (err) {
       console.error("Error finishing quiz:", err);
@@ -408,40 +406,59 @@ function InstructorLiveQuiz() {
     }
   };
 
-  // Navigate to final results
-  const goToFinalResults = () => {
-    navigate("/instructor/final-results", {
-      state: {
-        sessionId,
-        gameCode,
-        students,
-        responses,
-        questionsByDifficulty
+  // Instructor completion check
+  useEffect(() => {
+    if (!sessionData?.question_count || students.length === 0) return;
+
+    const questionCount = Number(sessionData.question_count);
+    let allCompleted = true;
+    const responsesByPlayer = {};
+
+    students.forEach(s => {
+      const pId = s.student_name || s.id;
+      const count = responses.filter(r => r.player_id === pId).length;
+      responsesByPlayer[pId] = count;
+      if (count < questionCount) {
+        allCompleted = false;
       }
     });
-  };
+
+    console.log("Instructor completion check:", {
+      totalStudents: students.length,
+      questionCount,
+      responsesByPlayer,
+      allCompleted
+    });
+
+    if (allCompleted && sessionData.status === "active") {
+      console.log("All students completed quiz. Navigating to final results.");
+      
+      supabase
+        .from("sessions")
+        .update({
+          status: "finished",
+          quiz_finished_at: new Date().toISOString()
+        })
+        .eq("id", sessionId)
+        .then(() => {
+          navigate("/instructor/final-results", {
+            state: {
+              sessionId,
+              gameCode,
+              students,
+              responses,
+              questionsByDifficulty
+            }
+          });
+        })
+        .catch(err => console.error("Error setting session finished:", err));
+    }
+  }, [responses.length, students, sessionData?.question_count, sessionData?.status, navigate, sessionId, gameCode, questionsByDifficulty]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-slate-700 text-xl font-semibold">Loading quiz...</div>
-      </div>
-    );
-  }
-
-  if (quizFinished) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-6">
-        <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-8 shadow-sm text-center">
-          <h1 className="text-2xl font-bold text-slate-900 mb-4">Quiz Finished!</h1>
-          <p className="text-slate-500 mb-6">The quiz has been completed successfully.</p>
-          <button
-            onClick={goToFinalResults}
-            className="w-full px-5 py-3 rounded-2xl bg-slate-900 text-white hover:bg-slate-800 transition font-bold"
-          >
-            View Results
-          </button>
-        </div>
       </div>
     );
   }
@@ -534,7 +551,7 @@ function InstructorLiveQuiz() {
               </div>
             </div>
 
-            {/* Round Results */}
+
             {roundResults && sessionData?.status === "round_results" && (
               <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
                 <h2 className="text-xl font-bold mb-4">Round Results</h2>

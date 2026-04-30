@@ -142,7 +142,6 @@ function Difficulty() {
                 )}
 
                 <h2 className="game-font text-4xl text-white mt-10">{c.label}</h2>
-                <p className="text-slate-400 text-sm mt-2">{availableCount} questions left</p>
 
                 <button
                   onClick={() => handleDifficultySelect(c.diff, c.points)}
