@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { QRCodeCanvas } from "qrcode.react";
 import {
   supabase,
   getProfile,
@@ -239,8 +240,12 @@ function SessionOfficial() {
         JSON.stringify({
           ...sessionData,
           gameCode,
-          questionsByDifficulty: sessionData.questions_by_difficulty || sessionData.questionsByDifficulty,
-          questions_by_difficulty: sessionData.questions_by_difficulty || sessionData.questionsByDifficulty,
+          questionsByDifficulty:
+            sessionData.questions_by_difficulty ||
+            sessionData.questionsByDifficulty,
+          questions_by_difficulty:
+            sessionData.questions_by_difficulty ||
+            sessionData.questionsByDifficulty,
         })
       );
     } catch (error) {
@@ -292,6 +297,11 @@ function SessionOfficial() {
     return `Student ${index + 1}`;
   }
 
+  function getStudentInitial(student, index) {
+    const name = getStudentName(student, index).trim();
+    return name ? name.charAt(0).toUpperCase() : "?";
+  }
+
   function getStudentJoinedTime(student) {
     if (!student || typeof student !== "object") {
       return new Date().toLocaleTimeString();
@@ -331,7 +341,7 @@ function SessionOfficial() {
             No session data found
           </h1>
           <p className="text-slate-500 mb-6">
-            Please go back to the setup page and create a session first.
+            Please go back and create a session first.
           </p>
           <button
             onClick={() => navigate("/instructor/dashboard-official")}
@@ -375,8 +385,10 @@ function SessionOfficial() {
 
   const fileName =
     sessionData.file_name ?? sessionData.fileName ?? "No file uploaded";
+
   const questionCount =
     sessionData.question_count ?? sessionData.questionCount ?? 5;
+
   const timePerQuestion =
     sessionData.time_per_question ?? sessionData.timePerQuestion ?? 5;
 
@@ -405,7 +417,10 @@ function SessionOfficial() {
   );
 
   const isLocalOnlySession = Boolean(sessionData.localOnly);
-  const joinUrl = `${window.location.origin}${import.meta.env.BASE_URL}student/join?code=${gameCode}`;
+
+  const joinUrl = `${window.location.origin}${
+    import.meta.env.BASE_URL
+  }student/join?code=${gameCode}`;
 
   const displayName = teacherName || "Guest";
   const initials = displayName.trim().charAt(0).toUpperCase();
@@ -453,6 +468,7 @@ function SessionOfficial() {
       startingDifficulty = "medium";
       startingQuestion = questionsByDifficulty.medium?.[0];
     }
+
     if (!startingQuestion) {
       startingDifficulty = "hard";
       startingQuestion = questionsByDifficulty.hard?.[0];
@@ -463,7 +479,12 @@ function SessionOfficial() {
       return;
     }
 
-    const questionId = startingQuestion.id || startingQuestion.question_id || startingQuestion.qid || `${startingDifficulty}-${Date.now()}`;
+    const questionId =
+      startingQuestion.id ||
+      startingQuestion.question_id ||
+      startingQuestion.qid ||
+      `${startingDifficulty}-${Date.now()}`;
+
     const finalSessionId = sessionData?.id || sessionData?.sessionId;
 
     try {
@@ -474,11 +495,15 @@ function SessionOfficial() {
         current_round: 1,
         show_round_results: false,
         current_question_started_at: new Date().toISOString(),
-        current_question_ends_at: new Date(Date.now() + Number(timePerQuestion || 10) * 1000).toISOString(),
+        current_question_ends_at: new Date(
+          Date.now() + Number(timePerQuestion || 10) * 1000
+        ).toISOString(),
       };
-      
-      // Ensure questions_by_difficulty is populated if missing from the row
-      if (!sessionData?.questions_by_difficulty || Object.keys(sessionData?.questions_by_difficulty || {}).length === 0) {
+
+      if (
+        !sessionData?.questions_by_difficulty ||
+        Object.keys(sessionData?.questions_by_difficulty || {}).length === 0
+      ) {
         updatePayload.questions_by_difficulty = questionsByDifficulty;
       }
 
@@ -526,23 +551,30 @@ function SessionOfficial() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900">
-      <div className="max-w-6xl mx-auto px-6 py-10">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+      <div className="max-w-6xl mx-auto px-6 py-8">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
           <div>
-            <h1 className="game-font text-4xl">Session</h1>
+            <h1 className="text-3xl md:text-4xl font-extrabold mt-1">
+              Session Dashboard
+            </h1>
+
             <p className="text-slate-500 mt-2">
-              Manage your current quiz session and see joined students.
+              Share the QR code, review students, and start the quiz.
             </p>
           </div>
 
-          <div className="relative self-start lg:self-auto">
-            <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
-              <div className="h-10 w-10 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-sm shrink-0">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuOpen((prev) => !prev)}
+              className="flex items-center gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm hover:bg-slate-50 transition"
+            >
+              <div className="h-10 w-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold">
                 {initials}
               </div>
 
-              <div className="min-w-0 max-w-[160px]">
-                <p className="font-semibold text-slate-900 truncate">
+              <div className="text-left min-w-0 max-w-[180px]">
+                <p className="font-bold text-slate-900 truncate">
                   {displayName}
                 </p>
                 <p className="text-sm text-slate-500 truncate">
@@ -550,20 +582,13 @@ function SessionOfficial() {
                 </p>
               </div>
 
-              <button
-                onClick={() => setMenuOpen((prev) => !prev)}
-                className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50 transition flex items-center justify-center text-slate-700 text-sm shrink-0"
-              >
-                ▼
-              </button>
-            </div>
+              <span className="text-slate-400">▼</span>
+            </button>
 
             {menuOpen && (
               <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-lg p-3 z-20">
                 <div className="px-2 py-2 border-b border-slate-100">
-                  <p className="font-semibold text-slate-900 truncate">
-                    {displayName}
-                  </p>
+                  <p className="font-semibold truncate">{displayName}</p>
                   <p className="text-sm text-slate-500 truncate">
                     {isLoggedIn ? teacherEmail : "Guest Mode"}
                   </p>
@@ -583,7 +608,7 @@ function SessionOfficial() {
                         setMenuOpen(false);
                         navigate("/instructor/login");
                       }}
-                      className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-cyan-50 text-cyan-700 font-semibold transition"
+                      className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-slate-50 text-slate-700 font-semibold transition"
                     >
                       Login
                     </button>
@@ -595,50 +620,49 @@ function SessionOfficial() {
         </div>
 
         {!isLoggedIn && (
-          <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-amber-800">
-            You are using guest mode. Your work will not be saved unless you
-            log in.
+          <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-amber-800">
+            Guest mode is active. Log in to save your session.
           </div>
         )}
 
         {isLocalOnlySession && (
-          <div className="mb-6 rounded-2xl border border-cyan-200 bg-cyan-50 px-5 py-4 text-cyan-900">
-            This session is running from local temporary data, not saved to the
-            database. To make it available across devices, create it while
-            logged in.
+          <div className="mb-5 rounded-2xl border border-cyan-200 bg-cyan-50 px-5 py-4 text-cyan-900">
+            This session is stored locally on this device.
           </div>
         )}
 
         {authError && (
-          <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
+          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
             {authError}
           </div>
         )}
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <div className="xl:col-span-2 bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm">
-            <h2 className="text-2xl font-bold mb-6">Session Summary</h2>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold">Session Details</h2>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                 <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
-                  File Name
+                  File
                 </p>
                 <p className="font-semibold text-slate-900 break-words">
                   {fileName}
                 </p>
               </div>
 
-              <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                 <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
-                  Game Code
+                  Join Code
                 </p>
                 <p className="text-2xl font-extrabold tracking-[0.15em] text-slate-900">
                   {gameCode}
                 </p>
               </div>
 
-              <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                 <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
                   Number of Questions
                 </p>
@@ -647,7 +671,7 @@ function SessionOfficial() {
                 </p>
               </div>
 
-              <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
+              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                 <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
                   Time per Question
                 </p>
@@ -656,54 +680,46 @@ function SessionOfficial() {
                 </p>
               </div>
 
-              <div className="md:col-span-2 rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
-                <p className="text-xs uppercase tracking-wide text-slate-500 mb-3 text-center">
-                  Join Link
+              <div className="md:col-span-2 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                <p className="text-xs uppercase tracking-wide text-slate-500 mb-4">
+                  Share with Students
                 </p>
 
-                <div className="rounded-2xl bg-white border border-slate-200 p-4 break-all text-sm text-slate-700">
-                  {joinUrl}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-2xl bg-white border border-slate-200 p-5 flex flex-col items-center justify-center min-h-[210px]">
+                    <QRCodeCanvas value={joinUrl} size={150} />
+
+                    <p className="text-xs text-slate-500 mt-4 text-center">
+                      Scan to join
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+                    <button
+                      onClick={handleCopyLink}
+                      className="px-5 py-3 rounded-3xl bg-white border border-slate-200 hover:bg-slate-100 transition font-bold"
+                    >
+                      Copy Link
+                    </button>
+
+                    <button
+                      onClick={handleManageQuestions}
+                      className="px-5 py-3 rounded-3xl bg-white border border-slate-200 hover:bg-slate-100 transition font-bold"
+                    >
+                      Review or Edit Questions
+                    </button>
+
+                    <button
+                      onClick={() => navigate("/instructor/dashboard-official")}
+                      className="px-5 py-3 rounded-3xl bg-white border border-slate-200 hover:bg-slate-100 transition font-bold"
+                    >
+                      Back to Setup
+                    </button>
+                  </div>
                 </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 mt-4">
-                  <button
-                    onClick={handleCopyLink}
-                    className="px-5 py-3 rounded-2xl bg-slate-900 text-white hover:bg-slate-800 transition font-semibold"
-                  >
-                    Copy Join Link
-                  </button>
-
-                  <button
-                    onClick={() => navigate("/instructor/dashboard-official")}
-                    className="px-5 py-3 rounded-2xl bg-white border border-slate-200 hover:bg-slate-50 transition font-semibold"
-                  >
-                    Back to Setup
-                  </button>
-                </div>
-
-                <button
-                  onClick={handleManageQuestions}
-                  className="mt-4 w-full flex items-center justify-center gap-3 px-5 py-3 rounded-2xl border border-cyan-200 bg-cyan-50 text-cyan-900 hover:bg-cyan-100 transition font-semibold"
-                >
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 24 24"
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M12 5v14" />
-                    <path d="M5 12h14" />
-                    <path d="M4 4h16v16H4z" />
-                  </svg>
-                  Add or Edit Questions Manually
-                </button>
 
                 {copyMessage && (
-                  <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 text-sm">
+                  <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-700 text-sm">
                     {copyMessage}
                   </div>
                 )}
@@ -711,16 +727,29 @@ function SessionOfficial() {
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm">
-            <h2 className="text-2xl font-bold mb-5">Students Joined</h2>
-            <p className="text-slate-500 mb-6">
-              These students are joined from the session player list.
-            </p>
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-7 shadow-sm h-fit">
+            <div className="flex items-start justify-between gap-4 mb-6">
+              <div>
+                <h2 className="text-2xl font-bold">Joined Students</h2>
+                <p className="text-slate-500 text-sm mt-1">
+                  Students currently in this session.
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-slate-100 border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700">
+                {students.length}
+              </div>
+            </div>
 
             <div className="space-y-3">
               {students.length === 0 ? (
-                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5 text-slate-500">
-                  No students have joined yet.
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center">
+                  <p className="font-semibold text-slate-700">
+                    No students yet
+                  </p>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Share the QR code or link with students.
+                  </p>
                 </div>
               ) : (
                 students.map((student, index) => (
@@ -730,34 +759,46 @@ function SessionOfficial() {
                     }`}
                     className="rounded-3xl border border-slate-200 bg-slate-50 p-4"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-slate-900">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-2xl bg-white border border-slate-200 flex items-center justify-center font-bold text-slate-700 shrink-0">
+                        {getStudentInitial(student, index)}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-slate-900 truncate">
                           {getStudentName(student, index)}
                         </p>
-                        <p className="text-sm text-slate-500 mt-1">
-                          Joined {getStudentJoinedTime(student)}
+                        <p className="text-sm text-slate-500 mt-0.5">
+                          Ready to play
                         </p>
                       </div>
-                      <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
-                        Student #{index + 1}
-                      </span>
                     </div>
                   </div>
                 ))
               )}
             </div>
 
+            {students.length === 0 && (
+              <p className="mt-4 text-sm text-slate-500 text-center">
+                Waiting for at least one student.
+              </p>
+            )}
+
             {totalQuestions === 0 && (
-              <p className="mt-4 text-sm text-red-600 font-semibold">
-                Add at least one question before starting the quiz.
+              <p className="mt-4 text-sm text-red-600 font-semibold text-center">
+                Add at least one question before starting.
               </p>
             )}
 
             <button
               onClick={handleStartQuiz}
               disabled={students.length === 0 || totalQuestions === 0}
-              className="mt-6 w-full px-5 py-3 rounded-2xl bg-cyan-500 text-slate-900 hover:bg-cyan-400 disabled:bg-slate-200 disabled:text-slate-500 transition font-bold"
+              className={[
+                "mt-6 w-full px-5 py-3.5 rounded-2xl transition font-bold",
+                students.length > 0 && totalQuestions > 0
+                  ? "bg-slate-900 text-white hover:bg-slate-800"
+                  : "bg-slate-200 text-slate-500 cursor-not-allowed",
+              ].join(" ")}
             >
               Start Quiz
             </button>
