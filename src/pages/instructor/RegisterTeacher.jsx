@@ -13,6 +13,7 @@ function RegisterTeacher() {
 
   const navigate = useNavigate();
 
+
   const getRegisterErrorMessage = (message) => {
     if (!message) return "Account creation failed. Please try again.";
     if (message.includes("duplicate key value")) {

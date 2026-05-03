@@ -1,43 +1,124 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
+
+const DIFFICULTY_TABS = [
+  { key: "easy", label: "Easy" },
+  { key: "medium", label: "Medium" },
+  { key: "hard", label: "Hard" },
+];
+
+function normalizeQuestionsByDifficulty(value) {
+  return {
+    easy: Array.isArray(value?.easy) ? value.easy : [],
+    medium: Array.isArray(value?.medium) ? value.medium : [],
+    hard: Array.isArray(value?.hard) ? value.hard : [],
+  };
+}
+
+function getQuestionId(question, difficulty, index) {
+  return (
+    question?.id ||
+    question?.question_id ||
+    question?.qid ||
+    `${difficulty}-${index + 1}`
+  );
+}
+
+function getQuestionText(question) {
+  return question?.question || question?.q || question?.question_text || "Unknown Question";
+}
+
+function getQuestionOptions(question) {
+  return question?.options || question?.choices || ["", "", "", ""];
+}
+
+function getCorrectOptionIndex(question) {
+  return Number(
+    question?.correctAnswer ??
+      question?.correctIndex ??
+      question?.correct_answer ??
+      question?.correct_option ??
+      0
+  );
+}
+
+function getSelectedAnswerIndex(response) {
+  const value =
+    response?.selected_answer ??
+    response?.selectedAnswer ??
+    response?.answer_index ??
+    response?.answerIndex ??
+    response?.selected_option ??
+    response?.selectedOption;
+
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const text = value.trim().toUpperCase();
+
+    if (text === "A") return 0;
+    if (text === "B") return 1;
+    if (text === "C") return 2;
+    if (text === "D") return 3;
+
+    const numberValue = Number(value);
+
+    if (!Number.isNaN(numberValue)) {
+      return numberValue;
+    }
+  }
+
+  return null;
+}
 
 function InstructorFinalResults() {
   const navigate = useNavigate();
   const { state } = useLocation();
-  
+
   const sessionId = state?.sessionId ?? "";
-  
-  const [loading, setLoading] = useState(!state?.responses || !state?.questionsByDifficulty);
+
+  const [loading, setLoading] = useState(
+    !state?.responses || !state?.questionsByDifficulty
+  );
+
   const [gameCode, setGameCode] = useState(state?.gameCode ?? "");
   const [students, setStudents] = useState(state?.students ?? []);
   const [responses, setResponses] = useState(state?.responses ?? []);
-  const [questionsByDifficulty, setQuestionsByDifficulty] = useState(state?.questionsByDifficulty ?? {});
+  const [questionsByDifficulty, setQuestionsByDifficulty] = useState(
+    normalizeQuestionsByDifficulty(state?.questionsByDifficulty ?? {})
+  );
+
+  const [difficulty, setDifficulty] = useState("easy");
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {
     if (!sessionId) {
       setLoading(false);
       return;
     }
-    
+
     if (state?.responses && state?.questionsByDifficulty) {
       setLoading(false);
       return;
     }
 
-    // Also load students if missing
     async function loadStudents() {
       try {
         const { data: playersData } = await supabase
           .from("session_players")
           .select("*")
           .eq("session_id", sessionId);
-        if (playersData) setStudents(playersData);
+
+        if (playersData) {
+          setStudents(playersData);
+        }
       } catch (err) {
         console.error("Error loading students fallback:", err);
       }
     }
-    loadStudents();
 
     async function loadFallbackData() {
       try {
@@ -48,8 +129,15 @@ function InstructorFinalResults() {
           .single();
 
         if (sessionData) {
-          setQuestionsByDifficulty(sessionData.questions_by_difficulty || {});
-          if (!gameCode) setGameCode(sessionData.game_code);
+          setQuestionsByDifficulty(
+            normalizeQuestionsByDifficulty(
+              sessionData.questions_by_difficulty || {}
+            )
+          );
+
+          if (!gameCode) {
+            setGameCode(sessionData.game_code);
+          }
         }
 
         const { data: responsesData } = await supabase
@@ -60,7 +148,6 @@ function InstructorFinalResults() {
         if (responsesData) {
           setResponses(responsesData);
         }
-
       } catch (err) {
         console.error("Error loading fallback results data:", err);
       } finally {
@@ -68,57 +155,90 @@ function InstructorFinalResults() {
       }
     }
 
+    loadStudents();
     loadFallbackData();
-  }, [sessionId, state]);
-  
+  }, [sessionId, state, gameCode]);
 
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [difficulty]);
 
-  // Flatten all questions
-  const allQuestions = useMemo(() => {
-    const list = [];
-    ["easy", "medium", "hard"].forEach((diff) => {
-      const bank = questionsByDifficulty[diff] || [];
-      bank.forEach((q, index) => {
-        list.push({ ...q, _difficulty: diff, _originalIndex: index });
-      });
-    });
-    return list;
-  }, [questionsByDifficulty]);
+  const list = questionsByDifficulty[difficulty] ?? [];
 
-  const [selectedQuestionId, setSelectedQuestionId] = useState(
-    allQuestions.length > 0 ? (allQuestions[0].id || allQuestions[0].question_id || allQuestions[0].qid) : null
+  const safeSelectedIndex = useMemo(() => {
+    if (!list.length) return 0;
+    return Math.min(selectedIndex, list.length - 1);
+  }, [list.length, selectedIndex]);
+
+  const selectedQuestion = list[safeSelectedIndex];
+
+  const totalQuestions = DIFFICULTY_TABS.reduce(
+    (sum, tab) => sum + (questionsByDifficulty[tab.key]?.length ?? 0),
+    0
   );
 
-  const selectedQuestion = useMemo(() => {
-    return allQuestions.find((q) => {
-      const qId = q.id || q.question_id || q.qid;
-      return qId === selectedQuestionId;
+  const selectedQuestionId = selectedQuestion
+    ? getQuestionId(selectedQuestion, difficulty, safeSelectedIndex)
+    : "";
+
+  const questionResponses = useMemo(() => {
+    if (!selectedQuestionId) return [];
+
+    return responses.filter((response) => {
+      const responseQuestionId =
+        response.question_id ||
+        response.questionId ||
+        response.current_question_id;
+
+      return String(responseQuestionId) === String(selectedQuestionId);
     });
-  }, [allQuestions, selectedQuestionId]);
+  }, [responses, selectedQuestionId]);
 
   const analytics = useMemo(() => {
     if (!selectedQuestion) return null;
 
-    const qId = selectedQuestion.id || selectedQuestion.question_id || selectedQuestion.qid;
-    const qResponses = responses.filter(r => r.question_id === qId);
+    const total = questionResponses.length;
 
-    const total = qResponses.length;
-    const correctCount = qResponses.filter(r => r.is_correct).length;
-    const correctPercent = total > 0 ? Math.round((correctCount / total) * 100) : 0;
+    const correctCount = questionResponses.filter(
+      (response) => response.is_correct === true
+    ).length;
+
+    const correctPercent =
+      total > 0 ? Math.round((correctCount / total) * 100) : 0;
 
     let avgTime = "N/A";
-    const timeResponses = qResponses.filter(r => r.response_time !== undefined && r.response_time !== null);
+
+    const timeResponses = questionResponses.filter(
+      (response) =>
+        response.response_time !== undefined &&
+        response.response_time !== null
+    );
+
     if (timeResponses.length > 0) {
-      const sum = timeResponses.reduce((acc, r) => acc + Number(r.response_time), 0);
-      avgTime = (sum / timeResponses.length).toFixed(1) + "s";
+      const sum = timeResponses.reduce(
+        (acc, response) => acc + Number(response.response_time || 0),
+        0
+      );
+
+      avgTime = `${(sum / timeResponses.length).toFixed(1)}s`;
     }
 
-    const options = selectedQuestion.options || selectedQuestion.choices || [];
-    
-    const distribution = options.map((opt, index) => {
-      const count = qResponses.filter(r => Number(r.selected_answer) === index).length;
-      const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
-      return { index, optionText: opt, count, percentage };
+    const options = getQuestionOptions(selectedQuestion);
+
+    const distribution = options.map((optionText, index) => {
+      const count = questionResponses.filter(
+        (response) => getSelectedAnswerIndex(response) === index
+      ).length;
+
+      const percentage =
+        total > 0 ? Math.round((count / total) * 100) : 0;
+
+      return {
+        index,
+        optionText,
+        count,
+        percentage,
+      };
     });
 
     return {
@@ -126,239 +246,321 @@ function InstructorFinalResults() {
       correctCount,
       correctPercent,
       avgTime,
-      distribution
+      distribution,
     };
-  }, [selectedQuestion, responses]);
+  }, [selectedQuestion, questionResponses]);
 
-  const getQuestionText = (q) => {
-    return q.question || q.q || q.question_text || "Unknown Question";
-  };
-
-  const getCorrectOptionIndex = (q) => {
-    return Number(q.correctAnswer ?? q.correct_answer ?? q.correct_option ?? 0);
-  };
+  const correctIndex = selectedQuestion
+    ? getCorrectOptionIndex(selectedQuestion)
+    : null;
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-slate-700 text-xl font-semibold">Loading analysis...</div>
-      </div>
-    );
-  }
-
-  if (!allQuestions.length) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-slate-700 text-xl font-semibold">No questions found.</div>
-      </div>
-    );
-  }
-
-  const correctIndex = selectedQuestion ? getCorrectOptionIndex(selectedQuestion) : null;
-
-  return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm z-10">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Questions Analysis</h1>
-          <p className="text-sm text-slate-500">Game Code: {gameCode}</p>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-6">
+        <div className="text-slate-700 text-xl font-semibold">
+          Loading analysis...
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() =>
-              navigate("/instructor/score-distribution", {
-                state: { sessionId, gameCode, students, responses, questionsByDifficulty },
-              })
-            }
-            className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-sm shadow-sm transition"
-          >
-            View Score Distribution
-          </button>
+      </div>
+    );
+  }
+
+  if (!totalQuestions) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-6">
+        <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-8 shadow-sm text-center">
+          <h1 className="text-2xl font-bold text-slate-900 mb-3">
+            No questions found
+          </h1>
+
+          <p className="text-slate-500 mb-6">
+            There are no questions available for this session.
+          </p>
+
           <button
             onClick={() => navigate("/instructor/dashboard-official")}
-            className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition font-semibold text-sm shadow-sm"
+            className="w-full px-5 py-3 rounded-2xl bg-slate-900 text-white hover:bg-slate-800 transition font-bold"
           >
             Exit to Dashboard
           </button>
         </div>
-      </header>
+      </div>
+    );
+  }
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar */}
-        <aside className="w-1/3 max-w-sm bg-white border-r border-slate-200 overflow-y-auto custom-scrollbar">
-          <div className="p-4 border-b border-slate-100 bg-slate-50/80 sticky top-0 backdrop-blur-sm z-10">
-            <h2 className="font-semibold text-slate-700 flex items-center gap-2">
-              <span className="w-5 h-5 rounded-md bg-cyan-100 text-cyan-600 flex items-center justify-center text-xs">
-                {allQuestions.length}
-              </span>
-              Questions
-            </h2>
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <div className="max-w-6xl mx-auto px-6 py-10">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl font-bold">Question Analysis</h1>
+
+            <p className="text-slate-500 mt-1">
+              Game Code:{" "}
+              <span className="font-semibold">{gameCode}</span>
+            </p>
+
+            <p className="text-slate-500 text-sm mt-1">
+              Review each question and see how students answered.
+            </p>
           </div>
-          <div className="p-3 space-y-1">
-            {allQuestions.map((q, idx) => {
-              const qId = q.id || q.question_id || q.qid;
-              const isSelected = selectedQuestionId === qId;
-              return (
-                <button
-                  key={qId || idx}
-                  onClick={() => setSelectedQuestionId(qId)}
-                  className={`w-full text-left px-4 py-3 rounded-xl transition-all duration-200 ${
-                    isSelected
-                      ? "bg-cyan-50 border border-cyan-200 shadow-[0_2px_10px_-4px_rgba(6,182,212,0.3)]"
-                      : "hover:bg-slate-50 border border-transparent"
-                  }`}
-                >
-                  <span className={`text-sm font-semibold ${
-                    isSelected ? "text-cyan-700" : "text-slate-600"
-                  }`}>
-                    Question {idx + 1}
-                  </span>
-                </button>
-              );
-            })}
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() =>
+                navigate("/instructor/score-distribution", {
+                  state: {
+                    sessionId,
+                    gameCode,
+                    students,
+                    responses,
+                    questionsByDifficulty,
+                  },
+                })
+              }
+              className="px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition font-semibold"
+            >
+              Score Distribution
+            </button>
+
+            <button
+              onClick={() => navigate("/instructor/dashboard-official")}
+              className="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition font-semibold"
+            >
+              Exit to Dashboard
+            </button>
           </div>
-        </aside>
+        </div>
 
-        {/* Right Main Area */}
-        <main className="flex-1 overflow-y-auto p-8 bg-[#f8fafc]">
-          {selectedQuestion && analytics && (
-            <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              
-              {/* Difficulty Pills */}
-              <div className="flex items-center gap-3">
-                {["easy", "medium", "hard"].map(diff => {
-                  const isActive = selectedQuestion._difficulty === diff;
-                  return (
-                    <div
-                      key={diff}
-                      className={`px-5 py-1.5 rounded-full text-sm font-bold uppercase tracking-wider border-2 transition-all ${
-                        isActive
-                          ? (diff === "easy" ? "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm" :
-                             diff === "medium" ? "border-amber-500 bg-amber-50 text-amber-700 shadow-sm" :
-                             "border-red-500 bg-red-50 text-red-700 shadow-sm")
-                          : "border-slate-200 bg-white text-slate-400 opacity-60"
-                      }`}
-                    >
-                      {diff}
-                    </div>
-                  );
-                })}
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          {DIFFICULTY_TABS.map((tab) => (
+            <div
+              key={tab.key}
+              className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm"
+            >
+              <p className="text-xs uppercase tracking-widest text-slate-500">
+                {tab.label}
+              </p>
 
-              {/* Question Text */}
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-                <h2 className="text-2xl font-medium text-slate-800 leading-relaxed">
-                  {getQuestionText(selectedQuestion)}
-                </h2>
-              </div>
+              <p className="mt-2 text-3xl font-bold text-slate-900">
+                {questionsByDifficulty[tab.key]?.length ?? 0}
+              </p>
+            </div>
+          ))}
 
-              {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-center relative overflow-hidden group">
-                  <div className="absolute -right-4 -top-4 w-24 h-24 bg-emerald-50 rounded-full transition-transform group-hover:scale-110" />
-                  <div className="relative z-10 flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Correct Answers</p>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-4xl font-bold text-slate-800">{analytics.correctPercent}%</span>
-                        <span className="text-sm font-medium text-slate-400">({analytics.correctCount}/{analytics.total})</span>
+          <div className="rounded-3xl border border-cyan-200 bg-cyan-50 p-4 shadow-sm">
+            <p className="text-xs uppercase tracking-widest text-cyan-700">
+              Total Questions
+            </p>
+
+            <p className="mt-2 text-3xl font-bold text-cyan-950">
+              {totalQuestions}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-2 mb-6">
+          {DIFFICULTY_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setDifficulty(tab.key)}
+              className={[
+                "px-4 py-2 rounded-2xl border transition font-semibold",
+                difficulty === tab.key
+                  ? "bg-slate-900 text-white border-slate-900"
+                  : "bg-white border-slate-200 hover:bg-slate-50",
+              ].join(" ")}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="bg-white border border-slate-200 rounded-3xl p-4 h-[620px] overflow-y-auto">
+            <p className="text-xs uppercase tracking-widest text-slate-500 mb-3">
+              {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}{" "}
+              Questions ({list.length})
+            </p>
+
+            <div className="space-y-2">
+              {list.map((question, index) => {
+                const questionId = getQuestionId(question, difficulty, index);
+
+                const answerCount = responses.filter((response) => {
+                  const responseQuestionId =
+                    response.question_id ||
+                    response.questionId ||
+                    response.current_question_id;
+
+                  return String(responseQuestionId) === String(questionId);
+                }).length;
+
+                return (
+                  <button
+                    key={questionId}
+                    onClick={() => setSelectedIndex(index)}
+                    className={[
+                      "w-full text-left px-4 py-3 rounded-2xl border transition",
+                      safeSelectedIndex === index
+                        ? "bg-slate-900 text-white border-slate-900"
+                        : "bg-white border-slate-200 hover:bg-slate-50",
+                    ].join(" ")}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-semibold">Q{index + 1}</div>
+
+                      <div className="text-xs opacity-80">
+                        {answerCount} answers
                       </div>
                     </div>
-                    <div className="w-14 h-14 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-600 text-2xl shadow-inner">
-                      ✓
+
+                    <div className="text-sm opacity-80 truncate mt-1">
+                      {getQuestionText(question)}
                     </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {list.length === 0 && (
+              <div className="text-slate-500 text-sm mt-3">
+                No questions in this difficulty.
+              </div>
+            )}
+          </div>
+
+          <div className="lg:col-span-2 bg-white border border-slate-200 rounded-3xl p-6">
+            {!selectedQuestion || !analytics ? (
+              <div className="text-slate-500">
+                Select a question to view its analysis.
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+                  <div>
+                    <p className="text-xs uppercase tracking-widest text-slate-500">
+                      {difficulty.toUpperCase()} - Question{" "}
+                      {safeSelectedIndex + 1}
+                    </p>
+
+                    <p className="text-sm text-slate-500 mt-1">
+                      {analytics.total} student answers
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <p className="text-xs uppercase tracking-wide text-emerald-700">
+                      Correct Rate
+                    </p>
+
+                    <p className="text-2xl font-bold text-emerald-900">
+                      {analytics.correctPercent}%
+                    </p>
                   </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col justify-center relative overflow-hidden group">
-                  <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-50 rounded-full transition-transform group-hover:scale-110" />
-                  <div className="relative z-10 flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Average Time</p>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-4xl font-bold text-slate-800">{analytics.avgTime}</span>
-                      </div>
-                    </div>
-                    <div className="w-14 h-14 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-600 text-2xl shadow-inner">
-                      ⏱
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Response Distribution */}
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-                <div className="flex items-center justify-between mb-8">
-                  <h3 className="text-lg font-bold text-slate-800">Response Distribution</h3>
-                  <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-                    {analytics.total} total responses
-                  </span>
-                </div>
-                
                 <div className="space-y-6">
-                  {analytics.distribution.map((dist) => {
-                    const isCorrect = dist.index === correctIndex;
-                    return (
-                      <div key={dist.index} className="relative group">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-4">
-                            <span className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-lg shadow-sm ${
-                              isCorrect ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-600 border border-slate-200"
-                            }`}>
-                              {String.fromCharCode(65 + dist.index)}
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                    <p className="text-sm font-semibold text-slate-500 mb-2">
+                      Question
+                    </p>
+
+                    <p className="text-lg font-bold text-slate-900">
+                      {getQuestionText(selectedQuestion)}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {analytics.distribution.map((dist) => {
+                      const isCorrect = dist.index === correctIndex;
+
+                      return (
+                        <div
+                          key={`${selectedQuestionId}-choice-${dist.index}`}
+                          className={[
+                            "rounded-2xl border px-4 py-4",
+                            isCorrect
+                              ? "border-emerald-400 bg-emerald-50"
+                              : "border-slate-200 bg-slate-50",
+                          ].join(" ")}
+                        >
+                          <div className="flex items-center justify-between gap-3 mb-3">
+                            <span className="font-semibold text-slate-700">
+                              Choice {String.fromCharCode(65 + dist.index)}
                             </span>
-                            <span className="text-slate-700 font-medium text-base">{dist.optionText}</span>
+
                             {isCorrect && (
-                              <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full font-bold uppercase tracking-wider">
-                                Correct Option
+                              <span className="rounded-full bg-emerald-100 text-emerald-800 px-3 py-1 text-xs font-bold">
+                                Correct Answer
                               </span>
                             )}
                           </div>
-                          <div className="text-right flex items-baseline gap-2">
-                            <span className="font-bold text-slate-800 text-lg">{dist.percentage}%</span>
-                            <span className="text-sm font-medium text-slate-400 w-8 text-right">({dist.count})</span>
+
+                          <p className="font-medium text-slate-900 min-h-[48px]">
+                            {dist.optionText || "Empty choice"}
+                          </p>
+
+                          <div className="mt-4">
+                            <div className="flex items-center justify-between text-sm mb-2">
+                              <span className="text-slate-500">
+                                {dist.count} students
+                              </span>
+
+                              <span className="font-bold text-slate-900">
+                                {dist.percentage}%
+                              </span>
+                            </div>
+
+                            <div className="h-3 rounded-full bg-white border border-slate-200 overflow-hidden">
+                              <div
+                                className={[
+                                  "h-full rounded-full transition-all",
+                                  isCorrect
+                                    ? "bg-emerald-400"
+                                    : "bg-slate-300",
+                                ].join(" ")}
+                                style={{ width: `${dist.percentage}%` }}
+                              />
+                            </div>
                           </div>
                         </div>
-                        
-                        {/* Progress Bar */}
-                        <div className="w-full bg-slate-100 rounded-full h-4 overflow-hidden shadow-inner">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-1000 ease-out relative overflow-hidden ${
-                              isCorrect ? "bg-emerald-500" : "bg-slate-300"
-                            }`}
-                            style={{ width: `${dist.percentage}%` }}
-                          >
-                            {/* Shimmer effect for progress bar */}
-                            <div className="absolute inset-0 bg-white/20 w-full h-full transform -skew-x-12 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                      <p className="text-xs uppercase tracking-wide text-slate-500">
+                        Total Answers
+                      </p>
+
+                      <p className="text-3xl font-bold text-slate-900 mt-2">
+                        {analytics.total}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                      <p className="text-xs uppercase tracking-wide text-slate-500">
+                        Average Time
+                      </p>
+
+                      <p className="text-3xl font-bold text-slate-900 mt-2">
+                        {analytics.avgTime}
+                      </p>
+                    </div>
+                  </div>
+
+                  {analytics.total === 0 && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800">
+                      No answers recorded for this question.
+                    </div>
+                  )}
                 </div>
-              </div>
-
-            </div>
-          )}
-        </main>
+              </>
+            )}
+          </div>
+        </div>
       </div>
-
-      <style dangerouslySetInnerHTML={{__html: `
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background-color: #cbd5e1;
-          border-radius: 20px;
-        }
-        @keyframes shimmer {
-          100% { transform: translateX(100%); }
-        }
-      `}} />
     </div>
   );
 }
