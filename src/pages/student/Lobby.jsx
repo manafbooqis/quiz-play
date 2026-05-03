@@ -209,8 +209,10 @@ function Lobby() {
   const raw = localStorage.getItem(`quizplay_session_${gameCode}`);
   const config = raw ? JSON.parse(raw) : null;
 
-  const totalQuestions = config?.questionCount ?? 3;
-  const timePerQuestion = config?.timePerQuestion ?? 15;
+  const totalQuestions =
+    config?.questionCount ?? config?.question_count ?? 3;
+  const timePerQuestion =
+    config?.timePerQuestion ?? config?.time_per_question ?? 15;
 
   const normalizePlayers = (playersArray) => {
     if (!Array.isArray(playersArray)) return [];
@@ -232,7 +234,8 @@ function Lobby() {
               Hi <span className="text-white font-semibold">{studentName}</span>
             </p>
             <p className="text-slate-400 text-sm mt-1">
-              Questions: {totalQuestions} • Time: {timePerQuestion}s
+              Quiz rounds: {totalQuestions} • Time per question:{" "}
+              {timePerQuestion}s
             </p>
           </div>
 

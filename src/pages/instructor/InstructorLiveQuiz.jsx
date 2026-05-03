@@ -53,6 +53,7 @@ function InstructorLiveQuiz() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [roundResults, setRoundResults] = useState(null);
+  const [instructorTimeLeft, setInstructorTimeLeft] = useState(0);
 
   // Prevent repeated navigation to results
   const hasNavigatedToResultsRef = useRef(false);
@@ -64,18 +65,26 @@ function InstructorLiveQuiz() {
            (questionsByDifficulty?.hard?.length || 0);
   }, [questionsByDifficulty]);
 
-  // Get used questions for current difficulty
+  // Used question ids for this difficulty's bank (responses do not store difficulty)
   const getUsedQuestions = (difficulty) => {
+    const questions = questionsByDifficulty[difficulty] || [];
+    const idSet = new Set(
+      questions
+        .map((q) => q.id || q.question_id || q.qid)
+        .filter(Boolean)
+    );
     return responses
-      .filter(r => r.difficulty === difficulty)
-      .map(r => r.question_id);
+      .filter((r) => idSet.has(r.question_id))
+      .map((r) => r.question_id);
   };
 
-  // Get next available question for difficulty
   const getNextQuestion = (difficulty) => {
     const questions = questionsByDifficulty[difficulty] || [];
     const usedIds = getUsedQuestions(difficulty);
-    return questions.find(q => !usedIds.includes(q.id));
+    return questions.find((q) => {
+      const qid = q.id || q.question_id || q.qid;
+      return qid && !usedIds.includes(qid);
+    });
   };
 
   // Load session data and setup real-time subscription
@@ -152,7 +161,9 @@ function InstructorLiveQuiz() {
         table: 'sessions',
         filter: `id=eq.${sessionId}`
       }, (payload) => {
-        setSessionData(prev => ({ ...prev, ...payload.new }));
+        const row = payload.new;
+        if (!row) return;
+        setSessionData((prev) => ({ ...prev, ...row }));
       })
       .on('postgres_changes', {
         event: '*',
@@ -172,6 +183,31 @@ function InstructorLiveQuiz() {
       supabase.removeChannel(subscription);
     };
   }, [sessionId, navigate]);
+
+  // Same per-question window as students: current_question_ends_at − now (full time each question).
+  useEffect(() => {
+    if (
+      sessionData?.status !== "active" ||
+      !sessionData?.current_question_ends_at ||
+      !sessionData?.current_question_id
+    ) {
+      setInstructorTimeLeft(0);
+      return undefined;
+    }
+
+    function tick() {
+      const end = new Date(sessionData.current_question_ends_at).getTime();
+      setInstructorTimeLeft(Math.max(0, Math.floor((end - Date.now()) / 1000)));
+    }
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [
+    sessionData?.status,
+    sessionData?.current_question_ends_at,
+    sessionData?.current_question_id,
+  ]);
 
   // Polling-based completion check — runs every 2 seconds
   useEffect(() => {
@@ -305,16 +341,19 @@ function InstructorLiveQuiz() {
     console.log("questionsByDifficulty:", questionsByDifficulty);
     console.log("available questions:", questionsByDifficulty?.[selectedDifficulty]);
     
-    // Get available questions for selected difficulty
     const availableQuestions = questionsByDifficulty?.[selectedDifficulty] || [];
-    
+
     if (availableQuestions.length === 0) {
       setError("No questions available for this difficulty.");
       return;
     }
-    
-    // Pick first unused question
-    const nextQuestion = availableQuestions[0];
+
+    const nextQuestion = getNextQuestion(selectedDifficulty);
+
+    if (!nextQuestion) {
+      setError("No unused questions left for this difficulty.");
+      return;
+    }
     
     // Determine questionId safely
     const questionId =
@@ -365,6 +404,10 @@ function InstructorLiveQuiz() {
     console.log("questionId:", questionId);
     const nextRound = Number(sessionData?.current_round || 1);
 
+    const secondsPerQuestion = Number(
+      sessionData?.time_per_question ?? timePerQuestion ?? 10
+    );
+
     const updatePayload = {
       status: "active",
       current_question_id: questionId,
@@ -372,7 +415,9 @@ function InstructorLiveQuiz() {
       current_round: nextRound,
       show_round_results: false,
       current_question_started_at: new Date().toISOString(),
-      current_question_ends_at: new Date(Date.now() + Number(timePerQuestion || 10) * 1000).toISOString(),
+      current_question_ends_at: new Date(
+        Date.now() + secondsPerQuestion * 1000
+      ).toISOString(),
     };
     
     try {
@@ -380,7 +425,7 @@ function InstructorLiveQuiz() {
         .from("sessions")
         .update(updatePayload)
         .eq("id", finalSessionId)
-        .select("id, game_code, status, current_question_id, current_difficulty, current_round")
+        .select("*")
         .single();
 
       if (error) {
@@ -397,6 +442,25 @@ function InstructorLiveQuiz() {
         setError("Round started but current question was not saved.");
         return;
       }
+
+      setSessionData((prev) => ({
+        ...prev,
+        ...data,
+        current_question_started_at: data.current_question_started_at,
+        current_question_ends_at: data.current_question_ends_at,
+        current_question_id: data.current_question_id,
+        current_difficulty: data.current_difficulty,
+        time_per_question: data.time_per_question ?? prev?.time_per_question,
+      }));
+      setInstructorTimeLeft(
+        Math.max(
+          0,
+          Math.floor(
+            (new Date(data.current_question_ends_at).getTime() - Date.now()) /
+              1000
+          )
+        )
+      );
       
       setCurrentQuestion(normalizedQuestion);
       setRoundResults(null);
@@ -435,9 +499,11 @@ function InstructorLiveQuiz() {
   // Move to next round
   const nextRound = async () => {
     const nextRoundNumber = (sessionData?.current_round || 1) + 1;
-    const totalRounds = Math.ceil(totalQuestions / 3); // Approximate
+    const maxRounds = Number(
+      sessionData?.question_count ?? sessionData?.questionCount ?? 1
+    );
 
-    if (nextRoundNumber > totalRounds) {
+    if (nextRoundNumber > maxRounds) {
       await finishQuiz();
     } else {
       try {
@@ -592,9 +658,19 @@ function InstructorLiveQuiz() {
               <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-bold">Current Question</h2>
-                  <span className="px-3 py-1 rounded-full bg-cyan-100 text-cyan-900 font-semibold text-sm">
-                    {selectedDifficulty}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    {sessionData?.status === "active" &&
+                      sessionData?.current_question_id && (
+                        <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-900 font-semibold text-sm tabular-nums">
+                          {Math.floor(instructorTimeLeft / 60)}:
+                          {(instructorTimeLeft % 60).toString().padStart(2, "0")}{" "}
+                          left
+                        </span>
+                      )}
+                    <span className="px-3 py-1 rounded-full bg-cyan-100 text-cyan-900 font-semibold text-sm">
+                      {selectedDifficulty}
+                    </span>
+                  </div>
                 </div>
                 <div className="mb-4">
                   <p className="text-lg font-medium mb-3">{currentQuestion.q}</p>

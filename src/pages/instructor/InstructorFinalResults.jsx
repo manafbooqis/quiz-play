@@ -13,6 +13,9 @@ function InstructorFinalResults() {
   const [students, setStudents] = useState(state?.students ?? []);
   const [responses, setResponses] = useState(state?.responses ?? []);
   const [questionsByDifficulty, setQuestionsByDifficulty] = useState(state?.questionsByDifficulty ?? {});
+  const [quizRoundCap, setQuizRoundCap] = useState(
+    () => Number(state?.questionCount) || 0
+  );
 
   useEffect(() => {
     if (!sessionId) {
@@ -50,6 +53,9 @@ function InstructorFinalResults() {
         if (sessionData) {
           setQuestionsByDifficulty(sessionData.questions_by_difficulty || {});
           if (!gameCode) setGameCode(sessionData.game_code);
+          if (sessionData.question_count != null) {
+            setQuizRoundCap(Number(sessionData.question_count));
+          }
         }
 
         const { data: responsesData } = await supabase
@@ -72,83 +78,86 @@ function InstructorFinalResults() {
   }, [sessionId, state]);
   
 
-
-  // Flatten only the questions that were actually used in this quiz session.
-  // Priority: questions that appear in responses → fallback: first N from bank.
-  const allQuestions = useMemo(() => {
-    const questionCount = state?.questionCount ?? 0;
-
-    // Build a set of question IDs that students actually answered
-    const answeredIds = new Set(
-      responses.map((r) => r.question_id).filter(Boolean)
-    );
-
-    const list = [];
-    ["easy", "medium", "hard"].forEach((diff) => {
-      const bank = questionsByDifficulty[diff] || [];
-      bank.forEach((q, index) => {
-        const qId = q.id || q.question_id || q.qid;
-        // If we have real responses, only include answered questions
-        if (answeredIds.size > 0) {
-          if (answeredIds.has(qId)) {
-            list.push({ ...q, _difficulty: diff, _originalIndex: index });
-          }
-        } else {
-          // No responses yet — include all from bank
-          list.push({ ...q, _difficulty: diff, _originalIndex: index });
-        }
-      });
-    });
-
-    // Cap to session's question_count so we never show more than selected
-    if (questionCount > 0 && list.length > questionCount) {
-      return list.slice(0, questionCount);
-    }
-    return list;
-  }, [questionsByDifficulty, responses, state?.questionCount]);
-
-  const [selectedQuestionId, setSelectedQuestionId] = useState(
-    allQuestions.length > 0 ? (allQuestions[0].id || allQuestions[0].question_id || allQuestions[0].qid) : null
+  const quizN = useMemo(
+    () => Math.max(0, Number(state?.questionCount) || quizRoundCap || 0),
+    [state?.questionCount, quizRoundCap]
   );
 
+  const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0);
+  const [analysisDifficulty, setAnalysisDifficulty] = useState("easy");
+
+  useEffect(() => {
+    setSelectedQuestionIndex((i) =>
+      quizN > 0 ? Math.min(Math.max(0, i), quizN - 1) : 0
+    );
+  }, [quizN]);
+
   const selectedQuestion = useMemo(() => {
-    return allQuestions.find((q) => {
-      const qId = q.id || q.question_id || q.qid;
-      return qId === selectedQuestionId;
-    });
-  }, [allQuestions, selectedQuestionId]);
+    if (quizN <= 0) return null;
+    const bank = questionsByDifficulty[analysisDifficulty] || [];
+    return bank[selectedQuestionIndex] ?? null;
+  }, [questionsByDifficulty, analysisDifficulty, selectedQuestionIndex, quizN]);
 
   const analytics = useMemo(() => {
-    if (!selectedQuestion) return null;
+    if (!selectedQuestion) {
+      const emptyDist = [0, 1, 2, 3].map((index) => ({
+        index,
+        optionText: "—",
+        count: 0,
+        percentage: 0,
+      }));
+      return {
+        total: 0,
+        correctCount: 0,
+        correctPercent: 0,
+        avgTime: "N/A",
+        distribution: emptyDist,
+      };
+    }
 
     const qId = selectedQuestion.id || selectedQuestion.question_id || selectedQuestion.qid;
-    const qResponses = responses.filter(r => r.question_id === qId);
+    const qResponses = responses.filter((r) => r.question_id === qId);
 
     const total = qResponses.length;
-    const correctCount = qResponses.filter(r => r.is_correct).length;
+    const correctCount = qResponses.filter((r) => r.is_correct).length;
     const correctPercent = total > 0 ? Math.round((correctCount / total) * 100) : 0;
 
     let avgTime = "N/A";
-    const timeResponses = qResponses.filter(r => r.response_time !== undefined && r.response_time !== null);
+    const timeResponses = qResponses.filter(
+      (r) => r.response_time !== undefined && r.response_time !== null
+    );
     if (timeResponses.length > 0) {
-      const sum = timeResponses.reduce((acc, r) => acc + Number(r.response_time), 0);
+      const sum = timeResponses.reduce(
+        (acc, r) => acc + Number(r.response_time),
+        0
+      );
       avgTime = (sum / timeResponses.length).toFixed(1) + "s";
     }
 
     const options = selectedQuestion.options || selectedQuestion.choices || [];
-    
-    const distribution = options.map((opt, index) => {
-      const count = qResponses.filter(r => Number(r.selected_answer) === index).length;
-      const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
-      return { index, optionText: opt, count, percentage };
-    });
+
+    const distribution =
+      options.length > 0
+        ? options.map((opt, index) => {
+            const count = qResponses.filter(
+              (r) => Number(r.selected_answer) === index
+            ).length;
+            const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+            return { index, optionText: opt, count, percentage };
+          })
+        : [0, 1, 2, 3].map((index) => ({
+            index,
+            optionText: "—",
+            count: 0,
+            percentage: 0,
+          }));
 
     return {
       total,
       correctCount,
       correctPercent,
       avgTime,
-      distribution
+      distribution,
     };
   }, [selectedQuestion, responses]);
 
@@ -168,10 +177,12 @@ function InstructorFinalResults() {
     );
   }
 
-  if (!allQuestions.length) {
+  if (!quizN) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="text-slate-700 text-xl font-semibold">No questions found.</div>
+        <div className="text-slate-700 text-xl font-semibold">
+          No quiz question count found for analysis.
+        </div>
       </div>
     );
   }
@@ -212,28 +223,33 @@ function InstructorFinalResults() {
           <div className="p-4 border-b border-slate-100 bg-slate-50/80 sticky top-0 backdrop-blur-sm z-10">
             <h2 className="font-semibold text-slate-700 flex items-center gap-2">
               <span className="w-5 h-5 rounded-md bg-cyan-100 text-cyan-600 flex items-center justify-center text-xs">
-                {allQuestions.length}
+                {quizN}
               </span>
-              Questions
+              Question numbers
             </h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Pick a number, then choose Easy / Medium / Hard above the chart.
+            </p>
           </div>
           <div className="p-3 space-y-1">
-            {allQuestions.map((q, idx) => {
-              const qId = q.id || q.question_id || q.qid;
-              const isSelected = selectedQuestionId === qId;
+            {Array.from({ length: quizN }, (_, idx) => {
+              const isSelected = selectedQuestionIndex === idx;
               return (
                 <button
-                  key={qId || idx}
-                  onClick={() => setSelectedQuestionId(qId)}
+                  key={idx}
+                  type="button"
+                  onClick={() => setSelectedQuestionIndex(idx)}
                   className={`w-full text-left px-4 py-3 rounded-xl transition-all duration-200 ${
                     isSelected
                       ? "bg-cyan-50 border border-cyan-200 shadow-[0_2px_10px_-4px_rgba(6,182,212,0.3)]"
                       : "hover:bg-slate-50 border border-transparent"
                   }`}
                 >
-                  <span className={`text-sm font-semibold ${
-                    isSelected ? "text-cyan-700" : "text-slate-600"
-                  }`}>
+                  <span
+                    className={`text-sm font-semibold ${
+                      isSelected ? "text-cyan-700" : "text-slate-600"
+                    }`}
+                  >
                     Question {idx + 1}
                   </span>
                 </button>
@@ -244,34 +260,50 @@ function InstructorFinalResults() {
 
         {/* Right Main Area */}
         <main className="flex-1 overflow-y-auto p-8 bg-[#f8fafc]">
-          {selectedQuestion && analytics && (
+          {analytics && (
             <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
               
-              {/* Difficulty Pills */}
-              <div className="flex items-center gap-3">
-                {["easy", "medium", "hard"].map(diff => {
-                  const isActive = selectedQuestion._difficulty === diff;
+              {/* Difficulty selector */}
+              <div className="flex flex-wrap items-center gap-3">
+                {["easy", "medium", "hard"].map((diff) => {
+                  const isActive = analysisDifficulty === diff;
                   return (
-                    <div
+                    <button
                       key={diff}
+                      type="button"
+                      onClick={() => setAnalysisDifficulty(diff)}
                       className={`px-5 py-1.5 rounded-full text-sm font-bold uppercase tracking-wider border-2 transition-all ${
                         isActive
-                          ? (diff === "easy" ? "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm" :
-                             diff === "medium" ? "border-amber-500 bg-amber-50 text-amber-700 shadow-sm" :
-                             "border-red-500 bg-red-50 text-red-700 shadow-sm")
-                          : "border-slate-200 bg-white text-slate-400 opacity-60"
+                          ? diff === "easy"
+                            ? "border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm"
+                            : diff === "medium"
+                            ? "border-amber-500 bg-amber-50 text-amber-700 shadow-sm"
+                            : "border-red-500 bg-red-50 text-red-700 shadow-sm"
+                          : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
                       }`}
                     >
                       {diff}
-                    </div>
+                    </button>
                   );
                 })}
               </div>
 
+              {!selectedQuestion && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 text-sm">
+                  No question in the bank for{" "}
+                  <span className="font-semibold capitalize">
+                    {analysisDifficulty}
+                  </span>{" "}
+                  at slot {selectedQuestionIndex + 1}. Stats below are empty.
+                </div>
+              )}
+
               {/* Question Text */}
               <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
                 <h2 className="text-2xl font-medium text-slate-800 leading-relaxed">
-                  {getQuestionText(selectedQuestion)}
+                  {selectedQuestion
+                    ? getQuestionText(selectedQuestion)
+                    : "—"}
                 </h2>
               </div>
 

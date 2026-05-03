@@ -27,6 +27,25 @@ function SessionOfficial() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const fallbackSession = useMemo(() => {
+    // Fresh navigation state must beat localStorage so a new upload never inherits an old cached bank.
+    if (state && gameCode && (state.gameCode === gameCode || !state.gameCode)) {
+      return {
+        ...state,
+        gameCode,
+        id: state.sessionId ?? state.id,
+        fileName: state.fileName,
+        questionCount: state.questionCount,
+        timePerQuestion: state.timePerQuestion,
+        players: state.students || state.players || [],
+        questionsByDifficulty:
+          state.questionsByDifficulty ?? state.questions_by_difficulty,
+        questions_by_difficulty:
+          state.questions_by_difficulty ?? state.questionsByDifficulty,
+        isGuest: state.isGuest ?? false,
+        localOnly: state.localOnly ?? false,
+      };
+    }
+
     if (gameCode && localSessionKey) {
       try {
         const raw = localStorage.getItem(localSessionKey);
@@ -135,8 +154,17 @@ function SessionOfficial() {
         return;
       }
 
-      if (state) {
-        setSessionData((prev) => prev || state);
+      if (state && (state.gameCode === gameCode || !state.gameCode)) {
+        setSessionData({
+          ...state,
+          game_code: state.gameCode ?? gameCode,
+          gameCode,
+          id: state.sessionId ?? state.id,
+          questions_by_difficulty:
+            state.questions_by_difficulty ?? state.questionsByDifficulty,
+          questionsByDifficulty:
+            state.questionsByDifficulty ?? state.questions_by_difficulty,
+        });
         setLoading(false);
         return;
       }
@@ -189,7 +217,7 @@ function SessionOfficial() {
     return () => {
       isMounted = false;
     };
-  }, [gameCode]);
+  }, [gameCode, state]);
 
   useEffect(() => {
     if (!gameCode || sessionData?.localOnly || fallbackSession?.localOnly) {
@@ -538,6 +566,7 @@ function SessionOfficial() {
   function handleManageQuestions() {
     navigate("/instructor/questions-preview", {
       state: {
+        sessionId: sessionData?.id ?? sessionData?.sessionId ?? state?.sessionId,
         gameCode,
         fileName,
         questionCount,
@@ -664,16 +693,20 @@ function SessionOfficial() {
 
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                 <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
-                  Number of Questions
+                  Quiz rounds &amp; bank
                 </p>
                 <p className="text-2xl font-bold text-slate-900">
-                  {questionCount}
+                  {questionCount} rounds
+                </p>
+                <p className="text-sm text-slate-500 mt-1">
+                  {questionCount} per difficulty in bank ({questionCount * 3}{" "}
+                  total)
                 </p>
               </div>
 
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                 <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
-                  Time per Question
+                  Time per question
                 </p>
                 <p className="text-2xl font-bold text-slate-900">
                   {timePerQuestion}s

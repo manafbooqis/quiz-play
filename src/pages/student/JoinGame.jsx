@@ -91,6 +91,8 @@ function JoinGame() {
           gameCode: trimmedCode,
           players: updatedPlayers ?? [],
           questionsByDifficulty: sessionData.questions_by_difficulty ?? {},
+          questionCount: sessionData.question_count,
+          timePerQuestion: sessionData.time_per_question,
         })
       );
 

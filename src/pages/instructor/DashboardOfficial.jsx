@@ -203,6 +203,36 @@ function DashboardOfficial() {
     loadSavedQuestionBanks();
   }, [currentUser?.id]);
 
+  async function deleteSessionRecord(target, { listLabel }) {
+    if (!target?.id) return;
+    const title =
+      target.file_name || target.game_code || listLabel || "this session";
+    if (
+      !window.confirm(
+        `Delete "${title}"? This removes only this session row (code ${target.game_code}). This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    const { error: delErr } = await supabase
+      .from("sessions")
+      .delete()
+      .eq("id", target.id);
+
+    if (delErr) {
+      setError(delErr.message || "Could not delete session.");
+      return;
+    }
+
+    setTeacherSessions((prev) => prev.filter((s) => s.id !== target.id));
+    setSavedQuestionBanks((prev) => prev.filter((s) => s.id !== target.id));
+    if (selectedQuestionBank?.id === target.id) {
+      setSelectedQuestionBank(null);
+    }
+    setError("");
+  }
+
   function increaseQuestions() {
     setQuestionCount((prev) => Math.min(prev + 1, MAX_QUESTIONS));
   }
@@ -236,16 +266,6 @@ function DashboardOfficial() {
       };
       reader.onerror = () => reject(new Error("Failed to read file"));
       reader.readAsDataURL(file);
-    });
-  }
-
-  // Read file content as text (used by AI generation)
-  function readFileAsText(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result || "");
-      reader.onerror = () => reject(new Error("Failed to read file"));
-      reader.readAsText(file);
     });
   }
 
@@ -295,7 +315,10 @@ function DashboardOfficial() {
   }
 
   async function handleGoToSession() {
-    if (useExistingBank) {
+    // A newly selected file always wins over "existing bank" mode (checkbox can still be on by mistake).
+    const fromExistingBank = useExistingBank && !selectedFile;
+
+    if (fromExistingBank) {
       if (!selectedQuestionBank) {
         setError("Please select an existing question bank to use.");
         return;
@@ -325,7 +348,7 @@ function DashboardOfficial() {
       let freshMime = "";
       let freshFileName = "";
 
-      if (!useExistingBank && selectedFile) {
+      if (!fromExistingBank && selectedFile) {
         setIsReadingFile(true);
         setInfoMessage("Reading uploaded file...");
         try {
@@ -346,21 +369,21 @@ function DashboardOfficial() {
       const isGuestUser =
         currentUser.is_anonymous || currentUser.user_metadata?.is_guest === true;
 
-      const sessionFileName = useExistingBank
+      const sessionFileName = fromExistingBank
         ? selectedQuestionBank.file_name || "Existing Bank"
         : selectedFile.name;
 
-      const sessionQuestionCount = useExistingBank
+      const sessionQuestionCount = fromExistingBank
         ? selectedQuestionBank.question_count
         : questionCount;
 
-      const sessionTimePerQuestion = useExistingBank
+      const sessionTimePerQuestion = fromExistingBank
         ? selectedQuestionBank.time_per_question
         : timePerQuestion;
 
       let questionsByDifficulty;
 
-      if (useExistingBank && selectedQuestionBank) {
+      if (fromExistingBank && selectedQuestionBank) {
         console.log("[Bank] Using existing question bank, skipping AI generation.");
         questionsByDifficulty =
           selectedQuestionBank.questions_by_difficulty ||
@@ -408,7 +431,7 @@ function DashboardOfficial() {
         throw sessionError;
       }
 
-      if (!useExistingBank) {
+      if (!fromExistingBank) {
         const useAi = import.meta.env.VITE_USE_AI_QUESTIONS === "true";
 
         if (useAi) {
@@ -443,15 +466,22 @@ function DashboardOfficial() {
         }
       }
 
-      localStorage.setItem(
-        `quizplay_session_${session.game_code}`,
-        JSON.stringify({
-          ...session,
-          gameCode: session.game_code,
-          questionsByDifficulty,
-          questions_by_difficulty: questionsByDifficulty,
-        })
-      );
+      // Only persist locally after generation (or existing bank path) so we never cache empty/mock banks ahead of AI.
+      const persistKey = `quizplay_session_${session.game_code}`;
+      try {
+        localStorage.setItem(
+          persistKey,
+          JSON.stringify({
+            ...session,
+            id: session.id,
+            gameCode: session.game_code,
+            questionsByDifficulty,
+            questions_by_difficulty: questionsByDifficulty,
+          })
+        );
+      } catch (e) {
+        console.warn("Failed to write session to localStorage:", e);
+      }
 
       navigate("/instructor/session-official", {
         state: {
@@ -497,6 +527,12 @@ function DashboardOfficial() {
     currentUser?.is_anonymous || currentUser?.user_metadata?.is_guest === true;
 
   const displayEmail = isGuestUser ? "Guest Account" : teacherEmail || "";
+
+  // Upload wins over the "existing bank" checkbox when both are present.
+  const fromBankOnly = useExistingBank && !selectedFile;
+  const canCreateSession =
+    !isCreatingSession &&
+    (selectedFile || (fromBankOnly && selectedQuestionBank));
 
   if (isCheckingAuth) {
     return (
@@ -625,36 +661,70 @@ function DashboardOfficial() {
                     savedQuestionBanks.map((bank) => (
                       <div
                         key={bank.id}
-                        onClick={() => setSelectedQuestionBank(bank)}
                         className={[
-                          "rounded-2xl border p-4 cursor-pointer transition",
+                          "rounded-2xl border p-4 transition flex gap-3 items-stretch",
                           selectedQuestionBank?.id === bank.id
                             ? "border-slate-900 bg-white shadow-sm"
                             : "border-slate-200 bg-white hover:bg-slate-50",
                         ].join(" ")}
                       >
-                        <div className="flex justify-between gap-4">
-                          <div className="min-w-0">
-                            <p className="font-bold truncate">
-                              {bank.file_name || "Untitled"}
-                            </p>
-                            <p className="text-xs text-slate-500 mt-1">
-                              Created:{" "}
-                              {new Date(bank.created_at).toLocaleDateString()} •
-                              Code: {bank.game_code}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedQuestionBank(bank)}
+                          className="flex-1 min-w-0 text-left cursor-pointer"
+                        >
+                          <div className="flex justify-between gap-4">
+                            <div className="min-w-0">
+                              <p className="font-bold truncate">
+                                {bank.file_name || "Untitled"}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-1">
+                                Created:{" "}
+                                {new Date(bank.created_at).toLocaleDateString()}{" "}
+                                • Code: {bank.game_code}
+                              </p>
+                            </div>
+
+                            <p className="text-sm font-bold text-slate-600 shrink-0">
+                              {bank.question_count} / tier
+                              <span className="block text-xs font-normal text-slate-500">
+                                Bank {Number(bank.question_count || 0) * 3}
+                              </span>
                             </p>
                           </div>
 
-                          <p className="text-sm font-bold text-slate-600">
-                            {bank.question_count} Qs
-                          </p>
-                        </div>
-
-                        {selectedQuestionBank?.id === bank.id && (
-                          <div className="mt-3 rounded-xl bg-slate-900 text-white text-center py-2 text-sm font-bold">
-                            Selected
-                          </div>
-                        )}
+                          {selectedQuestionBank?.id === bank.id && (
+                            <div className="mt-3 rounded-xl bg-slate-900 text-white text-center py-2 text-sm font-bold">
+                              Selected
+                            </div>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          title="Delete this question bank"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteSessionRecord(bank, {
+                              listLabel: "question bank",
+                            });
+                          }}
+                          className="shrink-0 self-start p-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 transition"
+                        >
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            aria-hidden
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
+                        </button>
                       </div>
                     ))
                   )}
@@ -683,6 +753,8 @@ function DashboardOfficial() {
                         setFileContent("");
                         setFileMimeType("");
                         setUploadedFileId(Date.now().toString());
+                        setInfoMessage("");
+                        setError("");
 
                         // Disable "Use Existing Bank" when a new file is chosen
                         setUseExistingBank(false);
@@ -693,6 +765,9 @@ function DashboardOfficial() {
                         Object.keys(localStorage)
                           .filter((k) => k.startsWith("quizplay_session_"))
                           .forEach((k) => localStorage.removeItem(k));
+                        Object.keys(sessionStorage)
+                          .filter((k) => k.startsWith("quizplay_"))
+                          .forEach((k) => sessionStorage.removeItem(k));
                       }}
                     />
 
@@ -724,8 +799,13 @@ function DashboardOfficial() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                   <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                    <p className="text-sm font-bold text-slate-700 mb-3">
-                      Number of Questions
+                    <p className="text-sm font-bold text-slate-700 mb-1">
+                      Questions per difficulty
+                    </p>
+                    <p className="text-xs text-slate-500 mb-3">
+                      Bank size: {questionCount} easy + {questionCount} medium +{" "}
+                      {questionCount} hard ({questionCount * 3} total). Quiz uses{" "}
+                      {questionCount} rounds (same number).
                     </p>
 
                     <div className="flex items-center gap-3">
@@ -756,7 +836,7 @@ function DashboardOfficial() {
 
                   <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                     <p className="text-sm font-bold text-slate-700 mb-3">
-                      Time per Question
+                      Time per question (each question)
                     </p>
 
                     <div className="flex items-center gap-3">
@@ -806,16 +886,10 @@ function DashboardOfficial() {
             <button
               type="button"
               onClick={handleGoToSession}
-              disabled={
-                isCreatingSession ||
-                (!useExistingBank && !selectedFile) ||
-                (useExistingBank && !selectedQuestionBank)
-              }
+              disabled={!canCreateSession}
               className={[
                 "mt-5 w-full px-5 py-3.5 rounded-2xl transition font-bold",
-                !isCreatingSession &&
-                ((useExistingBank && selectedQuestionBank) ||
-                  (!useExistingBank && selectedFile))
+                canCreateSession
                   ? "bg-slate-900 text-white hover:bg-slate-800"
                   : "bg-slate-200 text-slate-500 cursor-not-allowed",
               ].join(" ")}
@@ -858,23 +932,53 @@ function DashboardOfficial() {
               teacherSessions.map((session) => (
                 <div
                   key={session.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-5 hover:bg-slate-100 transition"
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-5 hover:bg-slate-100 transition flex gap-3 items-start"
                 >
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-bold text-slate-900 truncate">
-                        {session.file_name || "Untitled file"}
-                      </p>
-                      <p className="text-sm text-slate-500 mt-1">
-                        Code: {session.game_code}
-                      </p>
-                    </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-900 truncate">
+                          {session.file_name || "Untitled file"}
+                        </p>
+                        <p className="text-sm text-slate-500 mt-1">
+                          Code: {session.game_code}
+                        </p>
+                      </div>
 
-                    <div className="flex gap-3 text-sm text-slate-500">
-                      <span>Questions: {session.question_count}</span>
-                      <span>Time: {session.time_per_question}s</span>
+                      <div className="flex flex-col sm:items-end gap-1 text-sm text-slate-500">
+                        <span>
+                          Quiz rounds: {session.question_count} · Bank:{" "}
+                          {Number(session.question_count || 0) * 3}
+                        </span>
+                        <span>
+                          Time/question: {session.time_per_question}s
+                        </span>
+                      </div>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    title="Delete this session"
+                    onClick={() =>
+                      deleteSessionRecord(session, { listLabel: "history" })
+                    }
+                    className="shrink-0 p-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 transition"
+                  >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
                 </div>
               ))
             )}
