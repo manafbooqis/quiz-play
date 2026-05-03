@@ -249,6 +249,7 @@ function InstructorLiveQuiz() {
             students,
             responses: freshResponses || [],
             questionsByDifficulty,
+            questionCount: Number(sessionData.question_count || sessionData.questionCount || 0),
           },
         });
       }
@@ -483,7 +484,8 @@ function InstructorLiveQuiz() {
           gameCode,
           students,
           responses,
-          questionsByDifficulty
+          questionsByDifficulty,
+          questionCount: Number(sessionData?.question_count || sessionData?.questionCount || 0),
         }
       });
 

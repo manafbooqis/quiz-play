@@ -12,9 +12,13 @@ function Question() {
   const currentRound = state?.currentRound ?? 1;
   const currentQuestionId = state?.currentQuestionId ?? null;
   const currentDifficulty = state?.currentDifficulty ?? null;
+  // pointsPerQuestion is set by Difficulty.jsx based on selected difficulty
+  const pointsPerQuestion = Number(state?.pointsPerQuestion ?? 100);
   const playerId = studentName;
   
   const [sessionData, setSessionData] = useState(null);
+  // resolvedSessionId: prefer the DB-fetched session.id over state.sessionId
+  const [resolvedSessionId, setResolvedSessionId] = useState(sessionId);
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
@@ -46,6 +50,8 @@ function Question() {
 
         if (sessionError) throw sessionError;
         setSessionData(session);
+        // Always use the real session UUID from the DB
+        setResolvedSessionId(session.id);
 
         if (session.status === "round_results") {
           navigate("/student/round-results", {
@@ -175,13 +181,14 @@ function Question() {
 
   const checkIfAlreadyAnswered = async () => {
     try {
+      const targetSessionId = resolvedSessionId || sessionId;
       const targetQuestionId = currentQuestionId || sessionData?.current_question_id;
-      if (!targetQuestionId) return;
+      if (!targetQuestionId || !targetSessionId) return;
 
       const { data: existingResponse } = await supabase
         .from("responses")
         .select("*")
-        .eq("session_id", sessionId)
+        .eq("session_id", targetSessionId)
         .eq("question_id", targetQuestionId)
         .eq("player_id", studentName)
         .maybeSingle();
@@ -189,7 +196,7 @@ function Question() {
       if (existingResponse) {
         setHasAnswered(true);
         setSelectedAnswer(existingResponse.selected_answer);
-        
+
         const localKey = `quizplay_answered_questions_${gameCode}_${playerId}`;
         const stored = localStorage.getItem(localKey);
         const answered = stored ? JSON.parse(stored) : [];
@@ -202,11 +209,11 @@ function Question() {
 
         if (reachedLimit) {
           navigate("/student/final-results", {
-            state: { ...state, studentName, gameCode, sessionId, currentRound: sessionData.current_round, questionCount: maxQuestions }
+            state: { ...state, studentName, gameCode, sessionId: targetSessionId, currentRound: sessionData.current_round, questionCount: maxQuestions }
           });
         } else {
           navigate("/student/difficulty", {
-            state: { ...state, studentName, gameCode, sessionId, currentRound: sessionData.current_round, questionCount: maxQuestions }
+            state: { ...state, studentName, gameCode, sessionId: targetSessionId, currentRound: sessionData.current_round, questionCount: maxQuestions }
           });
         }
       }
@@ -240,12 +247,14 @@ function Question() {
         0;
 
       const isCorrect = Number(answerToSubmit) === Number(correctAnswer);
-      const pointsAwarded = isCorrect ? 100 : 0;
+      // Use difficulty-based points from Difficulty.jsx, fallback to 100
+      const pointsAwarded = isCorrect ? pointsPerQuestion : 0;
 
-      const targetQuestionId = currentQuestion.id || currentQuestionId || sessionData.current_question_id;
+      const targetQuestionId = currentQuestion.id || currentQuestionId || sessionData?.current_question_id;
+      const targetSessionId = resolvedSessionId || sessionId || sessionData?.id;
 
       const responsePayload = {
-        session_id: sessionId,
+        session_id: targetSessionId,
         question_id: targetQuestionId,
         player_id: playerId || studentName,
         round_number: currentRound || 1,
@@ -268,19 +277,23 @@ function Question() {
 
       setHasAnswered(true);
 
-      const { data: playerRecord } = await supabase
-        .from("session_players")
-        .select("*")
-        .eq("session_id", sessionId)
-        .eq("student_name", studentName)
-        .maybeSingle();
+      // Update total_score safely: recalculate from all responses to avoid race conditions
+      const { data: allMyResponses } = await supabase
+        .from("responses")
+        .select("points_awarded")
+        .eq("session_id", targetSessionId)
+        .eq("player_id", studentName);
 
-      if (playerRecord) {
-        const newTotalScore = (playerRecord.total_score || 0) + pointsAwarded;
+      if (allMyResponses) {
+        const newTotalScore = allMyResponses.reduce(
+          (sum, r) => sum + Number(r.points_awarded || 0),
+          0
+        );
         await supabase
           .from("session_players")
           .update({ total_score: newTotalScore })
-          .eq("id", playerRecord.id);
+          .eq("session_id", targetSessionId)
+          .eq("student_name", studentName);
       }
 
       // Add to local storage
@@ -300,8 +313,8 @@ function Question() {
             ...state,
             studentName,
             gameCode,
-            sessionId,
-            currentRound: sessionData.current_round,
+            sessionId: targetSessionId,
+            currentRound: sessionData?.current_round,
             questionCount: maxQuestions
           }
         });
@@ -311,8 +324,8 @@ function Question() {
             ...state,
             studentName,
             gameCode,
-            sessionId,
-            currentRound: sessionData.current_round,
+            sessionId: targetSessionId,
+            currentRound: sessionData?.current_round,
             questionCount: maxQuestions
           }
         });

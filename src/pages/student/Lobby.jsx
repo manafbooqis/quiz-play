@@ -213,13 +213,14 @@ function Lobby() {
   const timePerQuestion = config?.timePerQuestion ?? 15;
 
   const normalizePlayers = (playersArray) => {
-  if (!Array.isArray(playersArray)) return [];
-  return playersArray.map((player, index) => getStudentName(player, index));
-};
+    if (!Array.isArray(playersArray)) return [];
+    return playersArray.map((player, index) => getStudentName(player, index));
+  };
 
-const players = config?.players
-    ? [...normalizePlayers(config.players), studentName]
-    : ["Radi", "Sara", "Fahad", studentName];
+  // Only show real players — never use fake fallback names
+  const players = config?.players
+      ? [...new Set([...normalizePlayers(config.players), studentName])]
+      : [studentName];
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-6">

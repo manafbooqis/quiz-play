@@ -52,18 +52,22 @@ function buildQuestionRow(sessionId, gameCode, fileName, difficulty, question, i
   };
 }
 
-function buildQuestionPrompt(fileName, questionCount) {
+function buildQuestionPrompt(fileName, questionCount, fileContent) {
   const easyCount = Math.max(1, Math.ceil(questionCount / 3));
   const mediumCount = Math.max(1, Math.floor(questionCount / 3));
   const hardCount = Math.max(1, questionCount - easyCount - mediumCount);
 
-  return `Create a total of ${questionCount} multiple-choice quiz questions in JSON format for a classroom activity. 
+  const contentSection = fileContent && fileContent.trim()
+    ? `\n\nHere is the actual content of the uploaded file to base the questions on:\n---\n${fileContent.substring(0, 12000)}\n---\nGenerate ALL questions strictly based on the above content.`
+    : `\nGenerate questions related to the material suggested by the file name: ${fileName}.`;
+
+  return `Create a total of ${questionCount} multiple-choice quiz questions in JSON format for a classroom activity.
 The output must be valid JSON with three top-level arrays: easy, medium, and hard. Each array should contain exactly this many questions:
 - easy: ${easyCount}
 - medium: ${mediumCount}
 - hard: ${hardCount}
 
-CRITICAL: Every single question must test a completely different concept, fact, or scenario. Do NOT use the same question structure or repeat the same concepts. The questions within the same difficulty must be distinctly different from each other.
+CRITICAL: Every single question must test a completely different concept, fact, or scenario. Do NOT repeat the same concepts. Questions within the same difficulty must be distinctly different from each other.
 
 Each question object must include exactly these 5 properties:
 - "id": a unique string identifier (e.g., "easy-1", "medium-1")
@@ -71,8 +75,8 @@ Each question object must include exactly these 5 properties:
 - "options": an array of 4 answer strings
 - "correctAnswer": the index (0-3) of the correct answer
 - "difficulty": the difficulty level ("easy", "medium", or "hard")
-
-Generate questions related to the material in the uploaded file name: ${fileName}. Output ONLY the JSON object. Do not include markdown formatting or explanations.`;
+${contentSection}
+Output ONLY the JSON object. Do not include markdown formatting or explanations.`;
 }
 
 export default async function handler(req, res) {
@@ -90,7 +94,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Missing Gemini API key." });
   }
 
-  const { gameCode, fileName, questionCount } = req.body || {};
+  const { gameCode, fileName, questionCount, fileContent } = req.body || {};
   if (!gameCode || !fileName || !questionCount) {
     return res.status(400).json({ error: "gameCode, fileName, and questionCount are required." });
   }
@@ -100,7 +104,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "questionCount must be a positive number." });
   }
 
-  const prompt = buildQuestionPrompt(fileName, count);
+  const prompt = buildQuestionPrompt(fileName, count, fileContent || "");
   console.log("Calling Gemini API...");
 
   const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;

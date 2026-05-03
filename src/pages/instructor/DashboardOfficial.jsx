@@ -18,8 +18,12 @@ function DashboardOfficial() {
   }, []);
 
   const [selectedFile, setSelectedFile] = useState(null);
+  const [fileContent, setFileContent] = useState("");        // base64-encoded file content
+  const [fileMimeType, setFileMimeType] = useState("");       // MIME type of the uploaded file
+  const [uploadedFileId, setUploadedFileId] = useState("");  // unique ID per upload to prevent stale data
+  const [isReadingFile, setIsReadingFile] = useState(false); // true while FileReader is running
   const [questionCount, setQuestionCount] = useState(5);
-  const [timePerQuestion, setTimePerQuestion] = useState(5);
+  const [timePerQuestion, setTimePerQuestion] = useState(30);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [error, setError] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
@@ -37,8 +41,9 @@ function DashboardOfficial() {
 
   const MIN_QUESTIONS = 3;
   const MAX_QUESTIONS = 20;
-  const MIN_TIME = 5;
-  const MAX_TIME = 30;
+  const MIN_TIME = 10;
+  const MAX_TIME = 120;
+  const TIME_STEP = 10;
 
   useEffect(() => {
     let isMounted = true;
@@ -207,169 +212,77 @@ function DashboardOfficial() {
   }
 
   function increaseTime() {
-    setTimePerQuestion((prev) => Math.min(prev + 5, MAX_TIME));
+    setTimePerQuestion((prev) => Math.min(prev + TIME_STEP, MAX_TIME));
   }
 
   function decreaseTime() {
-    setTimePerQuestion((prev) => Math.max(prev - 5, MIN_TIME));
+    setTimePerQuestion((prev) => Math.max(prev - TIME_STEP, MIN_TIME));
   }
 
-  function generateMockQuestions(n, fileName) {
-    const easyBanks = [
-      {
-        q: "What is the main purpose of a software product?",
-        opts: [
-          "To solve a specific problem or provide a service",
-          "To consume electricity",
-          "To make hardware heavier",
-          "To randomly crash computers",
-        ],
-        a: 0,
-      },
-      {
-        q: "Why is usability important in software products?",
-        opts: [
-          "It makes the code run faster",
-          "It ensures users can easily navigate and use the application",
-          "It reduces the size of the database",
-          "It eliminates all bugs automatically",
-        ],
-        a: 1,
-      },
-      {
-        q: "What does software quality help improve?",
-        opts: [
-          "User satisfaction and system reliability",
-          "Hardware manufacturing speed",
-          "Internet bandwidth limits",
-          "Keyboard typing speed",
-        ],
-        a: 0,
-      },
-    ];
-
-    const mediumBanks = [
-      {
-        q: "Why should software products be tested before release?",
-        opts: [
-          "To identify and fix defects before users encounter them",
-          "To increase the file size of the application",
-          "To make developers work overtime",
-          "To slow down the release process",
-        ],
-        a: 0,
-      },
-      {
-        q: "What is the difference between functional and non-functional requirements?",
-        opts: [
-          "Functional defines what the system does, non-functional defines how well it does it",
-          "Functional is for backend, non-functional is for frontend",
-          "There is no difference",
-          "Functional requirements are optional",
-        ],
-        a: 0,
-      },
-      {
-        q: "Why is user feedback important during software development?",
-        opts: [
-          "It helps align the product with actual user needs and expectations",
-          "It acts as a placeholder for real code",
-          "It automatically generates documentation",
-          "It writes the unit tests",
-        ],
-        a: 0,
-      },
-    ];
-
-    const hardBanks = [
-      {
-        q: "How can maintainability affect the long-term success of a software product?",
-        opts: [
-          "It allows for easier updates, bug fixes, and feature additions over time",
-          "It prevents users from uninstalling the app",
-          "It forces the software to run strictly offline",
-          "It eliminates the need for future developers",
-        ],
-        a: 0,
-      },
-      {
-        q: "Why does scalability matter for software products?",
-        opts: [
-          "It ensures the system can handle increased load without performance degradation",
-          "It makes the UI look bigger on large screens",
-          "It reduces the electricity usage to zero",
-          "It limits the number of users to a fixed amount",
-        ],
-        a: 0,
-      },
-      {
-        q: "How can poor requirement analysis affect software product quality?",
-        opts: [
-          "It leads to building a product that does not meet user needs and requires expensive rework",
-          "It makes the code compile faster",
-          "It increases the application's graphical resolution",
-          "It forces the application to be written in Assembly",
-        ],
-        a: 0,
-      },
-    ];
-
-    const make = (difficultyLabel, bank) =>
-      Array.from({ length: Math.max(n, bank.length) }, (_, i) => {
-        const item = bank[i % bank.length];
-
-        return {
-          id: `${difficultyLabel.toLowerCase()}-${i + 1}`,
-          question: item.q,
-          options: item.opts,
-          correctAnswer: item.a,
-          difficulty: difficultyLabel.toLowerCase(),
-        };
-      }).slice(0, n);
-
-    return {
-      easy: make("Easy", easyBanks),
-      medium: make("Medium", mediumBanks),
-      hard: make("Hard", hardBanks),
-    };
+  // Empty placeholder used while AI is generating — avoids hardcoded unrelated questions
+  function emptyQuestionBanks() {
+    return { easy: [], medium: [], hard: [] };
   }
 
-  async function fetchAiQuestions({ sessionId, sessionGameCode }) {
+  // Read a file as base64 (works for PDFs, images, and text files)
+  function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        // result is a data URL: "data:<mime>;base64,<data>"
+        const dataUrl = e.target.result;
+        const base64 = dataUrl.split(",")[1] || "";
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Read file content as text (used by AI generation)
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result || "");
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsText(file);
+    });
+  }
+
+  async function fetchAiQuestions({ sessionId, sessionGameCode, freshBase64, freshMime, freshFileName }) {
     const url = "/api/generate-questions";
+
+    // freshBase64/freshMime are passed directly from the handleGoToSession caller
+    // so we never rely on stale React state
+    const base64 = freshBase64 || "";
+    const mimeType = freshMime || "application/octet-stream";
+    const fileName = freshFileName || selectedFile?.name || "uploaded-file";
 
     const payload = {
       sessionId,
       gameCode: sessionGameCode,
-      fileName: selectedFile.name,
+      fileName,
+      fileBase64: base64,
+      fileMimeType: mimeType,
       questionCount,
       timePerQuestion,
     };
 
-    console.log("AI request URL:", url);
-    console.log("AI request payload:", payload);
+    console.log("[AI] Sending request to", url);
+    console.log("[AI] fileName:", fileName, "| mimeType:", mimeType, "| base64 length:", base64.length);
 
     const response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
-    console.log("AI response status:", response.status);
-    console.log("AI response ok:", response.ok);
+    console.log("[AI] Response status:", response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
-
-      console.error("AI request failed");
-      console.error("URL:", url);
-      console.error("Status:", response.status);
-      console.error("Response text:", errorText);
-
-      throw new Error(
-        errorText || `AI request failed with status ${response.status}`
-      );
+      console.error("[AI] Request failed:", response.status, errorText);
+      throw new Error(errorText || `AI request failed with status ${response.status}`);
     }
 
     const json = await response.json();
@@ -405,6 +318,31 @@ function DashboardOfficial() {
       setError("");
       setInfoMessage("");
 
+      // ── Step 0: Read the file NOW, before any async Supabase calls ──
+      // This guarantees we always send the FRESHEST file content to the API,
+      // not stale React state from a previous render cycle.
+      let freshBase64 = "";
+      let freshMime = "";
+      let freshFileName = "";
+
+      if (!useExistingBank && selectedFile) {
+        setIsReadingFile(true);
+        setInfoMessage("Reading uploaded file...");
+        try {
+          freshBase64 = await readFileAsBase64(selectedFile);
+          freshMime = selectedFile.type || "application/octet-stream";
+          freshFileName = selectedFile.name;
+          // Update state for reference (not used for the current call)
+          setFileContent(freshBase64);
+          setFileMimeType(freshMime);
+          console.log("[File] Read OK:", freshFileName, "|", freshMime, "| base64 length:", freshBase64.length);
+        } catch (readErr) {
+          console.warn("[File] Could not read file content:", readErr.message);
+        } finally {
+          setIsReadingFile(false);
+        }
+      }
+
       const isGuestUser =
         currentUser.is_anonymous || currentUser.user_metadata?.is_guest === true;
 
@@ -423,19 +361,15 @@ function DashboardOfficial() {
       let questionsByDifficulty;
 
       if (useExistingBank && selectedQuestionBank) {
-        console.log("Selected existing question bank:", selectedQuestionBank);
-        console.log("Using existing question bank, skipping AI generation.");
-
+        console.log("[Bank] Using existing question bank, skipping AI generation.");
         questionsByDifficulty =
           selectedQuestionBank.questions_by_difficulty ||
           selectedQuestionBank.questionsByDifficulty;
-
         setInfoMessage("Using existing question bank.");
       } else {
-        questionsByDifficulty = generateMockQuestions(
-          questionCount,
-          selectedFile.name
-        );
+        // Use empty banks as placeholder — AI will replace them.
+        // NEVER use hardcoded mock questions that are unrelated to the uploaded file.
+        questionsByDifficulty = emptyQuestionBanks();
       }
 
       if (!questionsByDifficulty || typeof questionsByDifficulty !== "object") {
@@ -478,12 +412,15 @@ function DashboardOfficial() {
         const useAi = import.meta.env.VITE_USE_AI_QUESTIONS === "true";
 
         if (useAi) {
-          setInfoMessage("Generating questions using AI...");
+          setInfoMessage("Generating questions using AI from your uploaded file...");
 
           try {
             const aiQuestions = await fetchAiQuestions({
               sessionId: session.id,
               sessionGameCode: session.game_code,
+              freshBase64,
+              freshMime,
+              freshFileName,
             });
 
             if (aiQuestions && typeof aiQuestions === "object") {
@@ -495,18 +432,14 @@ function DashboardOfficial() {
                 .update({ questions_by_difficulty: questionsByDifficulty })
                 .eq("id", session.id);
             } else {
-              setInfoMessage("AI returned invalid data. Using fallback questions.");
+              setInfoMessage("AI returned invalid data. Questions are empty — please edit manually.");
             }
           } catch (aiError) {
-            console.warn(
-              "AI generation failed, falling back to local questions:",
-              aiError
-            );
-
-            setInfoMessage("AI generation failed. Using fallback questions.");
+            console.warn("[AI] Generation failed:", aiError);
+            setInfoMessage(`AI generation failed: ${aiError.message}. Questions are empty — please edit manually.`);
           }
         } else {
-          setInfoMessage("Session saved successfully.");
+          setInfoMessage("Session saved. AI is disabled — add questions manually.");
         }
       }
 
@@ -741,9 +674,26 @@ function DashboardOfficial() {
                       type="file"
                       accept=".txt,.md,.doc,.docx,.pdf,.csv,.json,.html"
                       className="hidden"
-                      onChange={(event) =>
-                        setSelectedFile(event.target.files?.[0] ?? null)
-                      }
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        setSelectedFile(file);
+
+                        // ── Clear ALL stale question/file state ──
+                        // This ensures old questions from a previous file never bleed into the new session.
+                        setFileContent("");
+                        setFileMimeType("");
+                        setUploadedFileId(Date.now().toString());
+
+                        // Disable "Use Existing Bank" when a new file is chosen
+                        setUseExistingBank(false);
+                        setSelectedQuestionBank(null);
+
+                        // Clear any previously cached quizplay sessions from localStorage
+                        // so old question banks are never shown for the new file
+                        Object.keys(localStorage)
+                          .filter((k) => k.startsWith("quizplay_session_"))
+                          .forEach((k) => localStorage.removeItem(k));
+                      }}
                     />
 
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">

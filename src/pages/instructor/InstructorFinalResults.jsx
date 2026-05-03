@@ -73,17 +73,39 @@ function InstructorFinalResults() {
   
 
 
-  // Flatten all questions
+  // Flatten only the questions that were actually used in this quiz session.
+  // Priority: questions that appear in responses → fallback: first N from bank.
   const allQuestions = useMemo(() => {
+    const questionCount = state?.questionCount ?? 0;
+
+    // Build a set of question IDs that students actually answered
+    const answeredIds = new Set(
+      responses.map((r) => r.question_id).filter(Boolean)
+    );
+
     const list = [];
     ["easy", "medium", "hard"].forEach((diff) => {
       const bank = questionsByDifficulty[diff] || [];
       bank.forEach((q, index) => {
-        list.push({ ...q, _difficulty: diff, _originalIndex: index });
+        const qId = q.id || q.question_id || q.qid;
+        // If we have real responses, only include answered questions
+        if (answeredIds.size > 0) {
+          if (answeredIds.has(qId)) {
+            list.push({ ...q, _difficulty: diff, _originalIndex: index });
+          }
+        } else {
+          // No responses yet — include all from bank
+          list.push({ ...q, _difficulty: diff, _originalIndex: index });
+        }
       });
     });
+
+    // Cap to session's question_count so we never show more than selected
+    if (questionCount > 0 && list.length > questionCount) {
+      return list.slice(0, questionCount);
+    }
     return list;
-  }, [questionsByDifficulty]);
+  }, [questionsByDifficulty, responses, state?.questionCount]);
 
   const [selectedQuestionId, setSelectedQuestionId] = useState(
     allQuestions.length > 0 ? (allQuestions[0].id || allQuestions[0].question_id || allQuestions[0].qid) : null
