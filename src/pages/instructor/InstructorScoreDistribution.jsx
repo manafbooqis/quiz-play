@@ -5,6 +5,8 @@ import { supabase } from "../../lib/supabase";
 function getStudentName(student, index) {
   if (!student) return `Student ${index + 1}`;
   if (typeof student === "string") return student;
+  
+  // Prioritize student_name first, then other name fields
   const candidates = [
     student.student_name,
     student.name,
@@ -12,9 +14,11 @@ function getStudentName(student, index) {
     student.nickname,
     student.display_name,
   ];
+  
   for (const c of candidates) {
     if (typeof c === "string" && c.trim()) return c.trim();
   }
+  
   return `Student ${index + 1}`;
 }
 
@@ -74,18 +78,31 @@ function InstructorScoreDistribution() {
   // Calculate per-student scores
   const studentScores = useMemo(() => {
     return students.map((student, index) => {
-      const id = student.id || student.student_name;
+      // Use student_name as the primary identifier since that's what responses use
+      const studentName = student.student_name || student.name || "";
+      const id = student.id || studentName;
       const name = getStudentName(student, index);
+      
+      // Match responses by player_id (which should be student_name)
       const studentResponses = responses.filter(
-        (r) => r.player_id === id || r.player_id === student.student_name
+        (r) => r.player_id === studentName || r.player_id === String(studentName)
       );
+      
+      // Calculate score from responses points_awarded
       const score = studentResponses.reduce(
         (acc, r) => acc + Number(r.points_awarded || 0),
         0
       );
+      
+      // Use total_score from session_players if available and valid, otherwise calculated score
+      const finalScore = (student.total_score && student.total_score > 0) 
+        ? student.total_score 
+        : score;
+      
       const correct = studentResponses.filter((r) => r.is_correct).length;
       const total = studentResponses.length;
-      return { id, name, score, correct, total };
+      
+      return { id, name, score: finalScore, correct, total };
     });
   }, [students, responses]);
 

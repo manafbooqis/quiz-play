@@ -250,17 +250,28 @@ function DashboardOfficial() {
     }
 
     try {
+      // Convert Set to array and filter valid IDs
+      const sessionIds = Array.from(selectedSessions).filter(id => 
+        id && typeof id === 'string' && id.trim() !== ''
+      );
+
+      if (sessionIds.length === 0) {
+        setError("No valid session IDs found for deletion.");
+        return;
+      }
+
       const { error: delErr } = await supabase
         .from("sessions")
         .delete()
-        .in(`id.in.(${Array.from(selectedSessions).join(',')})`);
+        .in("id", sessionIds);
 
       if (delErr) {
         setError(`Failed to delete sessions: ${delErr.message}`);
         return;
       }
 
-      setTeacherSessions([]);
+      // Remove deleted sessions from local state
+      setTeacherSessions(prev => prev.filter(s => !selectedSessions.has(s.id)));
       setSelectedSessions(new Set());
       setError("");
     } catch (err) {
@@ -281,19 +292,36 @@ function DashboardOfficial() {
     }
 
     try {
+      // Convert Set to array and filter valid IDs
+      const bankIds = Array.from(selectedBanks).filter(id => 
+        id && typeof id === 'string' && id.trim() !== ''
+      );
+
+      if (bankIds.length === 0) {
+        setError("No valid question bank IDs found for deletion.");
+        return;
+      }
+
       const { error: delErr } = await supabase
         .from("sessions")
         .delete()
-        .in(`id.in.(${Array.from(selectedBanks).join(',')})`);
+        .in("id", bankIds);
 
       if (delErr) {
         setError(`Failed to delete question banks: ${delErr.message}`);
         return;
       }
 
-      setSavedQuestionBanks([]);
+      // Remove deleted banks from local state
+      setSavedQuestionBanks(prev => prev.filter(b => !selectedBanks.has(b.id)));
       setSelectedBanks(new Set());
-      setSelectedQuestionBank(null);
+      
+      // Clear selected bank if it was deleted
+      if (selectedQuestionBank && selectedBanks.has(selectedQuestionBank.id)) {
+        setSelectedQuestionBank(null);
+        setUseExistingBank(false);
+      }
+      
       setError("");
     } catch (err) {
       setError(`Error deleting question banks: ${err.message}`);
