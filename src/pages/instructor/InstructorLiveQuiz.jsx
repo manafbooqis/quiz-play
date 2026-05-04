@@ -63,6 +63,50 @@ function InstructorLiveQuiz() {
   const [liveRanking, setLiveRanking] = useState([]);
   const [previewQuestion, setPreviewQuestion] = useState(null);
 
+  // Helper functions for different question shapes
+  const getQuestionText = (q) => {
+    if (!q) return "";
+    return q.question || q.question_text || q.text || q.prompt || "";
+  };
+
+  const getOptions = (q) => {
+    if (!q) return [];
+    if (Array.isArray(q.options)) return q.options;
+    if (Array.isArray(q.answers)) return q.answers;
+    if (Array.isArray(q.choices)) return q.choices;
+    if (q.option_a || q.A) {
+      return [
+        q.option_a || q.A || "",
+        q.option_b || q.B || "",
+        q.option_c || q.C || "",
+        q.option_d || q.D || ""
+      ].filter(Boolean);
+    }
+    return [];
+  };
+
+  const getCorrectAnswer = (q) => {
+    if (!q) return "";
+    const correct = q.correct_answer || q.correctAnswer || q.correct_option || q.answer || "";
+    const options = getOptions(q);
+    
+    if (typeof correct === 'number') {
+      const optionLetter = ['A', 'B', 'C', 'D'][correct];
+      const optionText = options[correct];
+      return optionLetter + (optionText ? `) ${optionText}` : '');
+    }
+    if (typeof correct === 'string') {
+      const upperCorrect = correct.toUpperCase();
+      if (['A', 'B', 'C', 'D'].includes(upperCorrect)) {
+        const index = ['A', 'B', 'C', 'D'].indexOf(upperCorrect);
+        const optionText = options[index];
+        return upperCorrect + (optionText ? `) ${optionText}` : '');
+      }
+      return upperCorrect;
+    }
+    return correct;
+  };
+
   // Prevent repeated navigation to results
   const hasNavigatedToResultsRef = useRef(false);
 
@@ -249,22 +293,12 @@ function InstructorLiveQuiz() {
         if (count < questionCount) allCompleted = false;
       });
 
-      console.log("Instructor completion check:", {
-        sessionId,
-        questionCount,
-        students,
-        freshResponses,
-        responsesByPlayer,
-        allCompleted,
-      });
-
       if (allCompleted) {
         clearInterval(interval);
         if (hasNavigatedToResultsRef.current) return;
         hasNavigatedToResultsRef.current = true;
 
-        console.log("All students completed quiz. Navigating to final results.");
-
+        
         // Update session status to finished
         try {
           await supabase
@@ -336,11 +370,7 @@ function InstructorLiveQuiz() {
 
   // Start round with selected difficulty
   const startRound = async () => {
-    // Log selected question details
-    console.log("selectedDifficulty:", selectedDifficulty);
-    console.log("questionsByDifficulty:", questionsByDifficulty);
-    console.log("available questions:", questionsByDifficulty?.[selectedDifficulty]);
-    
+        
     const availableQuestions = questionsByDifficulty?.[selectedDifficulty] || [];
 
     if (availableQuestions.length === 0) {
@@ -397,12 +427,7 @@ function InstructorLiveQuiz() {
       return;
     }
 
-    console.log("gameCode:", gameCode);
-    console.log("sessionId before update:", finalSessionId);
-    console.log("selectedDifficulty:", selectedDifficulty);
-    console.log("nextQuestion:", nextQuestion);
-    console.log("questionId:", questionId);
-    const nextRound = Number(sessionData?.current_round || 1);
+        const nextRound = Number(sessionData?.current_round || 1);
 
     const secondsPerQuestion = Number(
       sessionData?.time_per_question ?? timePerQuestion ?? 10
@@ -434,8 +459,7 @@ function InstructorLiveQuiz() {
         return;
       }
 
-      console.log("Start Round updated session:", data);
-      
+            
       // Check if question was actually saved
       if (!data?.current_question_id || !data?.current_difficulty) {
         console.error("Start Round failed verification:", data);
@@ -561,68 +585,21 @@ function InstructorLiveQuiz() {
     }
   };
 
-  // Instructor completion check
-  useEffect(() => {
-    if (!sessionData?.question_count || students.length === 0) return;
-
-    const questionCount = Number(sessionData.question_count);
-    let allCompleted = true;
-    const responsesByPlayer = {};
-
-    students.forEach(s => {
-      const pId = s.student_name || s.id;
-      const count = responses.filter(r => r.player_id === pId).length;
-      responsesByPlayer[pId] = count;
-      if (count < questionCount) {
-        allCompleted = false;
-      }
-    });
-
-    console.log("Instructor completion check:", {
-      totalStudents: students.length,
-      questionCount,
-      responsesByPlayer,
-      allCompleted
-    });
-
-    if (allCompleted && sessionData.status === "active") {
-      console.log("All students completed quiz. Navigating to final results.");
-      
-      supabase
-        .from("sessions")
-        .update({
-          status: "finished",
-          quiz_finished_at: new Date().toISOString()
-        })
-        .eq("id", sessionId)
-        .then(() => {
-          navigate("/instructor/final-results", {
-            state: {
-              sessionId,
-              gameCode,
-              students,
-              responses,
-              questionsByDifficulty
-            }
-          });
-        })
-        .catch(err => console.error("Error setting session finished:", err));
-    }
-  }, [responses.length, students, sessionData?.question_count, sessionData?.status, navigate, sessionId, gameCode, questionsByDifficulty]);
-
   // Phase 3: Monitoring calculations
   useEffect(() => {
     if (!sessionData || !students || !responses) return;
 
     // Calculate current round
-    const round = sessionData.current_round || 
-      (responses.length > 0 ? Math.max(...responses.map(r => r.round_number || 0)) : 1);
-    setCurrentRound(round);
+    const currentRound =
+      Number(sessionData?.current_round) ||
+      Math.max(...responses.map(r => Number(r.round_number) || 0), 1) ||
+      1;
+    setCurrentRound(currentRound);
 
     // Calculate answered count for current round (unique students)
     const answeredStudents = new Set();
     responses.forEach(r => {
-      if (Number(r.round_number) === Number(round)) {
+      if (Number(r.round_number) === Number(currentRound)) {
         answeredStudents.add(r.player_id);
       }
     });
@@ -653,8 +630,20 @@ function InstructorLiveQuiz() {
     if (!sessionData?.questions_by_difficulty || !currentRound) return;
 
     const questionIndex = currentRound - 1;
-    const previewQuestion =
-      sessionData?.questions_by_difficulty?.[selectedMonitorDifficulty]?.[questionIndex] || null;
+    const bank = sessionData?.questions_by_difficulty || {};
+    const previewList = bank[selectedMonitorDifficulty] || [];
+    const previewQuestion = previewList[questionIndex] || null;
+    
+    // Debug log
+    console.log("[InstructorPreview]", {
+      hasBank: !!sessionData?.questions_by_difficulty,
+      selectedMonitorDifficulty,
+      currentRound,
+      questionIndex,
+      previewListLength: previewList.length,
+      previewQuestion
+    });
+    
     setPreviewQuestion(previewQuestion);
 
   }, [selectedMonitorDifficulty, currentRound, sessionData]);
@@ -764,46 +753,39 @@ function InstructorLiveQuiz() {
               {previewQuestion ? (
                 <div className="space-y-4">
                   <div>
-                    <p className="font-semibold mb-3">{previewQuestion.question_text || previewQuestion.questionText}</p>
+                    <p className="font-semibold mb-3">{getQuestionText(previewQuestion)}</p>
                     
                     {/* Options */}
-                    {previewQuestion.choice_a && (
-                      <div className="space-y-2">
-                        <div className="p-2 rounded bg-slate-50">A) {previewQuestion.choice_a}</div>
-                        <div className="p-2 rounded bg-slate-50">B) {previewQuestion.choice_b}</div>
-                        <div className="p-2 rounded bg-slate-50">C) {previewQuestion.choice_c}</div>
-                        <div className="p-2 rounded bg-slate-50">D) {previewQuestion.choice_d}</div>
-                      </div>
-                    )}
+                    {(() => {
+                      const options = getOptions(previewQuestion);
+                      return options.length > 0 ? (
+                        <div className="space-y-2">
+                          <div className="p-2 rounded bg-slate-50">A) {options[0] || ""}</div>
+                          <div className="p-2 rounded bg-slate-50">B) {options[1] || ""}</div>
+                          <div className="p-2 rounded bg-slate-50">C) {options[2] || ""}</div>
+                          <div className="p-2 rounded bg-slate-50">D) {options[3] || ""}</div>
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                   
                   {/* Correct Answer */}
                   <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
                     <p className="font-semibold text-emerald-800">Correct Answer:</p>
                     <p className="text-emerald-700">
-                      {(() => {
-                        const correct = previewQuestion.correct_answer || previewQuestion.correctAnswer || previewQuestion.correct_option;
-                        if (typeof correct === 'number') {
-                          const optionLetter = ['A', 'B', 'C', 'D'][correct];
-                          const optionText = previewQuestion[`choice_${optionLetter.toLowerCase()}`];
-                          return optionLetter + (optionText ? `) ${optionText}` : '');
-                        }
-                        if (typeof correct === 'string') {
-                          const upperCorrect = correct.toUpperCase();
-                          if (['A', 'B', 'C', 'D'].includes(upperCorrect)) {
-                            const optionText = previewQuestion[`choice_${upperCorrect.toLowerCase()}`];
-                            return upperCorrect + (optionText ? `) ${optionText}` : '');
-                          }
-                          return upperCorrect;
-                        }
-                        return correct;
-                      })()}
+                      {getCorrectAnswer(previewQuestion)}
                     </p>
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-8 text-slate-500">
                   <p>No question found for this difficulty/round.</p>
+                  <div className="mt-4 text-sm text-slate-400">
+                    <p>Debug info:</p>
+                    <p>Selected difficulty: {selectedMonitorDifficulty}</p>
+                    <p>Current round: {currentRound}</p>
+                    <p>Question index: {currentRound - 1}</p>
+                  </div>
                 </div>
               )}
             </div>
