@@ -28,6 +28,7 @@ function Question() {
   const [error, setError] = useState("");
 
   const hasAnsweredRef = useRef(false);
+  const timerStartRef = useRef(null);
 
   const maxQuestions =
     Number(state?.questionCount) ||
@@ -141,6 +142,16 @@ function Question() {
   }, [hasAnswered]);
 
   useEffect(() => {
+    if (sessionData?.status !== "active" || !sessionData?.current_question_id) {
+      return;
+    }
+    setHasAnswered(false);
+    setSelectedAnswer(null);
+    setIsSubmitting(false);
+    setError("");
+  }, [sessionData?.current_question_id]);
+
+  useEffect(() => {
     if (!sessionData?.current_question_id) return;
     setHasAnswered(false);
     setSelectedAnswer(null);
@@ -152,8 +163,8 @@ function Question() {
       return;
     }
 
-    const difficulty = sessionData.current_difficulty || "easy";
-    const questionId = sessionData.current_question_id;
+    const difficulty = currentDifficulty || sessionData.current_difficulty || "easy";
+    const questionId = currentQuestionId || sessionData.current_question_id;
 
     const bankFromSession =
       sessionData.questions_by_difficulty || sessionData.questionsByDifficulty;
@@ -200,49 +211,68 @@ function Question() {
     gameCode,
   ]);
 
+  
+  // Local per-question timer - resets when currentQuestionId changes
   useEffect(() => {
-    if (!sessionData?.current_question_ends_at || !sessionData?.current_question_id) {
+    // Clear any existing timer
+    if (timerStartRef.current) {
+      clearInterval(timerStartRef.current);
+      timerStartRef.current = null;
+    }
+
+    // Don't start timer if no question or already answered
+    if (!currentQuestionId || hasAnswered) {
+      setTimeLeft(0);
       return;
     }
-    const end = new Date(sessionData.current_question_ends_at).getTime();
-    setTimeLeft(Math.max(0, Math.floor((end - Date.now()) / 1000)));
-  }, [
-    sessionData?.current_question_ends_at,
-    sessionData?.current_question_id,
-  ]);
 
-  useEffect(() => {
-    if (!sessionData?.current_question_ends_at || !sessionData?.current_question_id) {
-      return undefined;
-    }
-    if (hasAnswered) {
-      return undefined;
-    }
-
-    const endMs = new Date(sessionData.current_question_ends_at).getTime();
+    // Get time per question from session data or default to 30 seconds
+    const timePerQuestion = Number(sessionData?.time_per_question) || 30;
+    
+    // Start timer with full time for this question
+    setTimeLeft(timePerQuestion);
+    const startTime = Date.now();
 
     const tick = () => {
-      const remaining = Math.max(0, Math.floor((endMs - Date.now()) / 1000));
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const remaining = Math.max(0, timePerQuestion - elapsed);
       setTimeLeft(remaining);
 
       if (remaining === 0 && !hasAnsweredRef.current) {
-        if (selectedAnswer !== null) {
-          handleSubmit();
-        } else {
-          setSelectedAnswer(-1);
-          handleSubmit(-1);
-        }
+        // Time expired - navigate back to Difficulty without saving -1 answer
+        navigate("/student/difficulty", {
+          state: {
+            ...state,
+            studentName,
+            gameCode,
+            sessionId: resolvedSessionId || sessionId,
+            currentRound: sessionData.current_round,
+            questionCount: maxQuestions
+          }
+        });
       }
     };
 
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
+    timerStartRef.current = setInterval(tick, 1000);
+    
+    return () => {
+      if (timerStartRef.current) {
+        clearInterval(timerStartRef.current);
+        timerStartRef.current = null;
+      }
+    };
   }, [
-    sessionData?.current_question_ends_at,
-    sessionData?.current_question_id,
+    currentQuestionId, // Reset timer when question changes
     hasAnswered,
-    selectedAnswer,
+    sessionData?.time_per_question,
+    navigate,
+    state,
+    studentName,
+    gameCode,
+    resolvedSessionId,
+    sessionId,
+    sessionData?.current_round,
+    maxQuestions
   ]);
 
   useEffect(() => {

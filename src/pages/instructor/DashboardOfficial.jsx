@@ -35,9 +35,13 @@ function DashboardOfficial() {
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  const [savedQuestionBanks, setSavedQuestionBanks] = useState([]);
+  const [selectedSession, setSelectedSession] = useState(null);
   const [selectedQuestionBank, setSelectedQuestionBank] = useState(null);
+  const [selectedSessions, setSelectedSessions] = useState(new Set());
+  const [selectedBanks, setSelectedBanks] = useState(new Set());
   const [useExistingBank, setUseExistingBank] = useState(false);
+
+  const [savedQuestionBanks, setSavedQuestionBanks] = useState([]);
 
   const MIN_QUESTIONS = 3;
   const MAX_QUESTIONS = 20;
@@ -232,6 +236,69 @@ function DashboardOfficial() {
     }
     setError("");
   }
+
+  // Delete multiple selected sessions
+  const deleteSelectedSessions = async () => {
+    if (selectedSessions.size === 0) {
+      setError("No sessions selected for deletion.");
+      return;
+    }
+
+    const title = `Delete ${selectedSessions.size} session${selectedSessions.size === 1 ? '' : 's'}? This action cannot be undone.`;
+    if (!window.confirm(title)) {
+      return;
+    }
+
+    try {
+      const { error: delErr } = await supabase
+        .from("sessions")
+        .delete()
+        .in(`id.in.(${Array.from(selectedSessions).join(',')})`);
+
+      if (delErr) {
+        setError(`Failed to delete sessions: ${delErr.message}`);
+        return;
+      }
+
+      setTeacherSessions([]);
+      setSelectedSessions(new Set());
+      setError("");
+    } catch (err) {
+      setError(`Error deleting sessions: ${err.message}`);
+    }
+  };
+
+  // Delete multiple selected question banks
+  const deleteSelectedBanks = async () => {
+    if (selectedBanks.size === 0) {
+      setError("No question banks selected for deletion.");
+      return;
+    }
+
+    const title = `Delete ${selectedBanks.size} bank${selectedBanks.size === 1 ? '' : 's'}? This action cannot be undone.`;
+    if (!window.confirm(title)) {
+      return;
+    }
+
+    try {
+      const { error: delErr } = await supabase
+        .from("sessions")
+        .delete()
+        .in(`id.in.(${Array.from(selectedBanks).join(',')})`);
+
+      if (delErr) {
+        setError(`Failed to delete question banks: ${delErr.message}`);
+        return;
+      }
+
+      setSavedQuestionBanks([]);
+      setSelectedBanks(new Set());
+      setSelectedQuestionBank(null);
+      setError("");
+    } catch (err) {
+      setError(`Error deleting question banks: ${err.message}`);
+    }
+  };
 
   function increaseQuestions() {
     setQuestionCount((prev) => Math.min(prev + 1, MAX_QUESTIONS));
@@ -639,15 +706,49 @@ function DashboardOfficial() {
                   </p>
                 </div>
 
-                <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={useExistingBank}
-                    onChange={(e) => setUseExistingBank(e.target.checked)}
-                    className="w-4 h-4 rounded"
-                  />
-                  Enable
-                </label>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={useExistingBank}
+                      onChange={(e) => setUseExistingBank(e.target.checked)}
+                      className="w-4 h-4 rounded"
+                    />
+                    Enable
+                  </label>
+                  {savedQuestionBanks.length > 0 && (
+                    <>
+                      <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedBanks.size === savedQuestionBanks.length && savedQuestionBanks.length > 0}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedBanks(new Set(savedQuestionBanks.map(b => b.id)));
+                            } else {
+                              setSelectedBanks(new Set());
+                            }
+                          }}
+                          className="w-4 h-4 rounded"
+                        />
+                        Select All
+                      </label>
+                      <button
+                        type="button"
+                        onClick={deleteSelectedBanks}
+                        disabled={selectedBanks.size === 0}
+                        className={[
+                          "px-3 py-2 text-sm font-semibold rounded-xl transition",
+                          selectedBanks.size > 0
+                            ? "bg-red-600 text-white hover:bg-red-700"
+                            : "bg-slate-200 text-slate-500 cursor-not-allowed"
+                        ].join(" ")}
+                      >
+                        Delete Selected ({selectedBanks.size})
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               {useExistingBank && (
@@ -665,9 +766,25 @@ function DashboardOfficial() {
                           "rounded-2xl border p-4 transition flex gap-3 items-stretch",
                           selectedQuestionBank?.id === bank.id
                             ? "border-slate-900 bg-white shadow-sm"
+                            : selectedBanks.has(bank.id)
+                            ? "border-red-300 bg-red-50"
                             : "border-slate-200 bg-white hover:bg-slate-50",
                         ].join(" ")}
                       >
+                        <input
+                          type="checkbox"
+                          checked={selectedBanks.has(bank.id)}
+                          onChange={(e) => {
+                            const newSelected = new Set(selectedBanks);
+                            if (e.target.checked) {
+                              newSelected.add(bank.id);
+                            } else {
+                              newSelected.delete(bank.id);
+                            }
+                            setSelectedBanks(newSelected);
+                          }}
+                          className="w-4 h-4 rounded cursor-pointer"
+                        />
                         <button
                           type="button"
                           onClick={() => setSelectedQuestionBank(bank)}
@@ -914,8 +1031,42 @@ function DashboardOfficial() {
               </h2>
             </div>
 
-            <div className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">
-              {teacherSessions.length} sessions
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">
+                {teacherSessions.length} sessions
+              </div>
+              {teacherSessions.length > 0 && (
+                <>
+                  <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedSessions.size === teacherSessions.length && teacherSessions.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedSessions(new Set(teacherSessions.map(s => s.id)));
+                        } else {
+                          setSelectedSessions(new Set());
+                        }
+                      }}
+                      className="w-4 h-4 rounded"
+                    />
+                    Select All
+                  </label>
+                  <button
+                    type="button"
+                    onClick={deleteSelectedSessions}
+                    disabled={selectedSessions.size === 0}
+                    className={[
+                      "px-3 py-2 text-sm font-semibold rounded-xl transition",
+                      selectedSessions.size > 0
+                        ? "bg-red-600 text-white hover:bg-red-700"
+                        : "bg-slate-200 text-slate-500 cursor-not-allowed"
+                    ].join(" ")}
+                  >
+                    Delete Selected ({selectedSessions.size})
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -932,8 +1083,27 @@ function DashboardOfficial() {
               teacherSessions.map((session) => (
                 <div
                   key={session.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-5 hover:bg-slate-100 transition flex gap-3 items-start"
+                  className={[
+                    "rounded-2xl border bg-slate-50 p-5 transition flex gap-3 items-start",
+                    selectedSessions.has(session.id)
+                      ? "border-red-300 bg-red-50"
+                      : "border-slate-200 hover:bg-slate-100"
+                  ].join(" ")}
                 >
+                  <input
+                    type="checkbox"
+                    checked={selectedSessions.has(session.id)}
+                    onChange={(e) => {
+                      const newSelected = new Set(selectedSessions);
+                      if (e.target.checked) {
+                        newSelected.add(session.id);
+                      } else {
+                        newSelected.delete(session.id);
+                      }
+                      setSelectedSessions(newSelected);
+                    }}
+                    className="w-4 h-4 rounded mt-1 cursor-pointer"
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div className="min-w-0">
@@ -944,41 +1114,8 @@ function DashboardOfficial() {
                           Code: {session.game_code}
                         </p>
                       </div>
-
-                      <div className="flex flex-col sm:items-end gap-1 text-sm text-slate-500">
-                        <span>
-                          Quiz rounds: {session.question_count} · Bank:{" "}
-                          {Number(session.question_count || 0) * 3}
-                        </span>
-                        <span>
-                          Time/question: {session.time_per_question}s
-                        </span>
-                      </div>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    title="Delete this session"
-                    onClick={() =>
-                      deleteSessionRecord(session, { listLabel: "history" })
-                    }
-                    className="shrink-0 p-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 transition"
-                  >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      aria-hidden
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                  </button>
                 </div>
               ))
             )}
