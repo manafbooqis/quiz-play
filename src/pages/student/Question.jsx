@@ -450,14 +450,28 @@ function Question() {
           }
         });
       } else {
-        navigate("/student/difficulty", {
+        const resolvedQuestionsByDifficulty =
+          state?.questionsByDifficulty ||
+          state?.questions_by_difficulty ||
+          sessionData?.questions_by_difficulty ||
+          {};
+
+        navigate("/student/round-results", {
           state: {
             ...state,
             studentName,
             gameCode,
             sessionId: targetSessionId,
-            currentRound: sessionData?.current_round,
-            questionCount: maxQuestions
+            currentQuestionId: targetQuestionId,
+            currentDifficulty,
+            currentRound: actualRoundNumber,
+            questionCount: maxQuestions,
+            timePerQuestion: roundTimerDuration || 30,
+            pointsAwarded,
+            isCorrect,
+            selectedAnswer: answerToSubmit,
+            currentQuestion,
+            questionsByDifficulty: resolvedQuestionsByDifficulty
           }
         });
       }

@@ -45,10 +45,19 @@ function RoundResults() {
   const sessionId = state?.sessionId ?? "";
   const currentRound = state?.currentRound ?? 1;
   
+  // Get result data from navigation state (Phase 1)
+  const pointsAwarded = state?.pointsAwarded ?? 0;
+  const isCorrect = state?.isCorrect ?? false;
+  const selectedAnswer = state?.selectedAnswer ?? null;
+  const currentDifficulty = state?.currentDifficulty ?? "";
+  const currentQuestion = state?.currentQuestion ?? null;
+  const questionCount = state?.questionCount ?? 1;
+  
   const [sessionData, setSessionData] = useState(null);
   const [roundResults, setRoundResults] = useState([]);
   const [myResult, setMyResult] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [answeredCount, setAnsweredCount] = useState(0);
 
   useEffect(() => {
     if (!gameCode || !studentName) {
@@ -56,7 +65,7 @@ function RoundResults() {
       return;
     }
 
-    async function loadRoundResults() {
+    async function loadData() {
       try {
         // Load session data
         const { data: session, error: sessionError } = await supabase
@@ -68,7 +77,13 @@ function RoundResults() {
         if (sessionError) throw sessionError;
         setSessionData(session);
 
-        // Load current round responses
+        // Get my answered count
+        const localKey = `quizplay_answered_questions_${gameCode}_${studentName}`;
+        const stored = localStorage.getItem(localKey);
+        const answered = stored ? JSON.parse(stored) : [];
+        setAnsweredCount(answered.length);
+
+        // Load current round responses for ranking
         const { data: responses, error: responsesError } = await supabase
           .from("responses")
           .select("*")
@@ -114,7 +129,7 @@ function RoundResults() {
       }
     }
 
-    loadRoundResults();
+    loadData();
 
     // Setup real-time subscription for session status changes
     const subscription = supabase
@@ -180,30 +195,51 @@ function RoundResults() {
           </div>
         </div>
 
-        {/* My Result Card */}
-        {myResult && (
-          <div className="mb-8 bg-gradient-to-r from-cyan-600 to-blue-600 border-2 border-cyan-400 rounded-2xl p-6 text-center">
-            <div className="flex items-center justify-center mb-4">
-              <div className="w-16 h-16 rounded-full bg-white text-cyan-600 flex items-center justify-center font-bold text-2xl">
-                {myRank}
-              </div>
-            </div>
-            <h2 className="text-2xl font-bold mb-2">Your Result</h2>
-            <div className="flex items-center justify-center gap-6">
-              <div>
-                <p className="text-3xl font-bold">{myResult.points_awarded}</p>
-                <p className="text-cyan-100">Points this round</p>
-              </div>
-              <div className="w-px h-12 bg-cyan-400"></div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {myResult.is_correct ? "✓ Correct" : "✗ Wrong"}
-                </p>
-                <p className="text-cyan-100">Answer</p>
-              </div>
+        {/* My Result Card (Phase 1 - from navigation state) */}
+        <div className="mb-8 bg-gradient-to-r from-cyan-600 to-blue-600 border-2 border-cyan-400 rounded-2xl p-6 text-center">
+          <div className="flex items-center justify-center mb-4">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center font-bold text-2xl ${
+              isCorrect ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
+            }`}>
+              {isCorrect ? '✓' : '✗'}
             </div>
           </div>
-        )}
+          <h2 className="text-2xl font-bold mb-2">Your Result</h2>
+          <div className="flex items-center justify-center gap-6">
+            <div>
+              <p className="text-3xl font-bold">{pointsAwarded}</p>
+              <p className="text-cyan-100">Points earned</p>
+            </div>
+            <div className="w-px h-12 bg-cyan-400"></div>
+            <div>
+              <p className="text-2xl font-bold capitalize">{currentDifficulty}</p>
+              <p className="text-cyan-100">Difficulty</p>
+            </div>
+          </div>
+          
+          {/* Question Details */}
+          {currentQuestion && (
+            <div className="mt-6 text-left bg-white/10 rounded-xl p-4">
+              <p className="text-lg font-semibold mb-2">Question:</p>
+              <p className="text-cyan-100 mb-3">{currentQuestion.question_text || currentQuestion.questionText}</p>
+              
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="font-semibold text-cyan-200">Your Answer:</p>
+                  <p className="text-white">
+                    {selectedAnswer === 0 ? 'A' : selectedAnswer === 1 ? 'B' : selectedAnswer === 2 ? 'C' : selectedAnswer === 3 ? 'D' : '-'}
+                  </p>
+                </div>
+                <div>
+                  <p className="font-semibold text-emerald-200">Correct Answer:</p>
+                  <p className="text-white">
+                    {currentQuestion.correct_answer === 0 ? 'A' : currentQuestion.correct_answer === 1 ? 'B' : currentQuestion.correct_answer === 2 ? 'C' : currentQuestion.correct_answer === 3 ? 'D' : '-'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Top Performers */}
         <div className="mb-8">
@@ -273,36 +309,45 @@ function RoundResults() {
           </div>
         )}
 
-        {/* Status Message */}
+        {/* Phase 1: Continue Button */}
         <div className="text-center">
-          {sessionData?.status === "waiting" ? (
-            <div className="p-4 rounded-xl border border-cyan-200 bg-cyan-900/20">
-              <p className="text-cyan-200">
-                <span className="font-semibold">Next round starting soon...</span>
-              </p>
-              <p className="text-cyan-300 text-sm mt-1">
-                Waiting for instructor to start the next question
-              </p>
-            </div>
-          ) : sessionData?.status === "finished" ? (
-            <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-900/20">
-              <p className="text-emerald-200">
-                <span className="font-semibold">Quiz Completed!</span>
-              </p>
-              <p className="text-emerald-300 text-sm mt-1">
-                Redirecting to final results...
-              </p>
-            </div>
-          ) : (
-            <div className="p-4 rounded-xl border border-slate-600 bg-slate-700/50">
-              <p className="text-slate-300">
-                <span className="font-semibold">Round completed</span>
-              </p>
-              <p className="text-slate-400 text-sm mt-1">
-                Waiting for next round or quiz completion
-              </p>
-            </div>
-          )}
+          <div className="p-4 rounded-xl border border-slate-600 bg-slate-700/50 mb-6">
+            <p className="text-slate-300">
+              <span className="font-semibold">Waiting for next round...</span>
+            </p>
+            <p className="text-slate-400 text-sm mt-1">
+              Click Continue when ready to proceed
+            </p>
+          </div>
+          
+          <button
+            onClick={() => {
+              if (answeredCount >= questionCount) {
+                navigate("/student/final-results", {
+                  state: {
+                    studentName,
+                    gameCode,
+                    sessionId,
+                    questionCount
+                  }
+                });
+              } else {
+                navigate("/student/difficulty", {
+                  state: {
+                    studentName,
+                    gameCode,
+                    sessionId,
+                    currentRound: currentRound + 1,
+                    questionCount,
+                    questionsByDifficulty: state?.questionsByDifficulty
+                  }
+                });
+              }
+            }}
+            className="game-font bg-cyan-500 hover:bg-cyan-400 text-slate-900 py-3 px-8 rounded-xl transition font-semibold"
+          >
+            Continue
+          </button>
         </div>
       </div>
     </div>
