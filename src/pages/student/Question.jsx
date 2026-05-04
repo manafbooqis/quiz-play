@@ -30,6 +30,10 @@ function Question() {
   const hasAnsweredRef = useRef(false);
   const timerStartRef = useRef(null);
 
+  // Shared round timer from Difficulty screen
+  const roundTimerStartedAt = state?.roundTimerStartedAt;
+  const roundTimerDuration = state?.roundTimerDuration || 30;
+
   const maxQuestions =
     Number(state?.questionCount) ||
     Number(sessionData?.question_count) ||
@@ -212,7 +216,7 @@ function Question() {
   ]);
 
   
-  // Local per-question timer - resets when currentQuestionId changes
+  // Shared round timer continuation from Difficulty screen
   useEffect(() => {
     // Clear any existing timer
     if (timerStartRef.current) {
@@ -220,22 +224,18 @@ function Question() {
       timerStartRef.current = null;
     }
 
-    // Don't start timer if no question or already answered
-    if (!currentQuestionId || hasAnswered) {
+    // Don't start timer if no question, already answered, or no round timer
+    if (!currentQuestionId || hasAnswered || !roundTimerStartedAt) {
       setTimeLeft(0);
       return;
     }
 
-    // Get time per question from session data or default to 30 seconds
-    const timePerQuestion = Number(sessionData?.time_per_question) || 30;
+    console.log("[Timer] Question continuing from round timer:", roundTimerStartedAt, roundTimerDuration);
     
-    // Start timer with full time for this question
-    setTimeLeft(timePerQuestion);
-    const startTime = Date.now();
-
+    // Calculate remaining time from shared round timer
     const tick = () => {
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      const remaining = Math.max(0, timePerQuestion - elapsed);
+      const elapsed = Math.floor((Date.now() - new Date(roundTimerStartedAt)) / 1000);
+      const remaining = Math.max(0, roundTimerDuration - elapsed);
       setTimeLeft(remaining);
 
       if (remaining === 0 && !hasAnsweredRef.current) {
@@ -253,6 +253,10 @@ function Question() {
       }
     };
 
+    // Initial calculation
+    tick();
+    
+    // Update every second
     timerStartRef.current = setInterval(tick, 1000);
     
     return () => {
@@ -262,9 +266,10 @@ function Question() {
       }
     };
   }, [
-    currentQuestionId, // Reset timer when question changes
+    currentQuestionId,
     hasAnswered,
-    sessionData?.time_per_question,
+    roundTimerStartedAt,
+    roundTimerDuration,
     navigate,
     state,
     studentName,
@@ -426,6 +431,10 @@ function Question() {
         answered.push(targetQuestionId);
         localStorage.setItem(localKey, JSON.stringify(answered));
       }
+
+      // Clear round timer after successful answer to prepare for next round
+      const timerKey = `quizplay_round_timer_${gameCode}_${playerId}`;
+      localStorage.removeItem(timerKey);
 
       const reachedLimit = answered.length >= maxQuestions;
 

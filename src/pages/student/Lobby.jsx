@@ -48,6 +48,17 @@ function Lobby() {
   const { state } = useLocation();
   const [sessionData, setSessionData] = useState(null);
 
+  // Clear any existing round timers when entering lobby
+  useEffect(() => {
+    const studentName = state?.studentName;
+    const gameCode = state?.gameCode;
+    
+    if (studentName && gameCode) {
+      const timerKey = `quizplay_round_timer_${gameCode}_${studentName}`;
+      localStorage.removeItem(timerKey);
+    }
+  }, [state?.studentName, state?.gameCode]);
+
   if (!state?.studentName || !state?.gameCode) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-6">
@@ -105,7 +116,8 @@ function Lobby() {
                 currentRound: session.current_round || 1,
                 currentQuestionId: session.current_question_id,
                 currentDifficulty: session.current_difficulty,
-                questionsByDifficulty
+                questionsByDifficulty,
+                timePerQuestion,
               }
             });
           }
@@ -189,7 +201,8 @@ function Lobby() {
                 currentRound: session.current_round || 1,
                 currentQuestionId: session.current_question_id,
                 currentDifficulty: session.current_difficulty,
-                questionsByDifficulty
+                questionsByDifficulty,
+                timePerQuestion,
               }
             });
           }

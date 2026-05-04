@@ -15,6 +15,26 @@ function Difficulty() {
   const hasSessionData = Boolean(studentName && gameCode);
   
   const [answeredIds, setAnsweredIds] = useState([]);
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [roundTimerStartedAt, setRoundTimerStartedAt] = useState(null);
+  const [roundTimerDuration, setRoundTimerDuration] = useState(0);
+
+  const [session, setSession] = useState(null);
+
+  const timePerQuestion = 
+    Number(state?.timePerQuestion) ||
+    Number(state?.time_per_question) ||
+    Number(session?.time_per_question) ||
+    30;
+
+  console.log("[Timer] Difficulty timePerQuestion:", timePerQuestion);
+
+  const maxQuestions =
+    Number(state?.questionCount) ||
+    Number(session?.question_count) ||
+    Number(session?.questionCount) ||
+    Number(state?.maxQuestions) ||
+    1;
 
   useEffect(() => {
     if (!hasSessionData) return;
@@ -25,7 +45,43 @@ function Difficulty() {
     }
   }, [hasSessionData, gameCode, playerId]);
 
-  const [session, setSession] = useState(null);
+  // Shared round timer logic
+  useEffect(() => {
+    if (!hasSessionData || !timePerQuestion) return;
+
+    const roundKey = answeredIds.length; // Current round index
+    const timerKey = `quizplay_round_timer_${gameCode}_${playerId}`;
+    
+    // Get existing timer for this round
+    const storedTimer = localStorage.getItem(timerKey);
+    let roundTimer = storedTimer ? JSON.parse(storedTimer) : null;
+    
+    // Create new timer if doesn't exist or round changed
+    if (!roundTimer || roundTimer.roundKey !== roundKey) {
+      roundTimer = {
+        roundKey,
+        startedAt: new Date().toISOString(),
+        duration: timePerQuestion
+      };
+      localStorage.setItem(timerKey, JSON.stringify(roundTimer));
+    }
+    
+    setRoundTimerStartedAt(roundTimer.startedAt);
+    setRoundTimerDuration(roundTimer.duration);
+    
+    // Update timeLeft every second
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - new Date(roundTimer.startedAt)) / 1000);
+      const remaining = Math.max(0, roundTimer.duration - elapsed);
+      setTimeLeft(remaining);
+      
+      if (remaining === 0) {
+        clearInterval(interval);
+      }
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [hasSessionData, timePerQuestion, answeredIds.length, gameCode, playerId]);
 
   useEffect(() => {
     if (!hasSessionData || !sessionId) return;
@@ -39,13 +95,6 @@ function Difficulty() {
     };
     fetchSession();
   }, [hasSessionData, sessionId]);
-
-  const maxQuestions =
-    Number(state?.questionCount) ||
-    Number(session?.question_count) ||
-    Number(session?.questionCount) ||
-    Number(state?.maxQuestions) ||
-    1;
 
   useEffect(() => {
     if (!hasSessionData) return;
@@ -91,6 +140,9 @@ function Difficulty() {
           currentQuestionId: questionId,
           pointsPerQuestion: points,
           questionCount: maxQuestions,
+          timePerQuestion: timePerQuestion,
+          roundTimerStartedAt,
+          roundTimerDuration,
         },
       });
     } else {
@@ -121,6 +173,12 @@ function Difficulty() {
             <h1 className="game-font text-3xl text-cyan-300">Pick Difficulty</h1>
             <p className="text-slate-300 mt-2">
               Answered: <span className="text-white font-semibold">{answeredIds.length}</span> / {maxQuestions}
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-slate-400 text-sm">Time Remaining</p>
+            <p className={`game-font text-3xl mt-1 ${timeLeft <= 10 ? 'text-red-400' : 'text-yellow-300'}`}>
+              {timeLeft}s
             </p>
           </div>
         </div>
