@@ -58,6 +58,112 @@ function RoundResults() {
   const [myResult, setMyResult] = useState(null);
   const [loading, setLoading] = useState(true);
   const [answeredCount, setAnsweredCount] = useState(0);
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [answeredStudents, setAnsweredStudents] = useState([]);
+  const [waitingStudents, setWaitingStudents] = useState([]);
+  const [allReady, setAllReady] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+
+  // Polling logic for all-students sync
+  useEffect(() => {
+    if (!gameCode || !studentName || !sessionId || !currentRound) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        // Load all students in session
+        const { data: players, error: playersError } = await supabase
+          .from("session_players")
+          .select("*")
+          .eq("session_id", sessionId);
+
+        if (playersError) throw playersError;
+        setTotalStudents(players.length);
+
+        // Load responses for current round
+        const { data: responses, error: responsesError } = await supabase
+          .from("responses")
+          .select("*")
+          .eq("session_id", sessionId)
+          .eq("round_number", Number(currentRound));
+
+        if (responsesError) throw responsesError;
+
+        // Determine which students have answered
+        const answered = [];
+        const waiting = [];
+
+        players.forEach(player => {
+          const hasResponse = responses.some(response => 
+            response.player_id === player.student_name || 
+            response.player_id === player.id
+          );
+          
+          if (hasResponse) {
+            answered.push({
+              studentName: player.student_name,
+              total_score: player.total_score || 0
+            });
+          } else {
+            waiting.push({
+              studentName: player.student_name,
+              total_score: player.total_score || 0
+            });
+          }
+        });
+
+        setAnsweredStudents(answered);
+        setWaitingStudents(waiting);
+        setAllReady(waiting.length === 0);
+
+        console.log("[RoundResults] sync", {
+          currentRound,
+          totalStudents: players.length,
+          answeredStudents: answered.length,
+          allReady: waiting.length === 0
+        });
+
+      } catch (err) {
+        console.error("Error polling round results:", err);
+      }
+    }, 1000); // Poll every 1 second
+
+    return () => clearInterval(pollInterval);
+  }, [gameCode, studentName, sessionId, currentRound]);
+
+  // 3-second countdown when all ready
+  useEffect(() => {
+    if (!allReady || countdown > 0) return;
+
+    setCountdown(3);
+    const countdownInterval = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(countdownInterval);
+          // Navigate after countdown
+          if (answeredCount >= questionCount) {
+            navigate("/student/final-results", {
+              state: { studentName, gameCode, sessionId, questionCount }
+            });
+          } else {
+            navigate("/student/difficulty", {
+              state: {
+                studentName,
+                gameCode,
+                sessionId,
+                currentRound: currentRound + 1,
+                questionCount,
+                questionsByDifficulty: state?.questionsByDifficulty
+              }
+            });
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(countdownInterval);
+  }, [allReady, answeredCount, questionCount, navigate, studentName, gameCode, sessionId, currentRound, state]);
 
   useEffect(() => {
     if (!gameCode || !studentName) {
@@ -309,45 +415,68 @@ function RoundResults() {
           </div>
         )}
 
-        {/* Phase 1: Continue Button */}
+        {/* Phase 2: All Students Sync */}
         <div className="text-center">
-          <div className="p-4 rounded-xl border border-slate-600 bg-slate-700/50 mb-6">
-            <p className="text-slate-300">
-              <span className="font-semibold">Waiting for next round...</span>
+          <div className={`p-4 rounded-xl border mb-6 ${
+            allReady 
+              ? "border-emerald-400 bg-emerald-900/20" 
+              : "border-slate-600 bg-slate-700/50"
+          }`}>
+            <p className={allReady ? "text-emerald-300" : "text-slate-300"}>
+              <span className="font-semibold">
+                {allReady ? "All students are ready" : "Waiting for students..."}
+              </span>
             </p>
-            <p className="text-slate-400 text-sm mt-1">
-              Click Continue when ready to proceed
+            <p className={`${allReady ? "text-emerald-400" : "text-slate-400"} text-sm mt-1`}>
+              {allReady 
+                ? countdown > 0 ? `Starting next round in ${countdown}...` : "Starting next round"
+                : `Answered: ${answeredStudents.length} / ${totalStudents}`
+              }
             </p>
           </div>
-          
-          <button
-            onClick={() => {
-              if (answeredCount >= questionCount) {
-                navigate("/student/final-results", {
-                  state: {
-                    studentName,
-                    gameCode,
-                    sessionId,
-                    questionCount
-                  }
-                });
-              } else {
-                navigate("/student/difficulty", {
-                  state: {
-                    studentName,
-                    gameCode,
-                    sessionId,
-                    currentRound: currentRound + 1,
-                    questionCount,
-                    questionsByDifficulty: state?.questionsByDifficulty
-                  }
-                });
-              }
-            }}
-            className="game-font bg-cyan-500 hover:bg-cyan-400 text-slate-900 py-3 px-8 rounded-xl transition font-semibold"
-          >
-            Continue
-          </button>
+
+          {/* Students List */}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-3 text-slate-300">Students Status</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+              {/* Answered Students */}
+              <div>
+                <p className="font-semibold text-emerald-400 mb-2">Answered ({answeredStudents.length})</p>
+                <div className="space-y-1">
+                  {[...answeredStudents, ...waitingStudents]
+                    .sort((a, b) => b.total_score - a.total_score)
+                    .filter(student => answeredStudents.some(as => as.studentName === student.studentName))
+                    .map(student => (
+                      <div key={student.studentName} className="flex justify-between p-2 rounded bg-emerald-900/20 border border-emerald-800/50">
+                        <span className={student.studentName === studentName ? "text-cyan-400 font-semibold" : "text-emerald-300"}>
+                          {student.studentName}
+                          {student.studentName === studentName && " (You)"}
+                        </span>
+                        <span className="text-emerald-400">{student.total_score} pts</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              {/* Waiting Students */}
+              <div>
+                <p className="font-semibold text-amber-400 mb-2">Waiting ({waitingStudents.length})</p>
+                <div className="space-y-1">
+                  {waitingStudents
+                    .sort((a, b) => b.total_score - a.total_score)
+                    .map(student => (
+                      <div key={student.studentName} className="flex justify-between p-2 rounded bg-amber-900/20 border border-amber-800/50">
+                        <span className={student.studentName === studentName ? "text-cyan-400 font-semibold" : "text-amber-300"}>
+                          {student.studentName}
+                          {student.studentName === studentName && " (You)"}
+                        </span>
+                        <span className="text-amber-400">{student.total_score} pts</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
