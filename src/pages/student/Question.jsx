@@ -362,11 +362,24 @@ function Question() {
       const targetQuestionId = currentQuestion.id || currentQuestionId || sessionData?.current_question_id;
       const targetSessionId = targetSessionIdPre;
 
+      // Calculate actual round number based on student's previous responses
+      const { data: existingResponses } = await supabase
+        .from("responses")
+        .select("round_number")
+        .eq("session_id", targetSessionId)
+        .eq("player_id", playerId)
+        .order("answered_at", { ascending: false })
+        .limit(1);
+
+      const actualRoundNumber = existingResponses && existingResponses.length > 0 
+        ? (existingResponses[0].round_number || 0) + 1
+        : 1;
+
       const responsePayload = {
         session_id: targetSessionId,
         question_id: String(targetQuestionId ?? ""),
         player_id: playerId,
-        round_number: currentRound || 1,
+        round_number: actualRoundNumber,
         selected_answer: answerToSubmit,
         is_correct: isCorrect,
         points_awarded: pointsAwarded,

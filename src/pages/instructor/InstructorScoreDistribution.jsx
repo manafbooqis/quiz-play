@@ -27,82 +27,135 @@ function InstructorScoreDistribution() {
   const { state } = useLocation();
 
   const sessionId = state?.sessionId ?? "";
-  const [loading, setLoading] = useState(
-    !state?.responses || !state?.students
-  );
-  const [gameCode, setGameCode] = useState(state?.gameCode ?? "");
-  const [students, setStudents] = useState(state?.students ?? []);
-  const [responses, setResponses] = useState(state?.responses ?? []);
-  const [questionsByDifficulty, setQuestionsByDifficulty] = useState(
-    state?.questionsByDifficulty ?? {}
-  );
+  const initialGameCode = state?.gameCode ?? "";
+  const [loading, setLoading] = useState(true);
+  const [resolvedSessionId, setResolvedSessionId] = useState("");
+  const [gameCode, setGameCode] = useState(initialGameCode);
+  const [students, setStudents] = useState([]);
+  const [responses, setResponses] = useState([]);
+  const [questionsByDifficulty, setQuestionsByDifficulty] = useState({});
 
-  // Fallback: load from Supabase if state is incomplete
+  // Always fetch fresh data from database
   useEffect(() => {
-    if (!sessionId) { setLoading(false); return; }
-    if (state?.responses && state?.students) { setLoading(false); return; }
-
     async function load() {
+      setLoading(true);
+      
       try {
-        const { data: sessionData } = await supabase
-          .from("sessions")
-          .select("*")
-          .eq("id", sessionId)
-          .single();
+        let currentSessionId = sessionId;
+        let currentGameCode = initialGameCode;
 
-        if (sessionData) {
-          setGameCode(sessionData.game_code || "");
-          setQuestionsByDifficulty(sessionData.questions_by_difficulty || {});
+        // If we have gameCode but no sessionId, fetch session by game_code
+        if (!currentSessionId && currentGameCode) {
+          const { data: sessionData } = await supabase
+            .from("sessions")
+            .select("id, game_code, questions_by_difficulty")
+            .eq("game_code", currentGameCode)
+            .single();
+          
+          if (sessionData) {
+            currentSessionId = sessionData.id;
+            setResolvedSessionId(sessionData.id);
+            setGameCode(sessionData.game_code || "");
+            setQuestionsByDifficulty(sessionData.questions_by_difficulty || {});
+          }
+        } else if (currentSessionId) {
+          // If we have sessionId, fetch session details
+          const { data: sessionData } = await supabase
+            .from("sessions")
+            .select("id, game_code, questions_by_difficulty")
+            .eq("id", currentSessionId)
+            .single();
+          
+          if (sessionData) {
+            currentGameCode = sessionData.game_code || "";
+            setResolvedSessionId(sessionData.id);
+            setGameCode(sessionData.game_code || "");
+            setQuestionsByDifficulty(sessionData.questions_by_difficulty || {});
+          }
         }
 
+        // If we still don't have a session ID, stop loading
+        if (!currentSessionId) {
+          setLoading(false);
+          return;
+        }
+
+        // Fetch fresh session_players data
         const { data: playersData } = await supabase
           .from("session_players")
           .select("*")
-          .eq("session_id", sessionId);
-        if (playersData) setStudents(playersData);
+          .eq("session_id", currentSessionId)
+          .order("joined_at");
+        
+        if (playersData) {
+          setStudents(playersData);
+        }
 
+        // Fetch fresh responses data
         const { data: responsesData } = await supabase
           .from("responses")
           .select("*")
-          .eq("session_id", sessionId);
-        if (responsesData) setResponses(responsesData);
+          .eq("session_id", currentSessionId)
+          .order("answered_at");
+        
+        if (responsesData) {
+          setResponses(responsesData);
+        }
+
       } catch (err) {
         console.error("Error loading score distribution data:", err);
       } finally {
         setLoading(false);
       }
     }
+    
     load();
-  }, [sessionId, state]);
+  }, [sessionId, initialGameCode]);
 
   // Calculate per-student scores
   const studentScores = useMemo(() => {
     return students.map((student, index) => {
-      // Use student_name as the primary identifier since that's what responses use
+      // Get student name with proper fallback
       const studentName = student.student_name || student.name || "";
-      const id = student.id || studentName;
-      const name = getStudentName(student, index);
+      const studentId = student.id;
+      const name = studentName || "Unknown Student";
       
-      // Match responses by player_id (which should be student_name)
-      const studentResponses = responses.filter(
-        (r) => r.player_id === studentName || r.player_id === String(studentName)
-      );
+      // Match responses by player_id using all possible matching scenarios
+      const studentResponses = responses.filter((r) => {
+        const playerId = r.player_id;
+        return (
+          playerId === studentName ||
+          playerId === String(studentName) ||
+          playerId === String(studentName).trim() ||
+          playerId === studentId ||
+          playerId === String(studentId) ||
+          playerId === String(studentId).trim()
+        );
+      });
       
       // Calculate score from responses points_awarded
-      const score = studentResponses.reduce(
+      const calculatedScore = studentResponses.reduce(
         (acc, r) => acc + Number(r.points_awarded || 0),
         0
       );
       
-      // Use total_score from session_players if available and valid, otherwise calculated score
-      const finalScore = (student.total_score && student.total_score > 0) 
-        ? student.total_score 
-        : score;
+      // Use total_score from session_players if it's valid and greater than 0,
+      // otherwise use calculated score
+      const finalScore = 
+        (student.total_score && student.total_score > 0)
+          ? student.total_score 
+          : calculatedScore;
       
-      const correct = studentResponses.filter((r) => r.is_correct).length;
+      const correct = studentResponses.filter((r) => r.is_correct === true).length;
       const total = studentResponses.length;
       
-      return { id, name, score: finalScore, correct, total };
+      return { 
+        id: studentId || studentName, 
+        name, 
+        score: finalScore, 
+        correct, 
+        total 
+      };
     });
   }, [students, responses]);
 
@@ -184,7 +237,13 @@ function InstructorScoreDistribution() {
           <button
             onClick={() =>
               navigate("/instructor/final-results", {
-                state: { sessionId, gameCode, students, responses, questionsByDifficulty },
+                state: { 
+                  sessionId: resolvedSessionId || sessionId, 
+                  gameCode, 
+                  students, 
+                  responses, 
+                  questionsByDifficulty 
+                },
               })
             }
             className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition font-semibold text-sm shadow-sm"

@@ -114,7 +114,12 @@ function FinalResults() {
   // Build answersStatus from real responses for this student
   const myResponses = responses
     .filter((r) => r.player_id === studentName)
-    .sort((a, b) => (a.round_number || 0) - (b.round_number || 0));
+    .sort((a, b) => {
+      // Sort by answered_at first, then by created_at as fallback
+      const aTime = new Date(a.answered_at || a.created_at).getTime();
+      const bTime = new Date(b.answered_at || b.created_at).getTime();
+      return aTime - bTime;
+    });
   const answersStatus = myResponses.map((r) => r.is_correct);
 
   return (
