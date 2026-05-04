@@ -55,6 +55,14 @@ function InstructorLiveQuiz() {
   const [roundResults, setRoundResults] = useState(null);
   const [instructorTimeLeft, setInstructorTimeLeft] = useState(0);
 
+  // Phase 3: Instructor monitoring state
+  const [selectedMonitorDifficulty, setSelectedMonitorDifficulty] = useState("easy");
+  const [currentRound, setCurrentRound] = useState(1);
+  const [answeredCount, setAnsweredCount] = useState(0);
+  const [totalStudents, setTotalStudents] = useState(0);
+  const [liveRanking, setLiveRanking] = useState([]);
+  const [previewQuestion, setPreviewQuestion] = useState(null);
+
   // Prevent repeated navigation to results
   const hasNavigatedToResultsRef = useRef(false);
 
@@ -122,11 +130,7 @@ function InstructorLiveQuiz() {
           .order("answered_at", { ascending: true });
 
         if (responsesError) {
-          console.error("Error loading responses:", JSON.stringify(responsesError, null, 2));
-          console.error("Message:", responsesError.message);
-          console.error("Details:", responsesError.details);
-          console.error("Hint:", responsesError.hint);
-          console.error("Code:", responsesError.code);
+          console.error("Error loading responses:", responsesError.message);
           throw responsesError;
         }
         setResponses(responseList || []);
@@ -139,11 +143,7 @@ function InstructorLiveQuiz() {
         }
 
       } catch (err) {
-        console.error("Error loading session:", JSON.stringify(err, null, 2));
-        console.error("Message:", err.message);
-        console.error("Details:", err.details);
-        console.error("Hint:", err.hint);
-        console.error("Code:", err.code);
+        console.error("Error loading session:", err.message);
         setError("Failed to load session data");
       } finally {
         setLoading(false);
@@ -610,6 +610,55 @@ function InstructorLiveQuiz() {
     }
   }, [responses.length, students, sessionData?.question_count, sessionData?.status, navigate, sessionId, gameCode, questionsByDifficulty]);
 
+  // Phase 3: Monitoring calculations
+  useEffect(() => {
+    if (!sessionData || !students || !responses) return;
+
+    // Calculate current round
+    const round = sessionData.current_round || 
+      (responses.length > 0 ? Math.max(...responses.map(r => r.round_number || 0)) : 1);
+    setCurrentRound(round);
+
+    // Calculate answered count for current round (unique students)
+    const answeredStudents = new Set();
+    responses.forEach(r => {
+      if (Number(r.round_number) === Number(round)) {
+        answeredStudents.add(r.player_id);
+      }
+    });
+    setAnsweredCount(answeredStudents.size);
+    setTotalStudents(students.length);
+
+    // Calculate live ranking
+    const ranking = students.map(student => {
+      let totalScore = student.total_score || 0;
+      if (!totalScore) {
+        // Calculate from responses if missing
+        const studentResponses = responses.filter(r => 
+          r.player_id === student.student_name || r.player_id === student.id
+        );
+        totalScore = studentResponses.reduce((sum, r) => sum + (r.points_awarded || 0), 0);
+      }
+      return {
+        studentName: student.student_name,
+        totalScore
+      };
+    }).sort((a, b) => b.totalScore - a.totalScore);
+    setLiveRanking(ranking);
+
+  }, [sessionData, students, responses]);
+
+  // Update preview question when difficulty changes
+  useEffect(() => {
+    if (!sessionData?.questions_by_difficulty || !currentRound) return;
+
+    const questionIndex = currentRound - 1;
+    const previewQuestion =
+      sessionData?.questions_by_difficulty?.[selectedMonitorDifficulty]?.[questionIndex] || null;
+    setPreviewQuestion(previewQuestion);
+
+  }, [selectedMonitorDifficulty, currentRound, sessionData]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -618,11 +667,7 @@ function InstructorLiveQuiz() {
     );
   }
 
-  const answeredCount = responses.filter(r => 
-    r.round_number === sessionData?.current_round && 
-    r.question_id === sessionData?.current_question_id
-  ).length;
-
+  
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900">
       <div className="max-w-7xl mx-auto px-6 py-8">
@@ -632,7 +677,8 @@ function InstructorLiveQuiz() {
             <h1 className="text-3xl font-bold">Live Quiz Control</h1>
             <p className="text-slate-500 mt-2">
               Game Code: <span className="font-semibold">{gameCode}</span> • 
-              Round: {sessionData?.current_round || 1} • 
+              Round: <span className="font-semibold">{currentRound}</span> • 
+              Answered: <span className="font-semibold">{answeredCount} / {totalStudents}</span> • 
               Status: <span className="font-semibold capitalize">{sessionData?.status || 'waiting'}</span>
             </p>
           </div>
@@ -653,57 +699,24 @@ function InstructorLiveQuiz() {
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Students Panel */}
           <div className="xl:col-span-2 space-y-6">
-            {/* Current Question */}
-            {currentQuestion && (
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-bold">Current Question</h2>
-                  <div className="flex items-center gap-3">
-                    {sessionData?.status === "active" &&
-                      sessionData?.current_question_id && (
-                        <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-900 font-semibold text-sm tabular-nums">
-                          {Math.floor(instructorTimeLeft / 60)}:
-                          {(instructorTimeLeft % 60).toString().padStart(2, "0")}{" "}
-                          left
-                        </span>
-                      )}
-                    <span className="px-3 py-1 rounded-full bg-cyan-100 text-cyan-900 font-semibold text-sm">
-                      {selectedDifficulty}
-                    </span>
-                  </div>
-                </div>
-                <div className="mb-4">
-                  <p className="text-lg font-medium mb-3">{currentQuestion.q}</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {currentQuestion.choices?.map((choice, index) => (
-                      <div key={index} className="p-3 rounded-xl border border-slate-200 bg-slate-50">
-                        <span className="font-semibold">{String.fromCharCode(65 + index)}.</span> {choice}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-slate-500">
-                    Answered: {answeredCount} / {students.length}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Students Rankings */}
+            
+            {/* Phase 3: Live Rankings */}
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-              <h2 className="text-xl font-bold mb-4">Student Rankings</h2>
+              <h2 className="text-xl font-bold mb-4">Live Rankings</h2>
               <div className="space-y-3">
-                {studentScores.map((student) => (
-                  <div key={student.name} className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-slate-50">
+                {liveRanking.map((student, index) => (
+                  <div key={student.studentName} className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-slate-50">
                     <div className="flex items-center gap-4">
                       <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-sm">
-                        {student.rank}
+                        {index + 1}
                       </div>
                       <div>
-                        <p className="font-semibold">{student.name}</p>
+                        <p className="font-semibold">{student.studentName}</p>
                         <p className="text-sm text-slate-500">
-                          {student.answered ? "Answered" : "Waiting"}
+                          {responses.some(r => 
+                            Number(r.round_number) === Number(currentRound) && 
+                            (r.player_id === student.studentName || r.player_id === student.id)
+                          ) ? "Answered" : "Waiting"}
                         </p>
                       </div>
                     </div>
@@ -716,111 +729,81 @@ function InstructorLiveQuiz() {
               </div>
             </div>
 
-
-            {roundResults && sessionData?.status === "round_results" && (
-              <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-                <h2 className="text-xl font-bold mb-4">Round Results</h2>
-                <div className="space-y-3">
-                  {studentScores
-                    .filter(s => s.roundScore > 0)
-                    .sort((a, b) => b.roundScore - a.roundScore)
-                    .map((student) => (
-                      <div key={student.name} className="flex items-center justify-between p-4 rounded-xl border border-emerald-200 bg-emerald-50">
-                        <div className="flex items-center gap-4">
-                          <span className="text-2xl">
-                            {student.rank === 1 ? "🥇" : student.rank === 2 ? "🥈" : student.rank === 3 ? "🥉" : "🎖️"}
-                          </span>
-                          <div>
-                            <p className="font-semibold">{student.name}</p>
-                            <p className="text-sm text-slate-500">+{student.roundScore} points this round</p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-lg">{student.totalScore}</p>
-                          <p className="text-sm text-slate-500">total</p>
-                        </div>
-                      </div>
-                    ))}
+            {/* Current Round Question Preview */}
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold">Current Round Question Preview</h2>
+                <div className="flex items-center gap-3">
+                  <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold text-sm">
+                    Round {currentRound}
+                  </span>
+                  <span className="px-3 py-1 rounded-full bg-cyan-100 text-cyan-900 font-semibold text-sm">
+                    Answered: {answeredCount} / {totalStudents}
+                  </span>
                 </div>
-                <button
-                  onClick={nextRound}
-                  className="w-full mt-4 px-4 py-3 rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 transition font-semibold"
-                >
-                  Next Round
-                </button>
               </div>
-            )}
-          </div>
-
-          {/* Control Panel */}
-          <div className="space-y-6">
-            {/* Difficulty Selection */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-              <h2 className="text-xl font-bold mb-4">Select Difficulty</h2>
-              <div className="space-y-3">
-                {["easy", "medium", "hard"].map((difficulty) => {
-                  const available = questionsByDifficulty[difficulty]?.length || 0;
-                  const used = getUsedQuestions(difficulty).length;
-                  const remaining = available - used;
-                  
-                  return (
-                    <button
-                      key={difficulty}
-                      onClick={() => setSelectedDifficulty(difficulty)}
-                      disabled={remaining === 0}
-                      className={[
-                        "w-full p-4 rounded-xl border transition font-semibold",
-                        selectedDifficulty === difficulty
-                          ? "bg-slate-900 text-white border-slate-900"
-                          : remaining === 0
-                          ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
-                          : "bg-white border-slate-200 hover:bg-slate-50"
-                      ].join(" ")}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="capitalize">{difficulty}</span>
-                        <span className="text-sm">
-                          {remaining}/{available} available
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Round Controls */}
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-              <h2 className="text-xl font-bold mb-4">Round Controls</h2>
               
-              {sessionData?.status === "active" && !isRoundActive && (
-                <div className="space-y-3">
-                  <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
-                    <p className="text-sm text-amber-800">Round is not started yet. Select a difficulty and start round.</p>
+              {/* Difficulty Tabs */}
+              <div className="flex gap-2 mb-4">
+                {["easy", "medium", "hard"].map((difficulty) => (
+                  <button
+                    key={difficulty}
+                    onClick={() => setSelectedMonitorDifficulty(difficulty)}
+                    className={`px-4 py-2 rounded-lg font-semibold capitalize transition ${
+                      selectedMonitorDifficulty === difficulty
+                        ? "bg-slate-900 text-white"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    {difficulty}
+                  </button>
+                ))}
+              </div>
+
+              {/* Preview Question */}
+              {previewQuestion ? (
+                <div className="space-y-4">
+                  <div>
+                    <p className="font-semibold mb-3">{previewQuestion.question_text || previewQuestion.questionText}</p>
+                    
+                    {/* Options */}
+                    {previewQuestion.choice_a && (
+                      <div className="space-y-2">
+                        <div className="p-2 rounded bg-slate-50">A) {previewQuestion.choice_a}</div>
+                        <div className="p-2 rounded bg-slate-50">B) {previewQuestion.choice_b}</div>
+                        <div className="p-2 rounded bg-slate-50">C) {previewQuestion.choice_c}</div>
+                        <div className="p-2 rounded bg-slate-50">D) {previewQuestion.choice_d}</div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
-              {isRoundActive && (
-                <div className="space-y-3">
-                  <div className="p-4 rounded-xl bg-amber-50 border border-amber-200">
-                    <p className="text-sm text-amber-800">Round in progress...</p>
-                    <p className="text-xs text-amber-600 mt-1">
-                      {answeredCount} of {students.length} students answered
+                  
+                  {/* Correct Answer */}
+                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <p className="font-semibold text-emerald-800">Correct Answer:</p>
+                    <p className="text-emerald-700">
+                      {(() => {
+                        const correct = previewQuestion.correct_answer || previewQuestion.correctAnswer || previewQuestion.correct_option;
+                        if (typeof correct === 'number') {
+                          const optionLetter = ['A', 'B', 'C', 'D'][correct];
+                          const optionText = previewQuestion[`choice_${optionLetter.toLowerCase()}`];
+                          return optionLetter + (optionText ? `) ${optionText}` : '');
+                        }
+                        if (typeof correct === 'string') {
+                          const upperCorrect = correct.toUpperCase();
+                          if (['A', 'B', 'C', 'D'].includes(upperCorrect)) {
+                            const optionText = previewQuestion[`choice_${upperCorrect.toLowerCase()}`];
+                            return upperCorrect + (optionText ? `) ${optionText}` : '');
+                          }
+                          return upperCorrect;
+                        }
+                        return correct;
+                      })()}
                     </p>
                   </div>
                 </div>
-              )}
-              {sessionData?.status === "round_results" && (
-                <div className="space-y-3">
-                  <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
-                    <p className="text-sm text-emerald-800">Round completed!</p>
-                  </div>
-                  <button
-                    onClick={nextRound}
-                    className="w-full px-4 py-3 rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 transition font-semibold"
-                  >
-                    Next Round
-                  </button>
+              ) : (
+                <div className="text-center py-8 text-slate-500">
+                  <p>No question found for this difficulty/round.</p>
                 </div>
               )}
             </div>

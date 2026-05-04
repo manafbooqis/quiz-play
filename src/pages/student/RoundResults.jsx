@@ -63,6 +63,7 @@ function RoundResults() {
   const [waitingStudents, setWaitingStudents] = useState([]);
   const [allReady, setAllReady] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const [pendingNavigation, setPendingNavigation] = useState(null);
 
   // Polling logic for all-students sync
   useEffect(() => {
@@ -249,10 +250,11 @@ function RoundResults() {
         const updatedSession = payload.new;
         setSessionData(prev => ({ ...prev, ...updatedSession }));
 
-        // Navigate based on status changes
+        // Set pending navigation based on status changes
         if (updatedSession.status === "active") {
           // Next round started
-          navigate("/student/question", {
+          setPendingNavigation({
+            path: "/student/question",
             state: {
               studentName,
               gameCode,
@@ -262,7 +264,8 @@ function RoundResults() {
           });
         } else if (updatedSession.status === "finished") {
           // Quiz finished
-          navigate("/student/final-results", {
+          setPendingNavigation({
+            path: "/student/final-results",
             state: {
               studentName,
               gameCode,
@@ -276,7 +279,14 @@ function RoundResults() {
     return () => {
       supabase.removeChannel(subscription);
     };
-  }, [gameCode, studentName, sessionId, currentRound, navigate]);
+  }, [gameCode, studentName, sessionId, currentRound]);
+
+  // Handle pending navigation
+  useEffect(() => {
+    if (!pendingNavigation) return;
+    navigate(pendingNavigation.path, { state: pendingNavigation.state });
+    setPendingNavigation(null);
+  }, [pendingNavigation, navigate]);
 
   if (loading) {
     return (
@@ -285,6 +295,72 @@ function RoundResults() {
       </div>
     );
   }
+
+  async function loadData() {
+    try {
+      // Load session data
+      const { data: session, error: sessionError } = await supabase
+        .from("sessions")
+        .select("*")
+        .eq("game_code", gameCode)
+        .single();
+
+      if (sessionError) throw sessionError;
+    setSessionData(session);
+
+    // Get my answered count
+    const localKey = `quizplay_answered_questions_${gameCode}_${studentName}`;
+    const stored = localStorage.getItem(localKey);
+    const answered = stored ? JSON.parse(stored) : [];
+    setAnsweredCount(answered.length);
+
+    // Load current round responses for ranking
+    const { data: responses, error: responsesError } = await supabase
+      .from("responses")
+      .select("*")
+      .eq("session_id", session.id)
+      .eq("round_number", currentRound);
+
+    if (responsesError) throw responsesError;
+
+    // Load students for names
+    const { data: players, error: playersError } = await supabase
+      .from("session_players")
+      .select("*")
+      .eq("session_id", session.id);
+
+    if (playersError) throw playersError;
+
+    // Create student name mapping
+    const studentMap = {};
+    players.forEach(player => {
+      studentMap[player.id] = getStudentName(player, 0);
+      studentMap[player.student_name] = getStudentName(player, 0);
+    });
+
+    // Process results with names and rankings
+    const processedResults = responses.map(response => ({
+      ...response,
+      studentName: studentMap[response.player_id] || response.player_id
+    })).sort((a, b) => b.points_awarded - a.points_awarded);
+
+    setRoundResults(processedResults);
+
+    // Find my result
+    const myResponse = processedResults.find(r => 
+      r.player_id === studentName || 
+      r.studentName === studentName
+    );
+    setMyResult(myResponse);
+
+      } catch (err) {
+        console.error("Error loading round results:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadData();
 
   const myRank = myResult ? roundResults.findIndex(r => r.player_id === myResult.player_id) + 1 : 0;
 

@@ -215,6 +215,14 @@ function Question() {
     gameCode,
   ]);
 
+  // Safe fallback for current round
+  const safeCurrentRound =
+    Number(sessionData?.current_round) ||
+    Number(state?.currentRound) ||
+    Number(state?.roundNumber) ||
+    answeredIds.length + 1 ||
+    1;
+
   
   // Shared round timer continuation from Difficulty screen
   useEffect(() => {
@@ -246,7 +254,7 @@ function Question() {
             studentName,
             gameCode,
             sessionId: resolvedSessionId || sessionId,
-            currentRound: sessionData.current_round,
+            currentRound: safeCurrentRound,
             questionCount: maxQuestions
           }
         });
@@ -316,11 +324,11 @@ function Question() {
 
         if (reachedLimit) {
           navigate("/student/final-results", {
-            state: { ...state, studentName, gameCode, sessionId: targetSessionId, currentRound: sessionData.current_round, questionCount: maxQuestions }
+            state: { ...state, studentName, gameCode, sessionId: targetSessionId, currentRound: safeCurrentRound, questionCount: maxQuestions }
           });
         } else {
           navigate("/student/difficulty", {
-            state: { ...state, studentName, gameCode, sessionId: targetSessionId, currentRound: sessionData.current_round, questionCount: maxQuestions }
+            state: { ...state, studentName, gameCode, sessionId: targetSessionId, currentRound: safeCurrentRound, questionCount: maxQuestions }
           });
         }
       }
@@ -489,7 +497,7 @@ function Question() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  if (loading) {
+  if (loading || !sessionData) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center">
         <div className="text-xl font-semibold">Loading question...</div>
