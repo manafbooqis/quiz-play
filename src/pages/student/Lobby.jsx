@@ -209,17 +209,20 @@ function Lobby() {
   const raw = localStorage.getItem(`quizplay_session_${gameCode}`);
   const config = raw ? JSON.parse(raw) : null;
 
-  const totalQuestions = config?.questionCount ?? 3;
-  const timePerQuestion = config?.timePerQuestion ?? 15;
+  const totalQuestions =
+    config?.questionCount ?? config?.question_count ?? 3;
+  const timePerQuestion =
+    config?.timePerQuestion ?? config?.time_per_question ?? 15;
 
   const normalizePlayers = (playersArray) => {
-  if (!Array.isArray(playersArray)) return [];
-  return playersArray.map((player, index) => getStudentName(player, index));
-};
+    if (!Array.isArray(playersArray)) return [];
+    return playersArray.map((player, index) => getStudentName(player, index));
+  };
 
-const players = config?.players
-    ? [...normalizePlayers(config.players), studentName]
-    : ["Radi", "Sara", "Fahad", studentName];
+  // Only show real players — never use fake fallback names
+  const players = config?.players
+      ? [...new Set([...normalizePlayers(config.players), studentName])]
+      : [studentName];
 
   return (
     <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-6">
@@ -231,7 +234,8 @@ const players = config?.players
               Hi <span className="text-white font-semibold">{studentName}</span>
             </p>
             <p className="text-slate-400 text-sm mt-1">
-              Questions: {totalQuestions} • Time: {timePerQuestion}s
+              Quiz rounds: {totalQuestions} • Time per question:{" "}
+              {timePerQuestion}s
             </p>
           </div>
 

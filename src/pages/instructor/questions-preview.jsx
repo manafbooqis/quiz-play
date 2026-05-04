@@ -30,7 +30,7 @@ function QuestionsPreview() {
   const navigate = useNavigate();
   const { state } = useLocation();
   const gameCode = state?.gameCode ?? "";
-  const sessionId = state?.sessionId ?? "";
+  const sessionId = state?.sessionId ?? state?.id ?? "";
   const [difficulty, setDifficulty] = useState("easy");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [sessionInfo, setSessionInfo] = useState(null);
@@ -58,33 +58,9 @@ function QuestionsPreview() {
       setLoadError("");
 
       try {
-        // Priority 1: Use navigation state questionsByDifficulty if available
-        if (state?.questionsByDifficulty) {
-          if (isMounted) {
-            setSessionInfo(state);
-            setQuestionsByDifficulty(
-              normalizeQuestionsByDifficulty(state.questionsByDifficulty)
-            );
-            setLoading(false);
-          }
-          return;
-        }
-
-        // Priority 2: Try localStorage if no navigation state
         const localKey = `quizplay_session_${gameCode}`;
-        const raw = localStorage.getItem(localKey);
-        const localSession = raw ? JSON.parse(raw) : null;
 
-        if (localSession && localSession.questionsByDifficulty && isMounted) {
-          setSessionInfo(localSession);
-          setQuestionsByDifficulty(
-            normalizeQuestionsByDifficulty(localSession.questionsByDifficulty)
-          );
-          setLoading(false);
-          return;
-        }
-
-        // Priority 3: Fetch from Supabase only if we have a valid sessionId
+        // Priority 1: Canonical row from Supabase when we know the session id (avoids stale router/local caches).
         if (sessionId) {
           const { data: sessionRecord, error: sessionError } = await supabase
             .from("sessions")
@@ -97,21 +73,72 @@ function QuestionsPreview() {
           }
 
           if (sessionRecord) {
-            const remoteSession = { gameCode, sessionId, ...sessionRecord };
-
             if (!isMounted) {
               return;
             }
 
+            const remoteSession = {
+              ...state,
+              gameCode,
+              sessionId,
+              id: sessionRecord.id,
+              fileName: sessionRecord.file_name,
+              questionCount: sessionRecord.question_count,
+              timePerQuestion: sessionRecord.time_per_question,
+              questionsByDifficulty: sessionRecord.questions_by_difficulty,
+              questions_by_difficulty: sessionRecord.questions_by_difficulty,
+            };
+
             setSessionExistsInDb(true);
             setSessionInfo(remoteSession);
             setQuestionsByDifficulty(
-              normalizeQuestionsByDifficulty(remoteSession.questions_by_difficulty)
+              normalizeQuestionsByDifficulty(sessionRecord.questions_by_difficulty)
             );
-            localStorage.setItem(localKey, JSON.stringify(remoteSession));
+            try {
+              localStorage.setItem(localKey, JSON.stringify(remoteSession));
+            } catch (e) {
+              console.warn("Failed to cache session locally:", e);
+            }
             setLoading(false);
             return;
           }
+        }
+
+        // Priority 2: Navigation state (only when it matches this game code and optional session id).
+        if (
+          state?.questionsByDifficulty &&
+          (!sessionId || state.sessionId === sessionId || state.id === sessionId)
+        ) {
+          if (isMounted) {
+            setSessionInfo(state);
+            setQuestionsByDifficulty(
+              normalizeQuestionsByDifficulty(state.questionsByDifficulty)
+            );
+            setLoading(false);
+          }
+          return;
+        }
+
+        // Priority 3: localStorage if it matches this session/game (never reuse another session's bank).
+        const raw = localStorage.getItem(localKey);
+        const localSession = raw ? JSON.parse(raw) : null;
+        const localGame = localSession?.gameCode || localSession?.game_code;
+        const localMatchesSession =
+          localSession &&
+          localGame === gameCode &&
+          (!sessionId ||
+            localSession.id === sessionId ||
+            localSession.sessionId === sessionId);
+
+        if (localSession?.questionsByDifficulty && localMatchesSession && isMounted) {
+          setSessionInfo(localSession);
+          setQuestionsByDifficulty(
+            normalizeQuestionsByDifficulty(
+              localSession.questionsByDifficulty || localSession.questions_by_difficulty
+            )
+          );
+          setLoading(false);
+          return;
         }
 
         // Priority 4: Initialize empty banks if no data found

@@ -18,8 +18,12 @@ function DashboardOfficial() {
   }, []);
 
   const [selectedFile, setSelectedFile] = useState(null);
+  const [fileContent, setFileContent] = useState("");        // base64-encoded file content
+  const [fileMimeType, setFileMimeType] = useState("");       // MIME type of the uploaded file
+  const [uploadedFileId, setUploadedFileId] = useState("");  // unique ID per upload to prevent stale data
+  const [isReadingFile, setIsReadingFile] = useState(false); // true while FileReader is running
   const [questionCount, setQuestionCount] = useState(5);
-  const [timePerQuestion, setTimePerQuestion] = useState(5);
+  const [timePerQuestion, setTimePerQuestion] = useState(30);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [error, setError] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
@@ -31,14 +35,19 @@ function DashboardOfficial() {
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  const [savedQuestionBanks, setSavedQuestionBanks] = useState([]);
+  const [selectedSession, setSelectedSession] = useState(null);
   const [selectedQuestionBank, setSelectedQuestionBank] = useState(null);
+  const [selectedSessions, setSelectedSessions] = useState(new Set());
+  const [selectedBanks, setSelectedBanks] = useState(new Set());
   const [useExistingBank, setUseExistingBank] = useState(false);
+
+  const [savedQuestionBanks, setSavedQuestionBanks] = useState([]);
 
   const MIN_QUESTIONS = 3;
   const MAX_QUESTIONS = 20;
-  const MIN_TIME = 5;
-  const MAX_TIME = 30;
+  const MIN_TIME = 10;
+  const MAX_TIME = 120;
+  const TIME_STEP = 10;
 
   useEffect(() => {
     let isMounted = true;
@@ -198,6 +207,127 @@ function DashboardOfficial() {
     loadSavedQuestionBanks();
   }, [currentUser?.id]);
 
+  async function deleteSessionRecord(target, { listLabel }) {
+    if (!target?.id) return;
+    const title =
+      target.file_name || target.game_code || listLabel || "this session";
+    if (
+      !window.confirm(
+        `Delete "${title}"? This removes only this session row (code ${target.game_code}). This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    const { error: delErr } = await supabase
+      .from("sessions")
+      .delete()
+      .eq("id", target.id);
+
+    if (delErr) {
+      setError(delErr.message || "Could not delete session.");
+      return;
+    }
+
+    setTeacherSessions((prev) => prev.filter((s) => s.id !== target.id));
+    setSavedQuestionBanks((prev) => prev.filter((s) => s.id !== target.id));
+    if (selectedQuestionBank?.id === target.id) {
+      setSelectedQuestionBank(null);
+    }
+    setError("");
+  }
+
+  // Delete multiple selected sessions
+  const deleteSelectedSessions = async () => {
+    if (selectedSessions.size === 0) {
+      setError("No sessions selected for deletion.");
+      return;
+    }
+
+    const title = `Delete ${selectedSessions.size} session${selectedSessions.size === 1 ? '' : 's'}? This action cannot be undone.`;
+    if (!window.confirm(title)) {
+      return;
+    }
+
+    try {
+      // Convert Set to array and filter valid IDs
+      const sessionIds = Array.from(selectedSessions).filter(id => 
+        id && typeof id === 'string' && id.trim() !== ''
+      );
+
+      if (sessionIds.length === 0) {
+        setError("No valid session IDs found for deletion.");
+        return;
+      }
+
+      const { error: delErr } = await supabase
+        .from("sessions")
+        .delete()
+        .in("id", sessionIds);
+
+      if (delErr) {
+        setError(`Failed to delete sessions: ${delErr.message}`);
+        return;
+      }
+
+      // Remove deleted sessions from local state
+      setTeacherSessions(prev => prev.filter(s => !selectedSessions.has(s.id)));
+      setSelectedSessions(new Set());
+      setError("");
+    } catch (err) {
+      setError(`Error deleting sessions: ${err.message}`);
+    }
+  };
+
+  // Delete multiple selected question banks
+  const deleteSelectedBanks = async () => {
+    if (selectedBanks.size === 0) {
+      setError("No question banks selected for deletion.");
+      return;
+    }
+
+    const title = `Delete ${selectedBanks.size} bank${selectedBanks.size === 1 ? '' : 's'}? This action cannot be undone.`;
+    if (!window.confirm(title)) {
+      return;
+    }
+
+    try {
+      // Convert Set to array and filter valid IDs
+      const bankIds = Array.from(selectedBanks).filter(id => 
+        id && typeof id === 'string' && id.trim() !== ''
+      );
+
+      if (bankIds.length === 0) {
+        setError("No valid question bank IDs found for deletion.");
+        return;
+      }
+
+      const { error: delErr } = await supabase
+        .from("sessions")
+        .delete()
+        .in("id", bankIds);
+
+      if (delErr) {
+        setError(`Failed to delete question banks: ${delErr.message}`);
+        return;
+      }
+
+      // Remove deleted banks from local state
+      setSavedQuestionBanks(prev => prev.filter(b => !selectedBanks.has(b.id)));
+      setSelectedBanks(new Set());
+      
+      // Clear selected bank if it was deleted
+      if (selectedQuestionBank && selectedBanks.has(selectedQuestionBank.id)) {
+        setSelectedQuestionBank(null);
+        setUseExistingBank(false);
+      }
+      
+      setError("");
+    } catch (err) {
+      setError(`Error deleting question banks: ${err.message}`);
+    }
+  };
+
   function increaseQuestions() {
     setQuestionCount((prev) => Math.min(prev + 1, MAX_QUESTIONS));
   }
@@ -207,169 +337,67 @@ function DashboardOfficial() {
   }
 
   function increaseTime() {
-    setTimePerQuestion((prev) => Math.min(prev + 5, MAX_TIME));
+    setTimePerQuestion((prev) => Math.min(prev + TIME_STEP, MAX_TIME));
   }
 
   function decreaseTime() {
-    setTimePerQuestion((prev) => Math.max(prev - 5, MIN_TIME));
+    setTimePerQuestion((prev) => Math.max(prev - TIME_STEP, MIN_TIME));
   }
 
-  function generateMockQuestions(n, fileName) {
-    const easyBanks = [
-      {
-        q: "What is the main purpose of a software product?",
-        opts: [
-          "To solve a specific problem or provide a service",
-          "To consume electricity",
-          "To make hardware heavier",
-          "To randomly crash computers",
-        ],
-        a: 0,
-      },
-      {
-        q: "Why is usability important in software products?",
-        opts: [
-          "It makes the code run faster",
-          "It ensures users can easily navigate and use the application",
-          "It reduces the size of the database",
-          "It eliminates all bugs automatically",
-        ],
-        a: 1,
-      },
-      {
-        q: "What does software quality help improve?",
-        opts: [
-          "User satisfaction and system reliability",
-          "Hardware manufacturing speed",
-          "Internet bandwidth limits",
-          "Keyboard typing speed",
-        ],
-        a: 0,
-      },
-    ];
-
-    const mediumBanks = [
-      {
-        q: "Why should software products be tested before release?",
-        opts: [
-          "To identify and fix defects before users encounter them",
-          "To increase the file size of the application",
-          "To make developers work overtime",
-          "To slow down the release process",
-        ],
-        a: 0,
-      },
-      {
-        q: "What is the difference between functional and non-functional requirements?",
-        opts: [
-          "Functional defines what the system does, non-functional defines how well it does it",
-          "Functional is for backend, non-functional is for frontend",
-          "There is no difference",
-          "Functional requirements are optional",
-        ],
-        a: 0,
-      },
-      {
-        q: "Why is user feedback important during software development?",
-        opts: [
-          "It helps align the product with actual user needs and expectations",
-          "It acts as a placeholder for real code",
-          "It automatically generates documentation",
-          "It writes the unit tests",
-        ],
-        a: 0,
-      },
-    ];
-
-    const hardBanks = [
-      {
-        q: "How can maintainability affect the long-term success of a software product?",
-        opts: [
-          "It allows for easier updates, bug fixes, and feature additions over time",
-          "It prevents users from uninstalling the app",
-          "It forces the software to run strictly offline",
-          "It eliminates the need for future developers",
-        ],
-        a: 0,
-      },
-      {
-        q: "Why does scalability matter for software products?",
-        opts: [
-          "It ensures the system can handle increased load without performance degradation",
-          "It makes the UI look bigger on large screens",
-          "It reduces the electricity usage to zero",
-          "It limits the number of users to a fixed amount",
-        ],
-        a: 0,
-      },
-      {
-        q: "How can poor requirement analysis affect software product quality?",
-        opts: [
-          "It leads to building a product that does not meet user needs and requires expensive rework",
-          "It makes the code compile faster",
-          "It increases the application's graphical resolution",
-          "It forces the application to be written in Assembly",
-        ],
-        a: 0,
-      },
-    ];
-
-    const make = (difficultyLabel, bank) =>
-      Array.from({ length: Math.max(n, bank.length) }, (_, i) => {
-        const item = bank[i % bank.length];
-
-        return {
-          id: `${difficultyLabel.toLowerCase()}-${i + 1}`,
-          question: item.q,
-          options: item.opts,
-          correctAnswer: item.a,
-          difficulty: difficultyLabel.toLowerCase(),
-        };
-      }).slice(0, n);
-
-    return {
-      easy: make("Easy", easyBanks),
-      medium: make("Medium", mediumBanks),
-      hard: make("Hard", hardBanks),
-    };
+  // Empty placeholder used while AI is generating — avoids hardcoded unrelated questions
+  function emptyQuestionBanks() {
+    return { easy: [], medium: [], hard: [] };
   }
 
-  async function fetchAiQuestions({ sessionId, sessionGameCode }) {
+  // Read a file as base64 (works for PDFs, images, and text files)
+  function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        // result is a data URL: "data:<mime>;base64,<data>"
+        const dataUrl = e.target.result;
+        const base64 = dataUrl.split(",")[1] || "";
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function fetchAiQuestions({ sessionId, sessionGameCode, freshBase64, freshMime, freshFileName }) {
     const url = "/api/generate-questions";
+
+    // freshBase64/freshMime are passed directly from the handleGoToSession caller
+    // so we never rely on stale React state
+    const base64 = freshBase64 || "";
+    const mimeType = freshMime || "application/octet-stream";
+    const fileName = freshFileName || selectedFile?.name || "uploaded-file";
 
     const payload = {
       sessionId,
       gameCode: sessionGameCode,
-      fileName: selectedFile.name,
+      fileName,
+      fileBase64: base64,
+      fileMimeType: mimeType,
       questionCount,
       timePerQuestion,
     };
 
-    console.log("AI request URL:", url);
-    console.log("AI request payload:", payload);
+    console.log("[AI] Sending request to", url);
+    console.log("[AI] fileName:", fileName, "| mimeType:", mimeType, "| base64 length:", base64.length);
 
     const response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
-    console.log("AI response status:", response.status);
-    console.log("AI response ok:", response.ok);
+    console.log("[AI] Response status:", response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
-
-      console.error("AI request failed");
-      console.error("URL:", url);
-      console.error("Status:", response.status);
-      console.error("Response text:", errorText);
-
-      throw new Error(
-        errorText || `AI request failed with status ${response.status}`
-      );
+      console.error("[AI] Request failed:", response.status, errorText);
+      throw new Error(errorText || `AI request failed with status ${response.status}`);
     }
 
     const json = await response.json();
@@ -382,7 +410,10 @@ function DashboardOfficial() {
   }
 
   async function handleGoToSession() {
-    if (useExistingBank) {
+    // A newly selected file always wins over "existing bank" mode (checkbox can still be on by mistake).
+    const fromExistingBank = useExistingBank && !selectedFile;
+
+    if (fromExistingBank) {
       if (!selectedQuestionBank) {
         setError("Please select an existing question bank to use.");
         return;
@@ -405,37 +436,58 @@ function DashboardOfficial() {
       setError("");
       setInfoMessage("");
 
+      // ── Step 0: Read the file NOW, before any async Supabase calls ──
+      // This guarantees we always send the FRESHEST file content to the API,
+      // not stale React state from a previous render cycle.
+      let freshBase64 = "";
+      let freshMime = "";
+      let freshFileName = "";
+
+      if (!fromExistingBank && selectedFile) {
+        setIsReadingFile(true);
+        setInfoMessage("Reading uploaded file...");
+        try {
+          freshBase64 = await readFileAsBase64(selectedFile);
+          freshMime = selectedFile.type || "application/octet-stream";
+          freshFileName = selectedFile.name;
+          // Update state for reference (not used for the current call)
+          setFileContent(freshBase64);
+          setFileMimeType(freshMime);
+          console.log("[File] Read OK:", freshFileName, "|", freshMime, "| base64 length:", freshBase64.length);
+        } catch (readErr) {
+          console.warn("[File] Could not read file content:", readErr.message);
+        } finally {
+          setIsReadingFile(false);
+        }
+      }
+
       const isGuestUser =
         currentUser.is_anonymous || currentUser.user_metadata?.is_guest === true;
 
-      const sessionFileName = useExistingBank
+      const sessionFileName = fromExistingBank
         ? selectedQuestionBank.file_name || "Existing Bank"
         : selectedFile.name;
 
-      const sessionQuestionCount = useExistingBank
+      const sessionQuestionCount = fromExistingBank
         ? selectedQuestionBank.question_count
         : questionCount;
 
-      const sessionTimePerQuestion = useExistingBank
+      const sessionTimePerQuestion = fromExistingBank
         ? selectedQuestionBank.time_per_question
         : timePerQuestion;
 
       let questionsByDifficulty;
 
-      if (useExistingBank && selectedQuestionBank) {
-        console.log("Selected existing question bank:", selectedQuestionBank);
-        console.log("Using existing question bank, skipping AI generation.");
-
+      if (fromExistingBank && selectedQuestionBank) {
+        console.log("[Bank] Using existing question bank, skipping AI generation.");
         questionsByDifficulty =
           selectedQuestionBank.questions_by_difficulty ||
           selectedQuestionBank.questionsByDifficulty;
-
         setInfoMessage("Using existing question bank.");
       } else {
-        questionsByDifficulty = generateMockQuestions(
-          questionCount,
-          selectedFile.name
-        );
+        // Use empty banks as placeholder — AI will replace them.
+        // NEVER use hardcoded mock questions that are unrelated to the uploaded file.
+        questionsByDifficulty = emptyQuestionBanks();
       }
 
       if (!questionsByDifficulty || typeof questionsByDifficulty !== "object") {
@@ -474,16 +526,19 @@ function DashboardOfficial() {
         throw sessionError;
       }
 
-      if (!useExistingBank) {
+      if (!fromExistingBank) {
         const useAi = import.meta.env.VITE_USE_AI_QUESTIONS === "true";
 
         if (useAi) {
-          setInfoMessage("Generating questions using AI...");
+          setInfoMessage("Generating questions using AI from your uploaded file...");
 
           try {
             const aiQuestions = await fetchAiQuestions({
               sessionId: session.id,
               sessionGameCode: session.game_code,
+              freshBase64,
+              freshMime,
+              freshFileName,
             });
 
             if (aiQuestions && typeof aiQuestions === "object") {
@@ -495,30 +550,33 @@ function DashboardOfficial() {
                 .update({ questions_by_difficulty: questionsByDifficulty })
                 .eq("id", session.id);
             } else {
-              setInfoMessage("AI returned invalid data. Using fallback questions.");
+              setInfoMessage("AI returned invalid data. Questions are empty — please edit manually.");
             }
           } catch (aiError) {
-            console.warn(
-              "AI generation failed, falling back to local questions:",
-              aiError
-            );
-
-            setInfoMessage("AI generation failed. Using fallback questions.");
+            console.warn("[AI] Generation failed:", aiError);
+            setInfoMessage(`AI generation failed: ${aiError.message}. Questions are empty — please edit manually.`);
           }
         } else {
-          setInfoMessage("Session saved successfully.");
+          setInfoMessage("Session saved. AI is disabled — add questions manually.");
         }
       }
 
-      localStorage.setItem(
-        `quizplay_session_${session.game_code}`,
-        JSON.stringify({
-          ...session,
-          gameCode: session.game_code,
-          questionsByDifficulty,
-          questions_by_difficulty: questionsByDifficulty,
-        })
-      );
+      // Only persist locally after generation (or existing bank path) so we never cache empty/mock banks ahead of AI.
+      const persistKey = `quizplay_session_${session.game_code}`;
+      try {
+        localStorage.setItem(
+          persistKey,
+          JSON.stringify({
+            ...session,
+            id: session.id,
+            gameCode: session.game_code,
+            questionsByDifficulty,
+            questions_by_difficulty: questionsByDifficulty,
+          })
+        );
+      } catch (e) {
+        console.warn("Failed to write session to localStorage:", e);
+      }
 
       navigate("/instructor/session-official", {
         state: {
@@ -564,6 +622,12 @@ function DashboardOfficial() {
     currentUser?.is_anonymous || currentUser?.user_metadata?.is_guest === true;
 
   const displayEmail = isGuestUser ? "Guest Account" : teacherEmail || "";
+
+  // Upload wins over the "existing bank" checkbox when both are present.
+  const fromBankOnly = useExistingBank && !selectedFile;
+  const canCreateSession =
+    !isCreatingSession &&
+    (selectedFile || (fromBankOnly && selectedQuestionBank));
 
   if (isCheckingAuth) {
     return (
@@ -670,15 +734,49 @@ function DashboardOfficial() {
                   </p>
                 </div>
 
-                <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={useExistingBank}
-                    onChange={(e) => setUseExistingBank(e.target.checked)}
-                    className="w-4 h-4 rounded"
-                  />
-                  Enable
-                </label>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={useExistingBank}
+                      onChange={(e) => setUseExistingBank(e.target.checked)}
+                      className="w-4 h-4 rounded"
+                    />
+                    Enable
+                  </label>
+                  {savedQuestionBanks.length > 0 && (
+                    <>
+                      <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedBanks.size === savedQuestionBanks.length && savedQuestionBanks.length > 0}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedBanks(new Set(savedQuestionBanks.map(b => b.id)));
+                            } else {
+                              setSelectedBanks(new Set());
+                            }
+                          }}
+                          className="w-4 h-4 rounded"
+                        />
+                        Select All
+                      </label>
+                      <button
+                        type="button"
+                        onClick={deleteSelectedBanks}
+                        disabled={selectedBanks.size === 0}
+                        className={[
+                          "px-3 py-2 text-sm font-semibold rounded-xl transition",
+                          selectedBanks.size > 0
+                            ? "bg-red-600 text-white hover:bg-red-700"
+                            : "bg-slate-200 text-slate-500 cursor-not-allowed"
+                        ].join(" ")}
+                      >
+                        Delete Selected ({selectedBanks.size})
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               {useExistingBank && (
@@ -692,36 +790,86 @@ function DashboardOfficial() {
                     savedQuestionBanks.map((bank) => (
                       <div
                         key={bank.id}
-                        onClick={() => setSelectedQuestionBank(bank)}
                         className={[
-                          "rounded-2xl border p-4 cursor-pointer transition",
+                          "rounded-2xl border p-4 transition flex gap-3 items-stretch",
                           selectedQuestionBank?.id === bank.id
                             ? "border-slate-900 bg-white shadow-sm"
+                            : selectedBanks.has(bank.id)
+                            ? "border-red-300 bg-red-50"
                             : "border-slate-200 bg-white hover:bg-slate-50",
                         ].join(" ")}
                       >
-                        <div className="flex justify-between gap-4">
-                          <div className="min-w-0">
-                            <p className="font-bold truncate">
-                              {bank.file_name || "Untitled"}
-                            </p>
-                            <p className="text-xs text-slate-500 mt-1">
-                              Created:{" "}
-                              {new Date(bank.created_at).toLocaleDateString()} •
-                              Code: {bank.game_code}
+                        <input
+                          type="checkbox"
+                          checked={selectedBanks.has(bank.id)}
+                          onChange={(e) => {
+                            const newSelected = new Set(selectedBanks);
+                            if (e.target.checked) {
+                              newSelected.add(bank.id);
+                            } else {
+                              newSelected.delete(bank.id);
+                            }
+                            setSelectedBanks(newSelected);
+                          }}
+                          className="w-4 h-4 rounded cursor-pointer"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setSelectedQuestionBank(bank)}
+                          className="flex-1 min-w-0 text-left cursor-pointer"
+                        >
+                          <div className="flex justify-between gap-4">
+                            <div className="min-w-0">
+                              <p className="font-bold truncate">
+                                {bank.file_name || "Untitled"}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-1">
+                                Created:{" "}
+                                {new Date(bank.created_at).toLocaleDateString()}{" "}
+                                • Code: {bank.game_code}
+                              </p>
+                            </div>
+
+                            <p className="text-sm font-bold text-slate-600 shrink-0">
+                              {bank.question_count} / tier
+                              <span className="block text-xs font-normal text-slate-500">
+                                Bank {Number(bank.question_count || 0) * 3}
+                              </span>
                             </p>
                           </div>
 
-                          <p className="text-sm font-bold text-slate-600">
-                            {bank.question_count} Qs
-                          </p>
-                        </div>
-
-                        {selectedQuestionBank?.id === bank.id && (
-                          <div className="mt-3 rounded-xl bg-slate-900 text-white text-center py-2 text-sm font-bold">
-                            Selected
-                          </div>
-                        )}
+                          {selectedQuestionBank?.id === bank.id && (
+                            <div className="mt-3 rounded-xl bg-slate-900 text-white text-center py-2 text-sm font-bold">
+                              Selected
+                            </div>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          title="Delete this question bank"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteSessionRecord(bank, {
+                              listLabel: "question bank",
+                            });
+                          }}
+                          className="shrink-0 self-start p-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 transition"
+                        >
+                          <svg
+                            className="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            aria-hidden
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                          </svg>
+                        </button>
                       </div>
                     ))
                   )}
@@ -741,9 +889,31 @@ function DashboardOfficial() {
                       type="file"
                       accept=".txt,.md,.doc,.docx,.pdf,.csv,.json,.html"
                       className="hidden"
-                      onChange={(event) =>
-                        setSelectedFile(event.target.files?.[0] ?? null)
-                      }
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        setSelectedFile(file);
+
+                        // ── Clear ALL stale question/file state ──
+                        // This ensures old questions from a previous file never bleed into the new session.
+                        setFileContent("");
+                        setFileMimeType("");
+                        setUploadedFileId(Date.now().toString());
+                        setInfoMessage("");
+                        setError("");
+
+                        // Disable "Use Existing Bank" when a new file is chosen
+                        setUseExistingBank(false);
+                        setSelectedQuestionBank(null);
+
+                        // Clear any previously cached quizplay sessions from localStorage
+                        // so old question banks are never shown for the new file
+                        Object.keys(localStorage)
+                          .filter((k) => k.startsWith("quizplay_session_"))
+                          .forEach((k) => localStorage.removeItem(k));
+                        Object.keys(sessionStorage)
+                          .filter((k) => k.startsWith("quizplay_"))
+                          .forEach((k) => sessionStorage.removeItem(k));
+                      }}
                     />
 
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -774,8 +944,13 @@ function DashboardOfficial() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                   <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                    <p className="text-sm font-bold text-slate-700 mb-3">
-                      Number of Questions
+                    <p className="text-sm font-bold text-slate-700 mb-1">
+                      Questions per difficulty
+                    </p>
+                    <p className="text-xs text-slate-500 mb-3">
+                      Bank size: {questionCount} easy + {questionCount} medium +{" "}
+                      {questionCount} hard ({questionCount * 3} total). Quiz uses{" "}
+                      {questionCount} rounds (same number).
                     </p>
 
                     <div className="flex items-center gap-3">
@@ -806,7 +981,7 @@ function DashboardOfficial() {
 
                   <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                     <p className="text-sm font-bold text-slate-700 mb-3">
-                      Time per Question
+                      Time per question (each question)
                     </p>
 
                     <div className="flex items-center gap-3">
@@ -856,16 +1031,10 @@ function DashboardOfficial() {
             <button
               type="button"
               onClick={handleGoToSession}
-              disabled={
-                isCreatingSession ||
-                (!useExistingBank && !selectedFile) ||
-                (useExistingBank && !selectedQuestionBank)
-              }
+              disabled={!canCreateSession}
               className={[
                 "mt-5 w-full px-5 py-3.5 rounded-2xl transition font-bold",
-                !isCreatingSession &&
-                ((useExistingBank && selectedQuestionBank) ||
-                  (!useExistingBank && selectedFile))
+                canCreateSession
                   ? "bg-slate-900 text-white hover:bg-slate-800"
                   : "bg-slate-200 text-slate-500 cursor-not-allowed",
               ].join(" ")}
@@ -890,8 +1059,42 @@ function DashboardOfficial() {
               </h2>
             </div>
 
-            <div className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">
-              {teacherSessions.length} sessions
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">
+                {teacherSessions.length} sessions
+              </div>
+              {teacherSessions.length > 0 && (
+                <>
+                  <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedSessions.size === teacherSessions.length && teacherSessions.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedSessions(new Set(teacherSessions.map(s => s.id)));
+                        } else {
+                          setSelectedSessions(new Set());
+                        }
+                      }}
+                      className="w-4 h-4 rounded"
+                    />
+                    Select All
+                  </label>
+                  <button
+                    type="button"
+                    onClick={deleteSelectedSessions}
+                    disabled={selectedSessions.size === 0}
+                    className={[
+                      "px-3 py-2 text-sm font-semibold rounded-xl transition",
+                      selectedSessions.size > 0
+                        ? "bg-red-600 text-white hover:bg-red-700"
+                        : "bg-slate-200 text-slate-500 cursor-not-allowed"
+                    ].join(" ")}
+                  >
+                    Delete Selected ({selectedSessions.size})
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -908,21 +1111,37 @@ function DashboardOfficial() {
               teacherSessions.map((session) => (
                 <div
                   key={session.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-5 hover:bg-slate-100 transition"
+                  className={[
+                    "rounded-2xl border bg-slate-50 p-5 transition flex gap-3 items-start",
+                    selectedSessions.has(session.id)
+                      ? "border-red-300 bg-red-50"
+                      : "border-slate-200 hover:bg-slate-100"
+                  ].join(" ")}
                 >
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-bold text-slate-900 truncate">
-                        {session.file_name || "Untitled file"}
-                      </p>
-                      <p className="text-sm text-slate-500 mt-1">
-                        Code: {session.game_code}
-                      </p>
-                    </div>
-
-                    <div className="flex gap-3 text-sm text-slate-500">
-                      <span>Questions: {session.question_count}</span>
-                      <span>Time: {session.time_per_question}s</span>
+                  <input
+                    type="checkbox"
+                    checked={selectedSessions.has(session.id)}
+                    onChange={(e) => {
+                      const newSelected = new Set(selectedSessions);
+                      if (e.target.checked) {
+                        newSelected.add(session.id);
+                      } else {
+                        newSelected.delete(session.id);
+                      }
+                      setSelectedSessions(newSelected);
+                    }}
+                    className="w-4 h-4 rounded mt-1 cursor-pointer"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-900 truncate">
+                          {session.file_name || "Untitled file"}
+                        </p>
+                        <p className="text-sm text-slate-500 mt-1">
+                          Code: {session.game_code}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>

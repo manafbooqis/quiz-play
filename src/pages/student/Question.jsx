@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 
@@ -12,9 +12,13 @@ function Question() {
   const currentRound = state?.currentRound ?? 1;
   const currentQuestionId = state?.currentQuestionId ?? null;
   const currentDifficulty = state?.currentDifficulty ?? null;
-  const playerId = studentName;
+  // pointsPerQuestion is set by Difficulty.jsx based on selected difficulty
+  const pointsPerQuestion = Number(state?.pointsPerQuestion ?? 100);
+  const playerId = String(studentName ?? "").trim();
   
   const [sessionData, setSessionData] = useState(null);
+  // resolvedSessionId: prefer the DB-fetched session.id over state.sessionId
+  const [resolvedSessionId, setResolvedSessionId] = useState(sessionId);
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [timeLeft, setTimeLeft] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
@@ -22,6 +26,9 @@ function Question() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const hasAnsweredRef = useRef(false);
+  const timerStartRef = useRef(null);
 
   const maxQuestions =
     Number(state?.questionCount) ||
@@ -46,6 +53,8 @@ function Question() {
 
         if (sessionError) throw sessionError;
         setSessionData(session);
+        // Always use the real session UUID from the DB
+        setResolvedSessionId(session.id);
 
         if (session.status === "round_results") {
           navigate("/student/round-results", {
@@ -68,44 +77,7 @@ function Question() {
           return;
         }
 
-        if (session.status === "active") {
-          const difficulty = currentDifficulty || session.current_difficulty || "easy";
-          const questionId = currentQuestionId || session.current_question_id;
-
-          const localKey = `quizplay_session_${gameCode}`;
-          const raw = localStorage.getItem(localKey);
-          const config = raw ? JSON.parse(raw) : null;
-          
-          const isValidBank = (b) => b && Object.keys(b).length > 0 && Object.values(b).some((arr) => Array.isArray(arr) && arr.length > 0);
-
-          const questionsByDifficulty = 
-            (isValidBank(state?.questionsByDifficulty) ? state.questionsByDifficulty : null) || 
-            (isValidBank(session.questions_by_difficulty) ? session.questions_by_difficulty : null) || 
-            (isValidBank(session.questionsByDifficulty) ? session.questionsByDifficulty : null) || 
-            (isValidBank(config?.questionsByDifficulty) ? config.questionsByDifficulty : null) || 
-            (isValidBank(config?.questions_by_difficulty) ? config.questions_by_difficulty : null) || 
-            {};
-
-          const bank = questionsByDifficulty?.[difficulty] || [];
-          const foundQuestion = bank.find((q) =>
-            q.id === questionId ||
-            q.question_id === questionId ||
-            q.qid === questionId
-          );
-
-          console.log("Question state:", state);
-          console.log("Question session:", session);
-          console.log("Question id:", questionId);
-          console.log("Difficulty:", difficulty);
-          console.log("Question bank:", bank);
-          console.log("Found question:", foundQuestion);
-
-          if (foundQuestion) {
-            setCurrentQuestion(foundQuestion);
-          } else {
-            setError("Current question could not be loaded.");
-          }
-        }
+        // Active question UI is driven by sessionData + sync effect so timer stays tied to DB question/ends_at.
 
       } catch (err) {
         console.error("Error loading session:", err);
@@ -124,17 +96,31 @@ function Question() {
         schema: 'public',
         table: 'sessions',
         filter: `game_code=eq.${gameCode}`
-      }, (payload) => {
-        const updatedSession = payload.new;
-        setSessionData(prev => ({ ...prev, ...updatedSession }));
+      }, async () => {
+        const { data: full, error: fullErr } = await supabase
+          .from("sessions")
+          .select("*")
+          .eq("game_code", gameCode)
+          .single();
 
-        if (updatedSession.status === "round_results") {
+        if (fullErr || !full) {
+          return;
+        }
+
+        setSessionData(full);
+
+        if (full.status === "round_results") {
           navigate("/student/round-results", {
-            state: { studentName, gameCode, sessionId: updatedSession.id, currentRound: updatedSession.current_round }
+            state: {
+              studentName,
+              gameCode,
+              sessionId: full.id,
+              currentRound: full.current_round,
+            },
           });
-        } else if (updatedSession.status === "finished") {
+        } else if (full.status === "finished") {
           navigate("/student/final-results", {
-            state: { studentName, gameCode, sessionId: updatedSession.id }
+            state: { studentName, gameCode, sessionId: full.id },
           });
         }
       })
@@ -143,53 +129,176 @@ function Question() {
     return () => {
       supabase.removeChannel(subscription);
     };
-  }, [gameCode, studentName, sessionId, currentRound, navigate]);
+  }, [
+    gameCode,
+    studentName,
+    sessionId,
+    currentRound,
+    navigate,
+  ]);
 
   useEffect(() => {
-    if (sessionData?.current_question_ends_at && !hasAnswered) {
-      const interval = setInterval(() => {
-        const now = new Date();
-        const endTime = new Date(sessionData.current_question_ends_at);
-        const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
-        setTimeLeft(remaining);
+    hasAnsweredRef.current = hasAnswered;
+  }, [hasAnswered]);
 
-        if (remaining === 0 && !hasAnswered) {
-          if (selectedAnswer !== null) {
-            handleSubmit();
-          } else {
-            setSelectedAnswer(-1); // Force an incorrect answer instead of null
-            handleSubmit(-1);
-          }
-        }
-      }, 1000);
-
-      return () => clearInterval(interval);
+  useEffect(() => {
+    if (sessionData?.status !== "active" || !sessionData?.current_question_id) {
+      return;
     }
-  }, [sessionData?.current_question_ends_at, hasAnswered, selectedAnswer]);
+    setHasAnswered(false);
+    setSelectedAnswer(null);
+    setIsSubmitting(false);
+    setError("");
+  }, [sessionData?.current_question_id]);
+
+  useEffect(() => {
+    if (!sessionData?.current_question_id) return;
+    setHasAnswered(false);
+    setSelectedAnswer(null);
+    setIsSubmitting(false);
+  }, [sessionData?.current_question_id]);
+
+  useEffect(() => {
+    if (sessionData?.status !== "active" || !sessionData?.current_question_id) {
+      return;
+    }
+
+    const difficulty = currentDifficulty || sessionData.current_difficulty || "easy";
+    const questionId = currentQuestionId || sessionData.current_question_id;
+
+    const bankFromSession =
+      sessionData.questions_by_difficulty || sessionData.questionsByDifficulty;
+
+    const localKey = `quizplay_session_${gameCode}`;
+    const raw = localStorage.getItem(localKey);
+    const config = raw ? JSON.parse(raw) : null;
+
+    const isValidBank = (b) =>
+      b &&
+      Object.keys(b).length > 0 &&
+      Object.values(b).some((arr) => Array.isArray(arr) && arr.length > 0);
+
+    const questionsByDifficulty =
+      (isValidBank(bankFromSession) ? bankFromSession : null) ||
+      (isValidBank(config?.questionsByDifficulty)
+        ? config.questionsByDifficulty
+        : null) ||
+      (isValidBank(config?.questions_by_difficulty)
+        ? config.questions_by_difficulty
+        : null) ||
+      {};
+
+    const bank = questionsByDifficulty?.[difficulty] || [];
+    const foundQuestion = bank.find(
+      (q) =>
+        q.id === questionId ||
+        q.question_id === questionId ||
+        q.qid === questionId
+    );
+
+    if (foundQuestion) {
+      setCurrentQuestion(foundQuestion);
+      setError("");
+    } else {
+      setCurrentQuestion(null);
+      setError("Current question could not be loaded.");
+    }
+  }, [
+    sessionData?.status,
+    sessionData?.current_question_id,
+    sessionData?.current_difficulty,
+    sessionData?.questions_by_difficulty,
+    gameCode,
+  ]);
+
+  
+  // Local per-question timer - resets when currentQuestionId changes
+  useEffect(() => {
+    // Clear any existing timer
+    if (timerStartRef.current) {
+      clearInterval(timerStartRef.current);
+      timerStartRef.current = null;
+    }
+
+    // Don't start timer if no question or already answered
+    if (!currentQuestionId || hasAnswered) {
+      setTimeLeft(0);
+      return;
+    }
+
+    // Get time per question from session data or default to 30 seconds
+    const timePerQuestion = Number(sessionData?.time_per_question) || 30;
+    
+    // Start timer with full time for this question
+    setTimeLeft(timePerQuestion);
+    const startTime = Date.now();
+
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const remaining = Math.max(0, timePerQuestion - elapsed);
+      setTimeLeft(remaining);
+
+      if (remaining === 0 && !hasAnsweredRef.current) {
+        // Time expired - navigate back to Difficulty without saving -1 answer
+        navigate("/student/difficulty", {
+          state: {
+            ...state,
+            studentName,
+            gameCode,
+            sessionId: resolvedSessionId || sessionId,
+            currentRound: sessionData.current_round,
+            questionCount: maxQuestions
+          }
+        });
+      }
+    };
+
+    timerStartRef.current = setInterval(tick, 1000);
+    
+    return () => {
+      if (timerStartRef.current) {
+        clearInterval(timerStartRef.current);
+        timerStartRef.current = null;
+      }
+    };
+  }, [
+    currentQuestionId, // Reset timer when question changes
+    hasAnswered,
+    sessionData?.time_per_question,
+    navigate,
+    state,
+    studentName,
+    gameCode,
+    resolvedSessionId,
+    sessionId,
+    sessionData?.current_round,
+    maxQuestions
+  ]);
 
   useEffect(() => {
     if (sessionId && sessionData?.current_question_id) {
       checkIfAlreadyAnswered();
     }
-  }, [sessionId, sessionData?.current_question_id]);
+  }, [sessionId, sessionData?.current_question_id, currentQuestionId]);
 
   const checkIfAlreadyAnswered = async () => {
     try {
+      const targetSessionId = resolvedSessionId || sessionId;
       const targetQuestionId = currentQuestionId || sessionData?.current_question_id;
-      if (!targetQuestionId) return;
+      if (!targetQuestionId || !targetSessionId) return;
 
       const { data: existingResponse } = await supabase
         .from("responses")
         .select("*")
-        .eq("session_id", sessionId)
+        .eq("session_id", targetSessionId)
         .eq("question_id", targetQuestionId)
-        .eq("player_id", studentName)
+        .eq("player_id", playerId)
         .maybeSingle();
 
       if (existingResponse) {
         setHasAnswered(true);
         setSelectedAnswer(existingResponse.selected_answer);
-        
+
         const localKey = `quizplay_answered_questions_${gameCode}_${playerId}`;
         const stored = localStorage.getItem(localKey);
         const answered = stored ? JSON.parse(stored) : [];
@@ -202,11 +311,11 @@ function Question() {
 
         if (reachedLimit) {
           navigate("/student/final-results", {
-            state: { ...state, studentName, gameCode, sessionId, currentRound: sessionData.current_round, questionCount: maxQuestions }
+            state: { ...state, studentName, gameCode, sessionId: targetSessionId, currentRound: sessionData.current_round, questionCount: maxQuestions }
           });
         } else {
           navigate("/student/difficulty", {
-            state: { ...state, studentName, gameCode, sessionId, currentRound: sessionData.current_round, questionCount: maxQuestions }
+            state: { ...state, studentName, gameCode, sessionId: targetSessionId, currentRound: sessionData.current_round, questionCount: maxQuestions }
           });
         }
       }
@@ -233,6 +342,13 @@ function Question() {
     setIsSubmitting(true);
 
     try {
+      const targetSessionIdPre =
+        sessionData?.id || resolvedSessionId || sessionId || null;
+      if (!targetSessionIdPre) {
+        setError("Session not loaded. Please wait or rejoin.");
+        setIsSubmitting(false);
+        return;
+      }
       const correctAnswer =
         currentQuestion.correctAnswer ??
         currentQuestion.correct_answer ??
@@ -240,15 +356,30 @@ function Question() {
         0;
 
       const isCorrect = Number(answerToSubmit) === Number(correctAnswer);
-      const pointsAwarded = isCorrect ? 100 : 0;
+      // Use difficulty-based points from Difficulty.jsx, fallback to 100
+      const pointsAwarded = isCorrect ? pointsPerQuestion : 0;
 
-      const targetQuestionId = currentQuestion.id || currentQuestionId || sessionData.current_question_id;
+      const targetQuestionId = currentQuestion.id || currentQuestionId || sessionData?.current_question_id;
+      const targetSessionId = targetSessionIdPre;
+
+      // Calculate actual round number based on student's previous responses
+      const { data: existingResponses } = await supabase
+        .from("responses")
+        .select("round_number")
+        .eq("session_id", targetSessionId)
+        .eq("player_id", playerId)
+        .order("answered_at", { ascending: false })
+        .limit(1);
+
+      const actualRoundNumber = existingResponses && existingResponses.length > 0 
+        ? (existingResponses[0].round_number || 0) + 1
+        : 1;
 
       const responsePayload = {
-        session_id: sessionId,
-        question_id: targetQuestionId,
-        player_id: playerId || studentName,
-        round_number: currentRound || 1,
+        session_id: targetSessionId,
+        question_id: String(targetQuestionId ?? ""),
+        player_id: playerId,
+        round_number: actualRoundNumber,
         selected_answer: answerToSubmit,
         is_correct: isCorrect,
         points_awarded: pointsAwarded,
@@ -268,19 +399,23 @@ function Question() {
 
       setHasAnswered(true);
 
-      const { data: playerRecord } = await supabase
-        .from("session_players")
-        .select("*")
-        .eq("session_id", sessionId)
-        .eq("student_name", studentName)
-        .maybeSingle();
+      // Update total_score safely: recalculate from all responses to avoid race conditions
+      const { data: allMyResponses } = await supabase
+        .from("responses")
+        .select("points_awarded")
+        .eq("session_id", targetSessionId)
+        .eq("player_id", playerId);
 
-      if (playerRecord) {
-        const newTotalScore = (playerRecord.total_score || 0) + pointsAwarded;
+      if (allMyResponses) {
+        const newTotalScore = allMyResponses.reduce(
+          (sum, r) => sum + Number(r.points_awarded || 0),
+          0
+        );
         await supabase
           .from("session_players")
           .update({ total_score: newTotalScore })
-          .eq("id", playerRecord.id);
+          .eq("session_id", targetSessionId)
+          .eq("student_name", playerId);
       }
 
       // Add to local storage
@@ -300,8 +435,8 @@ function Question() {
             ...state,
             studentName,
             gameCode,
-            sessionId,
-            currentRound: sessionData.current_round,
+            sessionId: targetSessionId,
+            currentRound: sessionData?.current_round,
             questionCount: maxQuestions
           }
         });
@@ -311,8 +446,8 @@ function Question() {
             ...state,
             studentName,
             gameCode,
-            sessionId,
-            currentRound: sessionData.current_round,
+            sessionId: targetSessionId,
+            currentRound: sessionData?.current_round,
             questionCount: maxQuestions
           }
         });
