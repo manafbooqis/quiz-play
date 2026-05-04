@@ -621,9 +621,58 @@ function InstructorLiveQuiz() {
         totalScore
       };
     }).sort((a, b) => b.totalScore - a.totalScore);
+    
+    // Debug log
+    console.log("[InstructorRankings]", {
+      currentRound,
+      totalStudents: students.length,
+      responses: responses.length,
+      answeredCount,
+      ranking
+    });
+    
     setLiveRanking(ranking);
 
   }, [sessionData, students, responses]);
+
+  // Simple polling for instructor data refresh
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        // Load fresh students
+        const { data: freshStudents } = await supabase
+          .from("session_players")
+          .select("*")
+          .eq("session_id", sessionId);
+
+        // Load fresh responses
+        const { data: freshResponses } = await supabase
+          .from("responses")
+          .select("*")
+          .eq("session_id", sessionId)
+          .order("answered_at", { ascending: true });
+
+        // Load fresh session data
+        const { data: freshSession } = await supabase
+          .from("sessions")
+          .select("*")
+          .eq("id", sessionId)
+          .single();
+
+        // Update states
+        if (freshStudents) setStudents(freshStudents);
+        if (freshResponses) setResponses(freshResponses);
+        if (freshSession) setSessionData(freshSession);
+
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [sessionId]);
 
   // Update preview question when difficulty changes
   useEffect(() => {
@@ -704,7 +753,7 @@ function InstructorLiveQuiz() {
                         <p className="text-sm text-slate-500">
                           {responses.some(r => 
                             Number(r.round_number) === Number(currentRound) && 
-                            (r.player_id === student.studentName || r.player_id === student.id)
+                            (String(r.player_id) === String(student.studentName) || String(r.player_id) === String(student.id))
                           ) ? "Answered" : "Waiting"}
                         </p>
                       </div>
