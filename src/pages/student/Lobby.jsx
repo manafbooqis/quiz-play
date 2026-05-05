@@ -272,15 +272,9 @@ function Lobby() {
           <span className="text-slate-300 text-sm">{players.length} joined</span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {players.map((p, idx) => (
-            <div
-              key={`${getStudentName(p, idx)}-${idx}`}
-              className="bg-slate-900 border border-slate-700 rounded-xl px-4 py-3"
-            >
-              <span className="text-white">{getStudentName(p, idx)}</span>
-            </div>
-          ))}
+        <div className="bg-slate-900 border border-slate-700 rounded-xl px-4 py-3">
+          <p className="text-white">You joined as: {studentName}</p>
+          <p className="text-slate-400 text-sm mt-2">Other players are hidden for privacy.</p>
         </div>
 
         {/* Waiting for instructor to start the quiz */}
