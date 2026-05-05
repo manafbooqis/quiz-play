@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 
@@ -18,6 +18,7 @@ function Difficulty() {
   const [timeLeft, setTimeLeft] = useState(0);
   const [roundTimerStartedAt, setRoundTimerStartedAt] = useState(null);
   const [roundTimerDuration, setRoundTimerDuration] = useState(0);
+  const difficultyTimeoutHandledRef = useRef(false);
 
   const [session, setSession] = useState(null);
 
@@ -39,6 +40,29 @@ function Difficulty() {
     Number(session?.questionCount) ||
     Number(state?.maxQuestions) ||
     1;
+
+  const resolvedQuestionCount =
+    Number(state?.questionCount) ||
+    Number(state?.maxQuestions) ||
+    Number(session?.question_count) ||
+    Number(session?.questionCount) ||
+    Number(maxQuestions) ||
+    1;
+
+  const resolvedQuestionCountRef = useRef(resolvedQuestionCount);
+
+  useEffect(() => {
+    resolvedQuestionCountRef.current = resolvedQuestionCount;
+  }, [resolvedQuestionCount]);
+
+  console.log("[DifficultyQuestionCount]", {
+    stateQuestionCount: state?.questionCount,
+    stateMaxQuestions: state?.maxQuestions,
+    sessionQuestionCount: session?.question_count,
+    sessionQuestionCountCamel: session?.questionCount,
+    maxQuestions,
+    resolvedQuestionCount
+  });
 
   useEffect(() => {
     if (!hasSessionData) return;
@@ -81,11 +105,187 @@ function Difficulty() {
       
       if (remaining === 0) {
         clearInterval(interval);
+        
+        // Handle timeout if no difficulty selected and not already handled
+        if (!difficultyTimeoutHandledRef.current) {
+          difficultyTimeoutHandledRef.current = true;
+          handleDifficultyTimeout();
+        }
       }
     }, 1000);
     
     return () => clearInterval(interval);
   }, [hasSessionData, timePerQuestion, answeredIds.length, gameCode, playerId]);
+
+  const handleDifficultyTimeout = async () => {
+    try {
+      // Resolve session ID safely
+      const targetSessionId = state?.sessionId || session?.id || sessionId;
+      
+      if (!targetSessionId) {
+        console.error("[DifficultyTimeout] missing session id");
+        navigate("/student/round-results", {
+          state: {
+            ...state,
+            studentName,
+            gameCode,
+            sessionId: targetSessionId,
+            currentRound: Number(state?.currentRound) || 1,
+            questionCount: Number(resolvedQuestionCountRef.current) || 1,
+            pointsAwarded: 0,
+            isCorrect: false,
+            selectedAnswer: null,
+            timedOut: true,
+            currentQuestion: { question: "Time ended before selecting difficulty.", correct_answer: "No answer" }
+          }
+        });
+        return;
+      }
+
+      // Resolve player id from session_players
+      const { data: playerRow } = await supabase
+        .from("session_players")
+        .select("id, student_name")
+        .eq("session_id", targetSessionId)
+        .eq("student_name", studentName)
+        .maybeSingle();
+
+      const resolvedPlayerId = playerRow?.student_name || studentName || playerId;
+
+      // Determine round number
+      const currentRound = Number(state?.currentRound) || 1;
+
+      // Use the latest resolved question count from ref to avoid stale closure values
+      const questionCount = Number(resolvedQuestionCountRef.current) || 1;
+
+      // Resolve a REAL fallback question id
+      const questionIndex = currentRound - 1;
+      const fallbackQuestionId = questionsByDifficulty.easy?.[questionIndex]?.id ||
+        questionsByDifficulty.medium?.[questionIndex]?.id ||
+        questionsByDifficulty.hard?.[questionIndex]?.id;
+
+      console.log("[DifficultyTimeoutDebug]", {
+        targetSessionId,
+        studentName,
+        resolvedPlayerId,
+        currentRound,
+        questionCount,
+        fallbackQuestionId
+      });
+
+      if (!fallbackQuestionId) {
+        console.error("[DifficultyTimeout] no fallback question id found");
+        navigate("/student/round-results", {
+          state: {
+            ...state,
+            studentName,
+            gameCode,
+            sessionId: targetSessionId,
+            currentRound,
+            questionCount,
+            pointsAwarded: 0,
+            isCorrect: false,
+            selectedAnswer: null,
+            timedOut: true,
+            currentQuestion: { question: "Time ended before selecting difficulty.", correct_answer: "No answer" },
+            questionsByDifficulty
+          }
+        });
+        return;
+      }
+
+      // Check for existing response using same unique constraint as normal answer
+      const { data: existingResponse } = await supabase
+        .from("responses")
+        .select("*")
+        .eq("session_id", targetSessionId)
+        .eq("question_id", String(fallbackQuestionId))
+        .eq("player_id", resolvedPlayerId)
+        .maybeSingle();
+
+      console.log("[DifficultyTimeoutDuplicateCheck]", {
+        targetSessionId,
+        fallbackQuestionId,
+        resolvedPlayerId,
+        currentRound,
+        existingResponse,
+      });
+
+      if (!existingResponse) {
+        // Insert timeout response using upsert with same onConflict as normal answer
+        const timeoutResponse = {
+          session_id: targetSessionId,
+          question_id: String(fallbackQuestionId),
+          player_id: resolvedPlayerId,
+          round_number: currentRound,
+          selected_answer: 0,
+          is_correct: false,
+          points_awarded: 0
+        };
+
+        const { error: upsertError } = await supabase
+          .from("responses")
+          .upsert(timeoutResponse, {
+            onConflict: "session_id,question_id,player_id"
+          });
+
+        console.log("[DifficultyTimeoutUpsertResult]", {
+          timeoutResponse,
+          upsertError,
+        });
+
+        if (upsertError) throw upsertError;
+      }
+
+      // Clear shared round timer before navigating
+      const timerKey = `quizplay_round_timer_${gameCode}_${playerId}`;
+      localStorage.removeItem(timerKey);
+
+      // Navigate to RoundResults
+      navigate("/student/round-results", {
+        state: {
+          ...state,
+          studentName,
+          gameCode,
+          sessionId: targetSessionId,
+          currentRound,
+          questionCount,
+          timePerQuestion,
+          currentDifficulty: "timeout",
+          currentQuestionId: String(fallbackQuestionId || ""),
+          pointsAwarded: 0,
+          isCorrect: false,
+          selectedAnswer: null,
+          timedOut: true,
+          currentQuestion: fallbackQuestionId ? 
+            questionsByDifficulty.easy?.[questionIndex] || 
+            questionsByDifficulty.medium?.[questionIndex] || 
+            questionsByDifficulty.hard?.[questionIndex] : 
+            { question: "Time ended before selecting difficulty.", correct_answer: "No answer" },
+          questionsByDifficulty
+        }
+      });
+
+    } catch (err) {
+      console.error("Error handling difficulty timeout:", err);
+      // Fallback navigation
+      navigate("/student/round-results", {
+        state: {
+          ...state,
+          studentName,
+          gameCode,
+          sessionId: state?.sessionId || session?.id || sessionId,
+          currentRound: Number(state?.currentRound) || 1,
+          questionCount: Number(resolvedQuestionCountRef.current) || 1,
+          pointsAwarded: 0,
+          isCorrect: false,
+          selectedAnswer: null,
+          timedOut: true,
+          currentQuestion: { question: "Time ended before selecting difficulty.", correct_answer: "No answer" }
+        }
+      });
+    }
+  };
 
   useEffect(() => {
     if (!hasSessionData || !sessionId) return;
@@ -139,7 +339,7 @@ function Difficulty() {
           currentDifficulty: difficulty,
           currentQuestionId: questionId,
           pointsPerQuestion: points,
-          questionCount: maxQuestions,
+          questionCount: Number(resolvedQuestionCountRef.current) || 1,
           timePerQuestion: timePerQuestion,
           roundTimerStartedAt,
           roundTimerDuration,
