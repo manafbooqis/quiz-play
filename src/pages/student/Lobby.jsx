@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { supabase } from "../../lib/supabase";
+import { supabase, getSessionPlayers } from "../../lib/supabase";
 
 function getTextValue(value) {
   if (typeof value === "string" && value.trim()) {
@@ -47,6 +47,7 @@ function Lobby() {
   const navigate = useNavigate();
   const { state } = useLocation();
   const [sessionData, setSessionData] = useState(null);
+  const [livePlayers, setLivePlayers] = useState(null);
 
   // Clear any existing round timers when entering lobby
   useEffect(() => {
@@ -218,6 +219,41 @@ function Lobby() {
     };
   }, [gameCode, studentName, navigate]);
 
+  // Poll session_players for live updates
+  useEffect(() => {
+    if (!gameCode) return;
+
+    // Initial fetch
+    async function loadPlayers() {
+      try {
+        const { data: players, error } = await getSessionPlayers(gameCode);
+        if (!error && players) {
+          setLivePlayers(players);
+        }
+      } catch (err) {
+        console.error("Error loading players:", err);
+      }
+    }
+
+    loadPlayers();
+
+    // Poll every 2000ms
+    const playersPollingInterval = setInterval(async () => {
+      try {
+        const { data: players, error } = await getSessionPlayers(gameCode);
+        if (!error && players) {
+          setLivePlayers(players);
+        }
+      } catch (err) {
+        console.error("Error polling players:", err);
+      }
+    }, 2000);
+
+    return () => {
+      clearInterval(playersPollingInterval);
+    };
+  }, [gameCode]);
+
   // Read instructor config (questionCount + timePerQuestion + players)
   const raw = localStorage.getItem(`quizplay_session_${gameCode}`);
   const config = raw ? JSON.parse(raw) : null;
@@ -232,6 +268,9 @@ function Lobby() {
     return playersArray.map((player, index) => getStudentName(player, index));
   };
 
+  // Use live players from database with fallback to config
+  const displayPlayers = normalizePlayers(livePlayers ?? config?.players ?? []);
+  
   // Only show real players — never use fake fallback names
   const players = config?.players
       ? [...new Set([...normalizePlayers(config.players), studentName])]
@@ -269,12 +308,18 @@ function Lobby() {
 
         <div className="flex items-center justify-between mb-3">
           <h2 className="game-font text-2xl text-pink-300">Players</h2>
-          <span className="text-slate-300 text-sm">{players.length} joined</span>
+          <span className="text-slate-300 text-sm">{displayPlayers.length} joined</span>
         </div>
 
-        <div className="bg-slate-900 border border-slate-700 rounded-xl px-4 py-3">
-          <p className="text-white">You joined as: {studentName}</p>
-          <p className="text-slate-400 text-sm mt-2">Other players are hidden for privacy.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {displayPlayers.map((p, idx) => (
+            <div
+              key={`${getStudentName(p, idx)}-${idx}`}
+              className="bg-slate-900 border border-slate-700 rounded-xl px-4 py-3"
+            >
+              <span className="text-white">{getStudentName(p, idx)}</span>
+            </div>
+          ))}
         </div>
 
         {/* Waiting for instructor to start the quiz */}
