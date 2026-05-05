@@ -230,11 +230,13 @@ function Home() {
                     <div className="absolute inset-0 bg-cyan-400/25 rounded-full animate-ping" />
                     <div className="absolute inset-0 bg-gradient-to-r from-cyan-400/20 to-blue-500/20 rounded-full animate-pulse" style={{ animationDelay: '1s' }} />
                     <div className="relative bg-cyan-500/30 backdrop-blur-md rounded-2xl p-5 border-2 border-cyan-400/50 shadow-lg group-hover:shadow-cyan-400/50 group-hover:shadow-xl transition-all duration-300">
-                      <svg className="w-14 h-14 text-cyan-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+                      {/* Flag for Racing/Competition */}
+                      <svg className="w-14 h-14 text-cyan-200" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M14.4,6L14,4H5V21H7V14H12.6L13,16H20V6M14,8H18V14H13.6L13.2,12H7V8H14Z" />
                       </svg>
-                      <svg className="w-10 h-10 text-cyan-300 absolute -bottom-2 -right-2" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
+                      {/* Zap Accent */}
+                      <svg className="w-10 h-10 text-cyan-300 absolute -bottom-2 -right-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
                     </div>
                   </div>
@@ -274,11 +276,15 @@ function Home() {
                     <div className="absolute inset-0 bg-pink-400/25 rounded-full animate-ping" style={{ animationDelay: '1s' }} />
                     <div className="absolute inset-0 bg-gradient-to-r from-pink-400/20 to-purple-500/20 rounded-full animate-pulse" style={{ animationDelay: '2s' }} />
                     <div className="relative bg-pink-500/30 backdrop-blur-md rounded-2xl p-5 border-2 border-pink-400/50 shadow-lg group-hover:shadow-pink-400/50 group-hover:shadow-xl transition-all duration-300">
+                      {/* FileQuestion for Create/Manage */}
                       <svg className="w-14 h-14 text-pink-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                      <svg className="w-10 h-10 text-pink-300 absolute -bottom-2 -right-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        <circle cx="11" cy="11" r="1" fill="currentColor" />
+                        <path d="M12 8v3" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
+                      </svg>
+                      {/* Check Accent for Management */}
+                      <svg className="w-10 h-10 text-pink-300 absolute -bottom-2 -right-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                     </div>
                   </div>
