@@ -310,24 +310,43 @@ function Difficulty() {
       diff: 'easy',
       label: 'Easy',
       points: 100,
-      badge: 'bg-green-400'
+      badge: 'bg-emerald-400',
+      theme: 'from-emerald-400 to-cyan-400',
+      buttonBg: 'bg-emerald-400 hover:bg-emerald-300',
+      borderColor: 'border-emerald-400/50',
+      glowColor: 'shadow-emerald-500/25'
     },
     {
       diff: 'medium',
       label: 'Medium',
       points: 200,
-      badge: 'bg-yellow-400'
+      badge: 'bg-amber-400',
+      theme: 'from-amber-400 to-yellow-400',
+      buttonBg: 'bg-amber-400 hover:bg-amber-300',
+      borderColor: 'border-amber-400/50',
+      glowColor: 'shadow-amber-500/25'
     },
     {
       diff: 'hard',
       label: 'Hard',
       points: 300,
-      badge: 'bg-red-400'
+      badge: 'bg-red-400',
+      theme: 'from-red-400 to-pink-400',
+      buttonBg: 'bg-red-400 hover:bg-red-300',
+      borderColor: 'border-red-400/50',
+      glowColor: 'shadow-red-500/25'
     }
   ];
 
   const getAvailableCount = (difficulty) => {
     return questionsByDifficulty?.[difficulty]?.length ?? 0;
+  };
+
+  const formatTime = (seconds) => {
+    const safeSeconds = Math.max(0, Number(seconds) || 0);
+    const mins = Math.floor(safeSeconds / 60);
+    const secs = safeSeconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   return (
@@ -576,18 +595,27 @@ function Difficulty() {
         <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/15 via-transparent to-blue-500/15 rounded-3xl opacity-60" />
         
         <div className="relative">
+          {/* Enhanced status area */}
           <div className="text-center mb-8">
+            <div className="flex flex-col md:flex-row items-center justify-center gap-4 mb-6">
+              <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-600 rounded-2xl px-4 py-2">
+                <p className="text-xs text-slate-400 uppercase tracking-wider">Time</p>
+                <p className="text-xl font-bold text-cyan-300">{formatTime(timeLeft)}</p>
+              </div>
+              {disableTimerForTesting && (
+                <div className="bg-emerald-500/20 backdrop-blur-sm border border-emerald-400/50 rounded-2xl px-4 py-2">
+                  <p className="text-xs text-emerald-400 uppercase tracking-wider">Timer</p>
+                  <p className="text-xl font-bold text-emerald-300">∞</p>
+                </div>
+              )}
+            </div>
+            
             <h1 className="game-font text-4xl font-bold bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">
               Choose Difficulty
             </h1>
             <p className="text-slate-400 mt-2">
               Select your challenge level
             </p>
-            {disableTimerForTesting && (
-              <div className="mt-4 inline-flex items-center px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/50">
-                <span className="text-emerald-400 text-sm font-medium">Timer disabled for testing ∞</span>
-              </div>
-            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -598,23 +626,54 @@ function Difficulty() {
               return (
                 <div
                   key={c.diff}
-                  className={`relative border rounded-2xl p-6 transition ${isExhausted ? 'bg-slate-800 border-slate-700 opacity-60' : 'bg-slate-900 border-slate-700'}`}
+                  className={`relative border-2 ${c.borderColor} rounded-3xl p-8 transition-all duration-300 transform hover:scale-105 hover:shadow-2xl ${c.glowColor} ${
+                    isExhausted 
+                      ? 'bg-slate-900/40 border-slate-600/30 opacity-60 cursor-not-allowed backdrop-blur-md' 
+                      : 'bg-slate-900/30 border-slate-600/40 backdrop-blur-md hover:bg-slate-900/40 hover:shadow-3xl'
+                  }`}
                 >
+                  {/* Enhanced glow effect */}
                   {!isExhausted && (
-                    <div className={`absolute -top-4 left-1/2 -translate-x-1/2 ${c.badge} text-slate-900 font-bold rounded-full px-3 py-1 shadow`}>
-                      +{c.points}
+                    <div className={`absolute inset-0 bg-gradient-to-br ${c.theme} opacity-10 rounded-3xl animate-pulse`} style={{ animationDuration: '3s' }} />
+                  )}
+                  
+                  {/* Points badge */}
+                  {!isExhausted && (
+                    <div className={`absolute -top-5 left-1/2 -translate-x-1/2 ${c.badge} text-slate-900 font-bold rounded-full px-4 py-2 shadow-lg text-sm`}>
+                      +{c.points} pts
                     </div>
                   )}
 
-                  <h2 className="game-font text-4xl text-white mt-10">{c.label}</h2>
+                  {/* Difficulty title */}
+                  <div className="relative z-10">
+                    <h2 className={`game-font text-5xl font-bold bg-gradient-to-r ${c.theme} bg-clip-text text-transparent mt-12 mb-4`}>
+                      {c.label}
+                    </h2>
+                    
+                    {/* Available count */}
+                    <div className="text-center mb-6">
+                      <p className="text-sm text-slate-400">
+                        {isExhausted ? (
+                          <span className="text-red-400 font-medium">No questions available</span>
+                        ) : (
+                          <span className="text-cyan-300 font-medium">{availableCount} available</span>
+                        )}
+                      </p>
+                    </div>
 
-                  <button
-                    onClick={() => handleDifficultySelect(c.diff, c.points)}
-                    disabled={isExhausted}
-                    className={`w-full mt-8 game-font py-3 rounded-xl transition ${isExhausted ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-yellow-300 hover:bg-yellow-200 text-slate-900'}`}
-                  >
-                    {isExhausted ? "Exhausted" : "Select"}
-                  </button>
+                    {/* Select button */}
+                    <button
+                      onClick={() => handleDifficultySelect(c.diff, c.points)}
+                      disabled={isExhausted}
+                      className={`w-full game-font py-4 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-lg ${
+                        isExhausted 
+                          ? 'bg-slate-700/50 text-slate-500 cursor-not-allowed border border-slate-600/50' 
+                          : `${c.buttonBg} text-slate-900 hover:shadow-xl border-2 border-white/20`
+                      }`}
+                    >
+                      {isExhausted ? "Exhausted" : "Select"}
+                    </button>
+                  </div>
                 </div>
               );
             })}
