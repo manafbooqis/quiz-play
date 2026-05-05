@@ -6,7 +6,13 @@ const apiPlugin = (env) => ({
   name: "api-plugin",
   configureServer(server) {
     server.middlewares.use(async (req, res, next) => {
-      if (req.url === "/api/generate-questions" && req.method === "POST") {
+      const requestUrl = req.url?.split("?")[0] || "";
+      const normalizedUrl = requestUrl.replace(/^\/quiz-play/, "");
+
+      if (
+  req.method === "POST" &&
+  normalizedUrl === "/api/generate-questions"
+) {
         Object.assign(process.env, env);
 
         let body = "";
@@ -15,7 +21,14 @@ const apiPlugin = (env) => ({
         });
 
         req.on("end", async () => {
-          req.body = body ? JSON.parse(body) : {};
+          try {
+            req.body = body ? JSON.parse(body) : {};
+          } catch (err) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ error: "Invalid JSON body" }));
+            return;
+          }
 
           const mockRes = {
             status: (code) => {
