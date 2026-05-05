@@ -42,6 +42,11 @@ function Question() {
     Number(state?.maxQuestions) ||
     1;
 
+  const disableTimerForTesting = 
+    Boolean(state?.disableTimerForTesting) ||
+    Boolean(sessionData?.disable_timer_for_testing) ||
+    false;
+
   useEffect(() => {
     if (!gameCode || !studentName) {
       navigate("/student/join");
@@ -247,7 +252,7 @@ function Question() {
       const remaining = Math.max(0, roundTimerDuration - elapsed);
       setTimeLeft(remaining);
 
-      if (remaining === 0 && !hasAnsweredRef.current && !timeoutHandledRef.current) {
+      if (remaining === 0 && !hasAnsweredRef.current && !timeoutHandledRef.current && !disableTimerForTesting) {
         // Time expired - handle timeout properly
         timeoutHandledRef.current = true;
         handleTimeout();
@@ -733,6 +738,19 @@ function Question() {
               <p className="game-font text-2xl text-yellow-300">{formatTime(timeLeft)}</p>
             </div>
           </div>
+        </div>
+
+        <div className="text-center mb-8">
+          <h1 className="game-font text-4xl font-bold bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">
+            Question {safeCurrentRound}
+          </h1>
+          <p className="text-slate-400 mt-2">
+            {currentQuestion?.question || "Loading question..."}</p>
+          {disableTimerForTesting && (
+            <div className="mt-4 inline-flex items-center px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/50">
+              <span className="text-emerald-400 text-sm font-medium">Timer disabled for testing ∞</span>
+            </div>
+          )}
         </div>
 
         <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 mb-6">

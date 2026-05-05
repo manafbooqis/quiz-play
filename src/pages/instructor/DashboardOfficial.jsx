@@ -24,6 +24,7 @@ function DashboardOfficial() {
   const [isReadingFile, setIsReadingFile] = useState(false); // true while FileReader is running
   const [questionCount, setQuestionCount] = useState(5);
   const [timePerQuestion, setTimePerQuestion] = useState(30);
+  const [disableTimerForTesting, setDisableTimerForTesting] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [error, setError] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
@@ -336,6 +337,48 @@ function DashboardOfficial() {
     setQuestionCount((prev) => Math.max(prev - 1, MIN_QUESTIONS));
   }
 
+  // Helper function to generate a fresh game code
+  const generateGameCode = () => {
+    const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    const nums = "23456789";
+    const pick = (s) => s[Math.floor(Math.random() * s.length)];
+    return `${pick(letters)}${pick(letters)}${pick(nums)}${pick(nums)}`;
+  };
+
+  // Helper function to create session with retry logic for duplicate game codes
+  const createSessionWithRetry = async (basePayload, maxRetries = 5) => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      // Generate fresh game code for each attempt
+      const attemptGameCode = generateGameCode();
+      const attemptPayload = { ...basePayload, game_code: attemptGameCode };
+      
+      const { data: session, error: sessionError } = await supabase
+        .from("sessions")
+        .insert(attemptPayload)
+        .select()
+        .single();
+        
+      if (!sessionError) {
+        return { session, gameCode: attemptGameCode };
+      }
+      
+      // Check if it's a duplicate key error
+      const isDuplicateKey = sessionError.code === "23505" || 
+                            sessionError.message?.includes("sessions_game_code_key");
+      
+      if (!isDuplicateKey || attempt === maxRetries) {
+        // Not a duplicate error or max retries reached, throw the error
+        throw sessionError;
+      }
+      
+      // If it's a duplicate key and we haven't reached max retries, continue to next attempt
+      console.log(`[SessionRetry] Duplicate game code attempt ${attempt}/${maxRetries}, generating new code...`);
+    }
+    
+    // This should never be reached, but just in case
+    throw new Error("Could not generate a unique game code. Please try again.");
+  };
+
   function increaseTime() {
     setTimePerQuestion((prev) => Math.min(prev + TIME_STEP, MAX_TIME));
   }
@@ -420,13 +463,7 @@ function DashboardOfficial() {
     setInfoMessage("");
 
     try {
-      const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-      const nums = "23456789";
-      const pick = (s) => s[Math.floor(Math.random() * s.length)];
-      const freshGameCode = `${pick(letters)}${pick(letters)}${pick(nums)}${pick(nums)}`;
-
-      const sessionPayload = {
-        game_code: freshGameCode,
+      const basePayload = {
         file_name: "Manual Questions",
         question_count: questionCount,
         time_per_question: timePerQuestion,
@@ -440,26 +477,17 @@ function DashboardOfficial() {
         updated_at: new Date().toISOString(),
       };
 
-      const { data: session, error: sessionError } = await supabase
-        .from("sessions")
-        .insert(sessionPayload)
-        .select()
-        .single();
-
-      if (sessionError) {
-        console.error("Create manual session error:", sessionError);
-        throw sessionError;
-      }
+      const { session, gameCode: finalGameCode } = await createSessionWithRetry(basePayload);
 
       // Persist to localStorage
-      const persistKey = `quizplay_session_${session.game_code}`;
+      const persistKey = `quizplay_session_${finalGameCode}`;
       try {
         localStorage.setItem(
           persistKey,
           JSON.stringify({
             ...session,
             id: session.id,
-            gameCode: session.game_code,
+            gameCode: finalGameCode,
             questionsByDifficulty: { easy: [], medium: [], hard: [] },
             questions_by_difficulty: { easy: [], medium: [], hard: [] },
           })
@@ -472,7 +500,7 @@ function DashboardOfficial() {
       navigate("/instructor/questions-preview", {
         state: {
           sessionId: session.id,
-          gameCode: session.game_code,
+          gameCode: finalGameCode,
           fileName: "Manual Questions",
           questionCount,
           timePerQuestion,
@@ -552,9 +580,9 @@ function DashboardOfficial() {
         ? selectedQuestionBank.question_count
         : questionCount;
 
-      const sessionTimePerQuestion = fromExistingBank
-        ? selectedQuestionBank.time_per_question
-        : timePerQuestion;
+      const sessionTimePerQuestion = timePerQuestion;
+      
+      const sessionDisableTimerForTesting = disableTimerForTesting;
 
       let questionsByDifficulty;
 
@@ -572,9 +600,12 @@ function DashboardOfficial() {
           setInfoMessage("Generating questions using AI from your uploaded file...");
 
           try {
+            // Generate temporary game code for AI generation (won't be used for final session)
+            const tempGameCode = generateGameCode();
+            
             const aiQuestions = await fetchAiQuestions({
               sessionId: null, // No session yet
-              sessionGameCode: gameCode,
+              sessionGameCode: tempGameCode,
               freshBase64,
               freshMime,
               freshFileName,
@@ -633,8 +664,7 @@ function DashboardOfficial() {
       }
 
       // Only create session after we have valid questions
-      const sessionPayload = {
-        game_code: gameCode,
+      const basePayload = {
         file_name: sessionFileName,
         question_count: sessionQuestionCount,
         time_per_question: sessionTimePerQuestion,
@@ -650,30 +680,17 @@ function DashboardOfficial() {
         updated_at: new Date().toISOString(),
       };
 
-      const { data: session, error: sessionError } = await supabase
-        .from("sessions")
-        .insert(sessionPayload)
-        .select()
-        .single();
-
-      if (sessionError) {
-        console.error(
-          "Create session Supabase error:",
-          JSON.stringify(sessionError, null, 2)
-        );
-
-        throw sessionError;
-      }
+      const { session, gameCode: finalGameCode } = await createSessionWithRetry(basePayload);
 
       // Only persist locally after generation (or existing bank path) so we never cache empty/mock banks ahead of AI.
-      const persistKey = `quizplay_session_${session.game_code}`;
+      const persistKey = `quizplay_session_${finalGameCode}`;
       try {
         localStorage.setItem(
           persistKey,
           JSON.stringify({
             ...session,
             id: session.id,
-            gameCode: session.game_code,
+            gameCode: finalGameCode,
             questionsByDifficulty,
             questions_by_difficulty: questionsByDifficulty,
           })
@@ -685,10 +702,11 @@ function DashboardOfficial() {
       navigate("/instructor/session-official", {
         state: {
           sessionId: session.id,
-          gameCode: session.game_code,
+          gameCode: finalGameCode,
           fileName: sessionFileName,
           questionCount: sessionQuestionCount,
           timePerQuestion: sessionTimePerQuestion,
+          disableTimerForTesting: sessionDisableTimerForTesting,
           studentsJoined: 0,
           questionsByDifficulty,
           isGuest: isGuestUser,
@@ -981,8 +999,7 @@ function DashboardOfficial() {
               )}
             </div>
 
-            {!useExistingBank && (
-              <>
+            <>
                 <div className="mb-6">
                   <p className="text-sm font-bold mb-3 text-slate-700">
                     Upload File
@@ -1114,8 +1131,27 @@ function DashboardOfficial() {
                     </div>
                   </div>
                 </div>
+                
+                {/* Disable Timer Option */}
+                <div className="mt-6">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={disableTimerForTesting}
+                      onChange={(e) => setDisableTimerForTesting(e.target.checked)}
+                      className="w-5 h-5 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                    />
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-900">
+                        Disable timer for testing
+                      </p>
+                      <p className="text-sm text-slate-500 mt-1">
+                        For development/testing only. Students will not timeout automatically.
+                      </p>
+                    </div>
+                  </label>
+                </div>
               </>
-            )}
           </div>
 
           <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-7 shadow-sm h-fit">
