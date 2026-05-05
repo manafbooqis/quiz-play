@@ -554,7 +554,22 @@ function DashboardOfficial() {
             }
           } catch (aiError) {
             console.warn("[AI] Generation failed:", aiError);
-            setInfoMessage(`AI generation failed: ${aiError.message}. Questions are empty — please edit manually.`);
+            
+            // Check if AI is temporarily busy
+            const isBusy = 
+              aiError.message?.includes("Service Unavailable") ||
+              aiError.message?.includes("high demand") ||
+              aiError.message?.includes("UNAVAILABLE") ||
+              aiError.message?.includes("503");
+            
+            if (isBusy) {
+              setInfoMessage("AI is temporarily busy. Please try again in a few minutes, use a saved question bank, or add questions manually.");
+            } else {
+              setInfoMessage(`AI generation failed: ${aiError.message}. Questions are empty — please edit manually.`);
+            }
+            
+            setIsCreatingSession(false);
+            return; // Don't navigate to SessionOfficial with empty questions
           }
         } else {
           setInfoMessage("Session saved. AI is disabled — add questions manually.");
