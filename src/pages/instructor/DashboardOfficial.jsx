@@ -1260,6 +1260,21 @@ function DashboardOfficial() {
                           Code: {session.game_code}
                         </p>
                       </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate("/instructor/final-results", {
+                            state: {
+                              sessionId: session.id,
+                              gameCode: session.game_code
+                            }
+                          });
+                        }}
+                        className="px-3 py-2 text-sm font-semibold rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white shadow-sm transition flex-shrink-0"
+                      >
+                        View Analysis
+                      </button>
                     </div>
                   </div>
                 </div>
