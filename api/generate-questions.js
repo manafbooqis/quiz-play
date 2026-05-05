@@ -50,13 +50,9 @@ function safeParseJson(value) {
   }
 }
 
-function buildQuestionPrompt(fileName, perDifficultyCount, hasDocumentInRequest) {
+function buildQuestionPrompt(perDifficultyCount) {
   const n = Math.max(1, Math.floor(Number(perDifficultyCount) || 1));
   const total = n * 3;
-
-  const contentSection = hasDocumentInRequest
-    ? `\n\nThe uploaded file is attached in this request. Generate ALL questions strictly from that file only. Do not use outside knowledge that contradicts the file. If the file is a table or worksheet (e.g. multiplication tables), every question must reflect that topic.`
-    : `\nGenerate questions related to the material suggested by the file name: ${fileName}.`;
 
   return `Create university-level multiple-choice quiz questions in JSON format for a classroom activity.
 The output must be valid JSON with three top-level arrays: easy, medium, and hard.
@@ -97,7 +93,7 @@ QUALITY REQUIREMENTS FOR ALL QUESTIONS:
 - All distractors must be plausible and related to the topic
 - Avoid obvious wrong answers or joke options
 - Options should be roughly similar in length and complexity
-- Questions must be based strictly on the provided material
+- Questions must be based strictly on the provided document content
 
 Each question object must include exactly these 5 properties:
 - "id": a unique string identifier (e.g., "easy-1", "medium-1")
@@ -105,8 +101,6 @@ Each question object must include exactly these 5 properties:
 - "options": an array of 4 answer strings
 - "correctAnswer": the index (0-3) of the correct answer
 - "difficulty": the difficulty level ("easy", "medium", or "hard")
-
-${contentSection}
 
 Output ONLY the JSON object. Do not include markdown formatting or explanations.`;
 }
@@ -221,6 +215,73 @@ function decodeBase64ToUtf8(base64) {
   }
 }
 
+async function extractFileText({ fileBase64, fileMimeType, fileName }) {
+  if (!fileBase64) {
+    throw new Error("No file content provided.");
+  }
+
+  const mime = normalizeMimeType(fileName, fileMimeType);
+  
+  // Handle PDF files
+  if (mime === "application/pdf") {
+    try {
+      // Clean base64 if it has data URI prefix
+      const cleanBase64 = fileBase64.includes(',') 
+        ? fileBase64.split(',')[1] 
+        : fileBase64;
+      
+      const { createRequire } = await import("module");
+      const require = createRequire(import.meta.url);
+      const pdfParseModule = require("pdf-parse");
+      const pdfParse = typeof pdfParseModule === "function" 
+        ? pdfParseModule 
+        : pdfParseModule.default;
+      
+      if (typeof pdfParse !== "function") {
+        throw new Error("pdf-parse did not export a function");
+      }
+      
+      const buffer = Buffer.from(cleanBase64, 'base64');
+      const data = await pdfParse(buffer);
+      const text = data?.text?.trim() || "";
+      
+      console.log("[PDF Extraction] Raw text length:", text.length);
+      console.log("[PDF Extraction] Text preview:", text.substring(0, 200) + "...");
+      
+      if (!text) {
+        console.error("[PDF Extraction Error] No text extracted from PDF");
+        throw new Error("Could not read text from this PDF. Please ensure it contains extractable text.");
+      }
+      
+      return text;
+    } catch (error) {
+      console.error("[PDF Extraction Error]", error?.message || error);
+      if (error.message && error.message.includes("Could not read text")) {
+        throw error;
+      }
+      throw new Error("Failed to extract text from PDF. Please ensure it's a valid text-based PDF.");
+    }
+  }
+  
+  // Handle text-based files
+  if (mime.startsWith("text/") || 
+      mime === "text/plain" || 
+      mime === "text/csv" || 
+      mime === "text/markdown" || 
+      mime === "application/json") {
+    const text = decodeBase64ToUtf8(fileBase64);
+    
+    if (!text.trim()) {
+      throw new Error("Could not read text from this file. Please upload a text-based file with content.");
+    }
+    
+    return text;
+  }
+  
+  // Unsupported file types
+  throw new Error("Unsupported file type. Please upload a PDF or text-based file (TXT, CSV, JSON, MD).");
+}
+
 function buildGeminiParts({ prompt, fileBase64, fileMimeType, fileName, legacyFileContent }) {
   const mime = normalizeMimeType(fileName, fileMimeType);
   const parts = [];
@@ -291,17 +352,40 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "questionCount must be a positive number." });
   }
 
-  const hasInlineOrTextFile = Boolean(
-    (fileBase64 && String(fileBase64).length > 0) || (fileContent && String(fileContent).trim())
-  );
-  const prompt = buildQuestionPrompt(fileName, count, hasInlineOrTextFile);
-  const parts = buildGeminiParts({
-    prompt,
-    fileBase64: fileBase64 ? String(fileBase64) : "",
-    fileMimeType: fileMimeType || "",
-    fileName: fileName || "",
-    legacyFileContent: fileContent || "",
-  });
+  console.log("Extracting text from uploaded file...");
+  
+  let extractedText = "";
+  try {
+    extractedText = await extractFileText({
+      fileBase64: fileBase64 ? String(fileBase64) : "",
+      fileMimeType: fileMimeType || "",
+      fileName: fileName || ""
+    });
+  } catch (extractionError) {
+    console.error("File text extraction failed:", extractionError);
+    return res.status(400).json({ 
+      error: extractionError.message || "Failed to extract text from file." 
+    });
+  }
+
+  if (!extractedText || !extractedText.trim()) {
+    return res.status(400).json({ 
+      error: "Could not read text from this file. Please upload a text-based PDF or use manual question creation." 
+    });
+  }
+
+  // Limit text to safe length
+  const limitedText = extractedText.substring(0, 15000);
+
+  const prompt = buildQuestionPrompt(count);
+  const fullPrompt = `${prompt}
+
+Use only this document content to generate questions:
+---
+${limitedText}
+---
+
+Questions must be strictly from the extracted document content above. If the document is a multiplication table, generated questions must be multiplication questions only. Do not use outside knowledge.`;
 
   console.log("Calling OpenRouter API with fallback models...");
 
@@ -330,7 +414,7 @@ export default async function handler(req, res) {
             },
             {
               role: "user",
-              content: prompt
+              content: fullPrompt
             }
           ],
           temperature: 0.7,
