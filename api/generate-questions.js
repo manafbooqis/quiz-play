@@ -58,7 +58,7 @@ function buildQuestionPrompt(fileName, perDifficultyCount, hasDocumentInRequest)
     ? `\n\nThe uploaded file is attached in this request. Generate ALL questions strictly from that file only. Do not use outside knowledge that contradicts the file. If the file is a table or worksheet (e.g. multiplication tables), every question must reflect that topic.`
     : `\nGenerate questions related to the material suggested by the file name: ${fileName}.`;
 
-  return `Create multiple-choice quiz questions in JSON format for a classroom activity.
+  return `Create university-level multiple-choice quiz questions in JSON format for a classroom activity.
 The output must be valid JSON with three top-level arrays: easy, medium, and hard.
 
 IMPORTANT: The instructor chose ${n} as the count PER difficulty (not the total bank size).
@@ -69,14 +69,110 @@ IMPORTANT: The instructor chose ${n} as the count PER difficulty (not the total 
 
 CRITICAL: Every single question must test a completely different concept, fact, or scenario. Do NOT repeat the same concepts. Questions within the same difficulty must be distinctly different from each other.
 
+QUESTION TYPES BY DIFFICULTY:
+EASY questions should test:
+- Basic definitions and terminology
+- Simple recall of facts from the material
+- Direct identification of concepts
+- "What is X?" or "Which of the following defines X?"
+
+MEDIUM questions should test:
+- Comparison between concepts
+- Application of knowledge to simple scenarios
+- Understanding relationships between ideas
+- "Which of the following best explains X?" or "How do X and Y relate?"
+
+HARD questions should test:
+- Complex scenario analysis
+- Tricky distinctions between similar concepts
+- Multi-step reasoning
+- "In which situation would X occur?" or "What is the key difference between X and Y?"
+
+QUALITY REQUIREMENTS FOR ALL QUESTIONS:
+- Question text must be clear, specific, and unambiguous
+- Exactly 4 options (A, B, C, D)
+- One and only one correct answer
+- NO "All of the above", "None of the above", or similar options
+- Correct answer should not be significantly longer or more detailed than distractors
+- All distractors must be plausible and related to the topic
+- Avoid obvious wrong answers or joke options
+- Options should be roughly similar in length and complexity
+- Questions must be based strictly on the provided material
+
 Each question object must include exactly these 5 properties:
 - "id": a unique string identifier (e.g., "easy-1", "medium-1")
 - "question": the question text
 - "options": an array of 4 answer strings
 - "correctAnswer": the index (0-3) of the correct answer
 - "difficulty": the difficulty level ("easy", "medium", or "hard")
+
 ${contentSection}
+
 Output ONLY the JSON object. Do not include markdown formatting or explanations.`;
+}
+
+function validateQuestion(question, difficulty) {
+  const errors = [];
+  
+  // Check required fields
+  if (!question.id) errors.push("Missing id");
+  if (!question.question || typeof question.question !== "string") errors.push("Missing or invalid question text");
+  if (!Array.isArray(question.options)) errors.push("Missing or invalid options array");
+  if (typeof question.correctAnswer !== "number") errors.push("Missing or invalid correctAnswer");
+  if (question.difficulty !== difficulty) errors.push("Wrong difficulty");
+  
+  // Check options count
+  if (question.options && question.options.length !== 4) {
+    errors.push("Must have exactly 4 options");
+  }
+  
+  // Check correct answer index
+  if (question.options && question.correctAnswer >= 0 && question.correctAnswer < 4) {
+    const correctOption = question.options[question.correctAnswer];
+    const distractors = question.options.filter((_, i) => i !== question.correctAnswer);
+    
+    // Check for forbidden phrases
+    const forbiddenPhrases = ["all of the above", "none of the above", "both a and b", "both b and c"];
+    const hasForbidden = question.options.some(opt => 
+      forbiddenPhrases.some(phrase => opt.toLowerCase().includes(phrase))
+    );
+    if (hasForbidden) errors.push("Contains forbidden option phrases");
+    
+    // Check option length similarity (correct shouldn't be much longer) - WARNING ONLY
+    const correctLength = correctOption.length;
+    const avgDistractorLength = distractors.reduce((sum, opt) => sum + opt.length, 0) / distractors.length;
+    if (correctLength > avgDistractorLength * 2) console.warn("Question quality: Correct answer much longer than distractors");
+    
+    // Check for obvious wrong answers (very short vs detailed) - WARNING ONLY
+    const minLength = Math.min(...question.options.map(opt => opt.length));
+    const maxLength = Math.max(...question.options.map(opt => opt.length));
+    if (maxLength > minLength * 3) console.warn("Question quality: Options have very different lengths");
+  }
+  
+  return errors;
+}
+
+function validateAndFilterQuestions(questions, requiredCount) {
+  const validQuestions = { easy: [], medium: [], hard: [] };
+  const invalidQuestions = [];
+  
+  for (const difficulty of ["easy", "medium", "hard"]) {
+    const difficultyQuestions = questions[difficulty] || [];
+    const validDifficultyQuestions = [];
+    
+    for (const question of difficultyQuestions) {
+      const errors = validateQuestion(question, difficulty);
+      if (errors.length === 0) {
+        validDifficultyQuestions.push(question);
+      } else {
+        invalidQuestions.push({ question, errors, difficulty });
+      }
+    }
+    
+    validQuestions[difficulty] = validDifficultyQuestions;
+  }
+  
+  return { validQuestions, invalidQuestions };
 }
 
 function normalizeBankToPerDifficulty(questions, perDifficultyCount) {
@@ -289,33 +385,43 @@ export default async function handler(req, res) {
         Array.isArray(parsed.easy) && 
         Array.isArray(parsed.medium) && 
         Array.isArray(parsed.hard)) {
-      console.log(`Success with model: ${model}`);
+      console.log(`Model ${model} returned valid structure, validating quality...`);
       
-      const trimmed = normalizeBankToPerDifficulty(
-        {
-          easy: parsed.easy,
-          medium: parsed.medium,
-          hard: parsed.hard,
-        },
-        count
-      );
-
-      const questions = trimmed;
-
-      if (!questions.easy.length && !questions.medium.length && !questions.hard.length) {
-        lastError = { model, reason: "empty_questions", message: "No questions generated" };
-        continue;
-      }
-
-      for (const k of ["easy", "medium", "hard"]) {
-        if (questions[k].length < count) {
-          lastError = { model, reason: "insufficient_questions", message: `Only ${questions[k].length} "${k}" questions` };
-          continue;
+      // Validate and filter questions for quality
+      const { validQuestions, invalidQuestions } = validateAndFilterQuestions(parsed, count);
+      
+      // Check if we have enough valid questions for each difficulty
+      let hasEnoughValid = true;
+      for (const difficulty of ["easy", "medium", "hard"]) {
+        if (validQuestions[difficulty].length < count) {
+          hasEnoughValid = false;
+          lastError = { 
+            model, 
+            reason: "insufficient_valid_questions", 
+            message: `Only ${validQuestions[difficulty].length} valid "${difficulty}" questions (need ${count})`,
+            invalidCount: invalidQuestions.filter(q => q.difficulty === difficulty).length
+          };
+          break;
         }
       }
+      
+      if (hasEnoughValid) {
+        // Trim to exact count if we have extra valid questions
+        const trimmed = normalizeBankToPerDifficulty(validQuestions, count);
+        
+        const questions = trimmed;
 
-      console.log("Success: returning questions");
-      return res.status(200).json({ questions });
+        if (!questions.easy.length && !questions.medium.length && !questions.hard.length) {
+          lastError = { model, reason: "empty_questions", message: "No valid questions after quality check" };
+          continue;
+        }
+
+        console.log(`Success with model: ${model} (${invalidQuestions.length} questions filtered out)`);
+        return res.status(200).json({ questions });
+      } else {
+        console.log(`Model ${model} failed quality validation, trying next model...`);
+        continue;
+      }
     } else {
       console.error(`Model ${model} returned invalid JSON structure:`, rawContent);
       lastError = { model, reason: "invalid_json", message: "Invalid question structure" };
@@ -326,6 +432,6 @@ export default async function handler(req, res) {
   // All models failed
   console.error("All models failed. Last error:", lastError);
   return res.status(500).json({ 
-    error: "All free AI models are currently unavailable or rate limited. Please try again later, use a saved question bank, or add questions manually." 
+    error: `AI generated invalid questions. Required ${count} questions per difficulty, but validation failed. Common issues: missing options, incorrect format, "All of the above" options, or poor question quality. Please try again or use manual question creation.` 
   });
 }
