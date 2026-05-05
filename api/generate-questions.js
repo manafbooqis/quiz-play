@@ -2,12 +2,12 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 console.log("=== API Route: generate-questions ===");
 console.log("SUPABASE_URL:", SUPABASE_URL ? "set" : "MISSING");
 console.log("SUPABASE_SERVICE_ROLE_KEY:", SUPABASE_SERVICE_ROLE_KEY ? "set" : "MISSING");
-console.log("GEMINI_API_KEY:", GEMINI_API_KEY ? "set" : "MISSING");
+console.log("OPENROUTER_API_KEY:", OPENROUTER_API_KEY ? "set" : "MISSING");
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error("Missing Supabase server-side env variables.");
@@ -156,8 +156,8 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Supabase service client is not configured." });
   }
 
-  if (!GEMINI_API_KEY) {
-    return res.status(500).json({ error: "Missing Gemini API key." });
+  if (!OPENROUTER_API_KEY) {
+    return res.status(500).json({ error: "Missing OpenRouter API key." });
   }
 
   const {
@@ -191,45 +191,83 @@ export default async function handler(req, res) {
     legacyFileContent: fileContent || "",
   });
 
-  console.log("Calling Gemini API...");
+  console.log("Calling OpenRouter API...");
 
-  const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+  const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-  let geminiResponse;
+  let openrouterResponse;
   try {
-    geminiResponse = await fetch(GEMINI_URL, {
+    openrouterResponse = await fetch(OPENROUTER_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "HTTP-Referer": process.env.APP_URL || "http://localhost:5173",
+        "X-Title": "Quiz Play AI Question Generator"
+      },
       body: JSON.stringify({
-        contents: [{ parts }],
-        systemInstruction: {
-          parts: [{ text: "You are a helpful assistant that only outputs valid JSON for a quiz question bank." }]
-        },
-        generationConfig: {
-          temperature: 0.7,
-          responseMimeType: "application/json"
-        }
+        model: "google/gemma-4-31b-it:free",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful assistant that only outputs valid JSON for a quiz question bank."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        response_format: { type: "json_object" }
       }),
     });
   } catch (fetchError) {
-    console.error("Gemini fetch error:", fetchError);
-    return res.status(500).json({ error: "Failed to call Gemini API", details: fetchError.message });
+    console.error("OpenRouter fetch error:", fetchError);
+    return res.status(500).json({ error: "Failed to call OpenRouter API", details: fetchError.message });
   }
 
-  if (!geminiResponse.ok) {
-    const body = await geminiResponse.text();
-    console.error("Gemini error status:", geminiResponse.status);
-    console.error("Gemini error body:", body);
-    return res.status(500).json({ error: `Gemini request failed: ${geminiResponse.statusText}`, details: body });
+  if (!openrouterResponse.ok) {
+    const body = await openrouterResponse.text();
+    console.error("OpenRouter error status:", openrouterResponse.status);
+    console.error("OpenRouter error body:", body);
+    
+    // Provider-specific error handling
+    if (openrouterResponse.status === 429) {
+      return res.status(429).json({ error: "OpenRouter rate limit exceeded. Please try again later." });
+    }
+    if (openrouterResponse.status === 503) {
+      return res.status(503).json({ error: "OpenRouter is temporarily busy. Please try again later." });
+    }
+    
+    return res.status(500).json({ 
+      error: `OpenRouter request failed: ${openrouterResponse.statusText}`, 
+      details: body 
+    });
   }
 
-  const geminiData = await geminiResponse.json();
-  const rawContent = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  const openrouterData = await openrouterResponse.json();
+  const rawContent = openrouterData?.choices?.[0]?.message?.content || "";
   
-  const parsed = safeParseJson(rawContent);
+  // Robust JSON parsing with markdown fence handling
+  let parsed = safeParseJson(rawContent);
   if (!parsed || typeof parsed !== "object") {
-    console.error("Invalid JSON from Gemini:", rawContent);
-    return res.status(500).json({ error: "Gemini returned invalid JSON.", raw: rawContent });
+    // Try to extract from markdown fences
+    const jsonMatch = rawContent.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      parsed = safeParseJson(jsonMatch[1]);
+    }
+  }
+  
+  // Handle both { easy, medium, hard } and { questions: { easy, medium, hard } } formats
+  if (parsed && typeof parsed === "object") {
+    if (parsed.questions && typeof parsed.questions === "object") {
+      parsed = parsed.questions;
+    }
+  }
+  
+  if (!parsed || typeof parsed !== "object") {
+    console.error("Invalid JSON from OpenRouter:", rawContent);
+    return res.status(500).json({ error: "OpenRouter returned invalid JSON.", raw: rawContent });
   }
 
   const trimmed = normalizeBankToPerDifficulty(
@@ -244,13 +282,13 @@ export default async function handler(req, res) {
   const questions = trimmed;
 
   if (!questions.easy.length && !questions.medium.length && !questions.hard.length) {
-    return res.status(500).json({ error: "No questions were generated by Gemini." });
+    return res.status(500).json({ error: "No questions were generated by OpenRouter." });
   }
 
   for (const k of ["easy", "medium", "hard"]) {
     if (questions[k].length < count) {
       return res.status(500).json({
-        error: `Gemini returned only ${questions[k].length} "${k}" questions; exactly ${count} per difficulty are required.`,
+        error: `OpenRouter returned only ${questions[k].length} "${k}" questions; exactly ${count} per difficulty are required.`,
       });
     }
   }

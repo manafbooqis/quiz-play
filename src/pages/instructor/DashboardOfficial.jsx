@@ -409,6 +409,86 @@ function DashboardOfficial() {
     return json.questions;
   }
 
+  async function handleCreateManualSession() {
+    if (!currentUser) {
+      setError("You must be logged in to create a session.");
+      return;
+    }
+
+    setIsCreatingSession(true);
+    setError("");
+    setInfoMessage("");
+
+    try {
+      const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+      const nums = "23456789";
+      const pick = (s) => s[Math.floor(Math.random() * s.length)];
+      const freshGameCode = `${pick(letters)}${pick(letters)}${pick(nums)}${pick(nums)}`;
+
+      const sessionPayload = {
+        game_code: freshGameCode,
+        file_name: "Manual Questions",
+        question_count: questionCount,
+        time_per_question: timePerQuestion,
+        status: "waiting",
+        owner_uid: currentUser.id,
+        owner_email: currentUser.email || null,
+        owner_name: teacherName || "Instructor",
+        is_guest: false,
+        questions_by_difficulty: { easy: [], medium: [], hard: [] },
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data: session, error: sessionError } = await supabase
+        .from("sessions")
+        .insert(sessionPayload)
+        .select()
+        .single();
+
+      if (sessionError) {
+        console.error("Create manual session error:", sessionError);
+        throw sessionError;
+      }
+
+      // Persist to localStorage
+      const persistKey = `quizplay_session_${session.game_code}`;
+      try {
+        localStorage.setItem(
+          persistKey,
+          JSON.stringify({
+            ...session,
+            id: session.id,
+            gameCode: session.game_code,
+            questionsByDifficulty: { easy: [], medium: [], hard: [] },
+            questions_by_difficulty: { easy: [], medium: [], hard: [] },
+          })
+        );
+      } catch (e) {
+        console.warn("Failed to write session to localStorage:", e);
+      }
+
+      // Navigate to questions-preview for manual editing
+      navigate("/instructor/questions-preview", {
+        state: {
+          sessionId: session.id,
+          gameCode: session.game_code,
+          fileName: "Manual Questions",
+          questionCount,
+          timePerQuestion,
+          questionsByDifficulty: { easy: [], medium: [], hard: [] },
+          fromSession: true,
+          manualMode: true,
+        },
+      });
+    } catch (err) {
+      console.error("Error creating manual session:", err);
+      setError(`Failed to create manual session: ${err.message || "Unknown error"}`);
+    } finally {
+      setIsCreatingSession(false);
+    }
+  }
+
   async function handleGoToSession() {
     // A newly selected file always wins over "existing bank" mode (checkbox can still be on by mistake).
     const fromExistingBank = useExistingBank && !selectedFile;
@@ -485,15 +565,74 @@ function DashboardOfficial() {
           selectedQuestionBank.questionsByDifficulty;
         setInfoMessage("Using existing question bank.");
       } else {
-        // Use empty banks as placeholder — AI will replace them.
-        // NEVER use hardcoded mock questions that are unrelated to the uploaded file.
-        questionsByDifficulty = emptyQuestionBanks();
+        // Generate AI questions first, then create session
+        const useAi = import.meta.env.VITE_USE_AI_QUESTIONS === "true";
+
+        if (useAi) {
+          setInfoMessage("Generating questions using AI from your uploaded file...");
+
+          try {
+            const aiQuestions = await fetchAiQuestions({
+              sessionId: null, // No session yet
+              sessionGameCode: gameCode,
+              freshBase64,
+              freshMime,
+              freshFileName,
+            });
+
+            if (aiQuestions && typeof aiQuestions === "object") {
+              questionsByDifficulty = aiQuestions;
+              setInfoMessage("AI-generated questions loaded successfully.");
+            } else {
+              setInfoMessage("AI returned invalid data. Please try again or use a saved question bank.");
+              setIsCreatingSession(false);
+              return; // Don't create session with invalid AI data
+            }
+          } catch (aiError) {
+            console.warn("[AI] Generation failed:", aiError);
+            
+            // Check for specific OpenRouter errors
+            if (aiError.message?.includes("Payment Required") || aiError.message?.includes("Insufficient credits")) {
+              setInfoMessage("OpenRouter credits are required. Please add credits to your OpenRouter account or use a saved question bank.");
+              setIsCreatingSession(false);
+              return;
+            }
+            
+            // Check if AI is rate limited
+            const isRateLimit = 
+              aiError.message?.includes("429") ||
+              aiError.message?.includes("Too Many Requests") ||
+              aiError.message?.includes("rate limit");
+            
+            // Check if AI is temporarily busy
+            const isBusy = 
+              aiError.message?.includes("Service Unavailable") ||
+              aiError.message?.includes("high demand") ||
+              aiError.message?.includes("UNAVAILABLE") ||
+              aiError.message?.includes("503");
+            
+            if (isRateLimit) {
+              setInfoMessage("AI free model rate limit reached. Please wait a few minutes, try another model, use a saved question bank, or add questions manually.");
+            } else if (isBusy) {
+              setInfoMessage("AI is temporarily busy. Please try again in a few minutes, use a saved question bank, or add questions manually.");
+            } else {
+              setInfoMessage(`AI generation failed: ${aiError.message}. Please try again, use a saved question bank, or add questions manually.`);
+            }
+            
+            setIsCreatingSession(false);
+            return; // Don't create session with failed AI
+          }
+        } else {
+          setInfoMessage("AI is disabled — add questions manually.");
+          questionsByDifficulty = emptyQuestionBanks();
+        }
       }
 
       if (!questionsByDifficulty || typeof questionsByDifficulty !== "object") {
         questionsByDifficulty = { easy: [], medium: [], hard: [] };
       }
 
+      // Only create session after we have valid questions
       const sessionPayload = {
         game_code: gameCode,
         file_name: sessionFileName,
@@ -524,56 +663,6 @@ function DashboardOfficial() {
         );
 
         throw sessionError;
-      }
-
-      if (!fromExistingBank) {
-        const useAi = import.meta.env.VITE_USE_AI_QUESTIONS === "true";
-
-        if (useAi) {
-          setInfoMessage("Generating questions using AI from your uploaded file...");
-
-          try {
-            const aiQuestions = await fetchAiQuestions({
-              sessionId: session.id,
-              sessionGameCode: session.game_code,
-              freshBase64,
-              freshMime,
-              freshFileName,
-            });
-
-            if (aiQuestions && typeof aiQuestions === "object") {
-              questionsByDifficulty = aiQuestions;
-              setInfoMessage("AI-generated questions loaded successfully.");
-
-              await supabase
-                .from("sessions")
-                .update({ questions_by_difficulty: questionsByDifficulty })
-                .eq("id", session.id);
-            } else {
-              setInfoMessage("AI returned invalid data. Questions are empty — please edit manually.");
-            }
-          } catch (aiError) {
-            console.warn("[AI] Generation failed:", aiError);
-            
-            // Check if AI is temporarily busy
-            const isBusy = 
-              aiError.message?.includes("Service Unavailable") ||
-              aiError.message?.includes("high demand") ||
-              aiError.message?.includes("UNAVAILABLE") ||
-              aiError.message?.includes("503");
-            
-            if (isBusy) {
-              setInfoMessage("AI is temporarily busy. Please try again in a few minutes, use a saved question bank, or add questions manually.");
-            } else {
-              setInfoMessage(`AI generation failed: ${aiError.message}. Questions are empty — please edit manually.`);
-            }
-            
-            setIsCreatingSession(false);
-            return; // Don't navigate to SessionOfficial with empty questions
-          }
-        } else {
-          setInfoMessage("Session saved. AI is disabled — add questions manually.");
-        }
       }
 
       // Only persist locally after generation (or existing bank path) so we never cache empty/mock banks ahead of AI.
@@ -1055,6 +1144,20 @@ function DashboardOfficial() {
               ].join(" ")}
             >
               {isCreatingSession ? "Creating session..." : "Create Session"}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCreateManualSession}
+              disabled={isCreatingSession}
+              className={[
+                "mt-3 w-full px-5 py-3.5 rounded-2xl transition font-bold",
+                isCreatingSession
+                  ? "bg-slate-200 text-slate-500 cursor-not-allowed"
+                  : "bg-emerald-600 text-white hover:bg-emerald-700",
+              ].join(" ")}
+            >
+              {isCreatingSession ? "Creating session..." : "Create Questions Manually"}
             </button>
 
             <p className="text-xs text-slate-500 mt-4 leading-5">
