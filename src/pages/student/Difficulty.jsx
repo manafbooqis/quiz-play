@@ -98,11 +98,7 @@ function Difficulty() {
 
   useEffect(() => {
     if (!hasSessionData) return;
-    
-    if (answeredIds.length >= maxQuestions) {
-      navigate("/student/final-results", { state: { ...state, questionCount: maxQuestions } });
-    }
-  }, [hasSessionData, answeredIds.length, maxQuestions, navigate, state]);
+  }, [hasSessionData]);
 
   if (!hasSessionData) {
     return (

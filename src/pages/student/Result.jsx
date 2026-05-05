@@ -31,19 +31,7 @@ function Result() {
   const isFinished = nextIndex >= TOTAL_QUESTIONS;
 
   const onNext = () => {
-    if (isFinished) {
-      navigate("/student/final-results", {
-        state: {
-          ...state,
-          totalPoints,
-          questionIndex: nextIndex,
-          totalQuestions: TOTAL_QUESTIONS,
-        },
-      });
-      return;
-    }
-
-    navigate("/student/difficulty", {
+    navigate("/student/round-results", {
       state: {
         ...state,
         questionIndex: nextIndex,
