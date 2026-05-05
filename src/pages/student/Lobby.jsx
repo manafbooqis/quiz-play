@@ -79,6 +79,18 @@ function Lobby() {
 
   const { studentName, gameCode } = state;
 
+  // Helper function to check if student can navigate to Difficulty
+  const canNavigateToDifficulty = (session) => {
+    const canNavigate = session?.status === "active" && !!session?.current_question_id;
+    console.log("[Lobby Navigation Check]", {
+      status: session?.status,
+      current_question_id: session?.current_question_id,
+      canNavigate,
+      trigger: "helper"
+    });
+    return canNavigate;
+  };
+
   // Setup real-time session monitoring
   useEffect(() => {
     if (!gameCode) return;
@@ -102,8 +114,8 @@ function Lobby() {
           console.log("Lobby session status:", session.status);
           console.log("Lobby current question:", session.current_question_id);
 
-          // If session is already active, navigate to question page
-          if (session.status === "active") {
+          // If session is already active and has current question, navigate to Difficulty
+          if (canNavigateToDifficulty(session)) {
             const saved = localStorage.getItem(`quizplay_session_${gameCode}`);
             const savedSession = saved ? JSON.parse(saved) : null;
             const questionsByDifficulty = savedSession?.questionsByDifficulty || savedSession?.questions_by_difficulty || session.questions_by_difficulty;
@@ -150,7 +162,7 @@ function Lobby() {
         console.log("Lobby updated current question:", updatedSession.current_question_id);
 
         // Auto-navigate when quiz starts
-        if (updatedSession.status === "active" && updatedSession.current_question_id) {
+        if (canNavigateToDifficulty(updatedSession)) {
           const saved = localStorage.getItem(`quizplay_session_${gameCode}`);
           const savedSession = saved ? JSON.parse(saved) : null;
           const questionsByDifficulty = savedSession?.questionsByDifficulty || savedSession?.questions_by_difficulty || updatedSession.questions_by_difficulty;
@@ -188,7 +200,7 @@ function Lobby() {
 
         if (!pollError && session) {
           console.log("Lobby polling session:", session);
-          if (session.status === "active" && session.current_question_id) {
+          if (canNavigateToDifficulty(session)) {
             const saved = localStorage.getItem(`quizplay_session_${gameCode}`);
             const savedSession = saved ? JSON.parse(saved) : null;
             const questionsByDifficulty = savedSession?.questionsByDifficulty || savedSession?.questions_by_difficulty;
