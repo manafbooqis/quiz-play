@@ -3,21 +3,26 @@ import { Link } from "react-router-dom";
 function Home() {
   return (
     <>
-      {/* Enhanced Racing Background */}
+      {/* Rich Racing Background */}
       <div className="fixed inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 overflow-hidden pointer-events-none">
+        
+        {/* Layered depth glows */}
+        <div className="absolute inset-0 bg-gradient-to-t from-cyan-400/5 via-transparent to-pink-400/5 animate-pulse" style={{ animationDuration: '8s' }} />
+        <div className="absolute inset-0 bg-gradient-radial from-cyan-400/8 via-transparent to-transparent opacity-60" style={{ background: 'radial-gradient(circle at 30% 50%, rgba(6, 182, 212, 0.08) 0%, transparent 50%)' }} />
+        <div className="absolute inset-0 bg-gradient-radial from-pink-400/8 via-transparent to-transparent opacity-60" style={{ background: 'radial-gradient(circle at 70% 50%, rgba(236, 72, 153, 0.08) 0%, transparent 50%)' }} />
         
         {/* Stronger curved neon racing lanes */}
         <div className="absolute inset-0">
           {/* Left side - enhanced cyan/blue racing track */}
-          <svg className="absolute top-0 left-0 w-1/2 h-full" viewBox="0 0 400 800" style={{ opacity: 0.8 }}>
+          <svg className="absolute top-0 left-0 w-1/2 h-full" viewBox="0 0 400 800" style={{ opacity: 0.9 }}>
             <defs>
               <linearGradient id="cyanTrack" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.6" />
-                <stop offset="50%" stopColor="#0891b2" stopOpacity="0.9" />
-                <stop offset="100%" stopColor="#0e7490" stopOpacity="0.4" />
+                <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.8" />
+                <stop offset="50%" stopColor="#0891b2" stopOpacity="1" />
+                <stop offset="100%" stopColor="#0e7490" stopOpacity="0.5" />
               </linearGradient>
               <filter id="cyanGlow">
-                <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+                <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
                 <feMerge>
                   <feMergeNode in="coloredBlur"/>
                   <feMergeNode in="SourceGraphic"/>
@@ -25,44 +30,53 @@ function Home() {
               </filter>
             </defs>
             <path
-              d="M 40 0 Q 140 200 60 400 T 80 800"
+              d="M 30 0 Q 150 200 50 400 T 70 800"
               stroke="url(#cyanTrack)"
-              strokeWidth="6"
+              strokeWidth="8"
               fill="none"
               filter="url(#cyanGlow)"
               className="animate-pulse"
               style={{ animationDuration: '3s' }}
             />
             <path
-              d="M 20 0 Q 120 200 40 400 T 60 800"
+              d="M 10 0 Q 130 200 30 400 T 50 800"
               stroke="#06b6d4"
-              strokeWidth="3"
+              strokeWidth="4"
               fill="none"
-              opacity="0.5"
+              opacity="0.6"
               className="animate-pulse"
               style={{ animationDelay: '1s', animationDuration: '3s' }}
             />
             <path
-              d="M 60 0 Q 160 200 80 400 T 100 800"
+              d="M 50 0 Q 170 200 70 400 T 90 800"
               stroke="#0891b2"
-              strokeWidth="2"
+              strokeWidth="3"
               fill="none"
-              opacity="0.3"
+              opacity="0.4"
               className="animate-pulse"
               style={{ animationDelay: '2s', animationDuration: '3s' }}
+            />
+            <path
+              d="M 70 0 Q 190 200 90 400 T 110 800"
+              stroke="#0e7490"
+              strokeWidth="2"
+              fill="none"
+              opacity="0.2"
+              className="animate-pulse"
+              style={{ animationDelay: '3s', animationDuration: '3s' }}
             />
           </svg>
           
           {/* Right side - enhanced pink/purple racing track */}
-          <svg className="absolute top-0 right-0 w-1/2 h-full" viewBox="0 0 400 800" style={{ opacity: 0.8 }}>
+          <svg className="absolute top-0 right-0 w-1/2 h-full" viewBox="0 0 400 800" style={{ opacity: 0.9 }}>
             <defs>
               <linearGradient id="pinkTrack" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#ec4899" stopOpacity="0.6" />
-                <stop offset="50%" stopColor="#db2777" stopOpacity="0.9" />
-                <stop offset="100%" stopColor="#be185d" stopOpacity="0.4" />
+                <stop offset="0%" stopColor="#ec4899" stopOpacity="0.8" />
+                <stop offset="50%" stopColor="#db2777" stopOpacity="1" />
+                <stop offset="100%" stopColor="#be185d" stopOpacity="0.5" />
               </linearGradient>
               <filter id="pinkGlow">
-                <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+                <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
                 <feMerge>
                   <feMergeNode in="coloredBlur"/>
                   <feMergeNode in="SourceGraphic"/>
@@ -70,48 +84,61 @@ function Home() {
               </filter>
             </defs>
             <path
-              d="M 360 0 Q 260 200 340 400 T 320 800"
+              d="M 370 0 Q 250 200 350 400 T 330 800"
               stroke="url(#pinkTrack)"
-              strokeWidth="6"
+              strokeWidth="8"
               fill="none"
               filter="url(#pinkGlow)"
               className="animate-pulse"
               style={{ animationDuration: '3s', animationDelay: '1.5s' }}
             />
             <path
-              d="M 380 0 Q 280 200 360 400 T 340 800"
+              d="M 390 0 Q 270 200 370 400 T 350 800"
               stroke="#ec4899"
-              strokeWidth="3"
+              strokeWidth="4"
               fill="none"
-              opacity="0.5"
+              opacity="0.6"
               className="animate-pulse"
               style={{ animationDelay: '2.5s', animationDuration: '3s' }}
             />
             <path
-              d="M 340 0 Q 240 200 320 400 T 300 800"
+              d="M 350 0 Q 230 200 330 400 T 310 800"
               stroke="#db2777"
-              strokeWidth="2"
+              strokeWidth="3"
               fill="none"
-              opacity="0.3"
+              opacity="0.4"
               className="animate-pulse"
               style={{ animationDelay: '3.5s', animationDuration: '3s' }}
+            />
+            <path
+              d="M 330 0 Q 210 200 310 400 T 290 800"
+              stroke="#be185d"
+              strokeWidth="2"
+              fill="none"
+              opacity="0.2"
+              className="animate-pulse"
+              style={{ animationDelay: '4.5s', animationDuration: '3s' }}
             />
           </svg>
         </div>
 
         {/* Enhanced speed lines */}
-        <div className="absolute top-1/4 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-400/50 to-transparent animate-pulse" style={{ animationDuration: '2s' }} />
-        <div className="absolute top-1/2 left-0 w-full h-1 bg-gradient-to-r from-transparent via-pink-400/50 to-transparent animate-pulse" style={{ animationDelay: '0.7s', animationDuration: '2s' }} />
-        <div className="absolute top-3/4 left-0 w-full h-1 bg-gradient-to-r from-transparent via-yellow-300/30 to-transparent animate-pulse" style={{ animationDelay: '1.4s', animationDuration: '2s' }} />
+        <div className="absolute top-1/4 left-0 w-full h-1.5 bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent animate-pulse" style={{ animationDuration: '2s' }} />
+        <div className="absolute top-1/2 left-0 w-full h-1.5 bg-gradient-to-r from-transparent via-pink-400/60 to-transparent animate-pulse" style={{ animationDelay: '0.7s', animationDuration: '2s' }} />
+        <div className="absolute top-3/4 left-0 w-full h-1.5 bg-gradient-to-r from-transparent via-yellow-300/40 to-transparent animate-pulse" style={{ animationDelay: '1.4s', animationDuration: '2s' }} />
+        <div className="absolute top-1/6 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent animate-pulse" style={{ animationDelay: '2.1s', animationDuration: '2s' }} />
+        <div className="absolute top-5/6 left-0 w-full h-1 bg-gradient-to-r from-transparent via-pink-400/30 to-transparent animate-pulse" style={{ animationDelay: '2.8s', animationDuration: '2s' }} />
         
         {/* More diagonal speed streaks */}
-        <div className="absolute top-20 right-1/4 w-40 h-1 bg-gradient-to-l from-transparent via-cyan-400/30 to-transparent transform rotate-45 animate-pulse" style={{ animationDelay: '0.3s', animationDuration: '2s' }} />
-        <div className="absolute bottom-32 left-1/4 w-32 h-1 bg-gradient-to-r from-transparent via-pink-400/30 to-transparent transform rotate-12 animate-pulse" style={{ animationDelay: '1s', animationDuration: '2s' }} />
-        <div className="absolute top-60 left-1/3 w-28 h-0.5 bg-gradient-to-r from-transparent via-cyan-400/25 to-transparent transform -rotate-12 animate-pulse" style={{ animationDelay: '1.7s', animationDuration: '2s' }} />
-        <div className="absolute bottom-48 right-1/3 w-36 h-0.5 bg-gradient-to-l from-transparent via-pink-400/25 to-transparent transform -rotate-6 animate-pulse" style={{ animationDelay: '2.3s', animationDuration: '2s' }} />
+        <div className="absolute top-20 right-1/4 w-48 h-1.5 bg-gradient-to-l from-transparent via-cyan-400/40 to-transparent transform rotate-45 animate-pulse" style={{ animationDelay: '0.3s', animationDuration: '2s' }} />
+        <div className="absolute bottom-32 left-1/4 w-40 h-1.5 bg-gradient-to-r from-transparent via-pink-400/40 to-transparent transform rotate-12 animate-pulse" style={{ animationDelay: '1s', animationDuration: '2s' }} />
+        <div className="absolute top-60 left-1/3 w-36 h-1 bg-gradient-to-r from-transparent via-cyan-400/35 to-transparent transform -rotate-12 animate-pulse" style={{ animationDelay: '1.7s', animationDuration: '2s' }} />
+        <div className="absolute bottom-48 right-1/3 w-44 h-1 bg-gradient-to-l from-transparent via-pink-400/35 to-transparent transform -rotate-6 animate-pulse" style={{ animationDelay: '2.3s', animationDuration: '2s' }} />
+        <div className="absolute top-40 right-1/3 w-32 h-0.5 bg-gradient-to-l from-transparent via-cyan-400/25 to-transparent transform rotate-6 animate-pulse" style={{ animationDelay: '3s', animationDuration: '2s' }} />
+        <div className="absolute bottom-60 left-1/3 w-28 h-0.5 bg-gradient-to-r from-transparent via-pink-400/25 to-transparent transform -rotate-3 animate-pulse" style={{ animationDelay: '3.7s', animationDuration: '2s' }} />
 
         {/* Enhanced checkered flag patterns */}
-        <div className="absolute bottom-12 right-12 w-16 h-16 opacity-15">
+        <div className="absolute bottom-12 right-12 w-20 h-20 opacity-20">
           <div className="grid grid-cols-2 gap-0">
             <div className="bg-white"></div>
             <div className="bg-black"></div>
@@ -119,7 +146,7 @@ function Home() {
             <div className="bg-white"></div>
           </div>
         </div>
-        <div className="absolute top-24 left-16 w-10 h-10 opacity-12">
+        <div className="absolute top-24 left-16 w-12 h-12 opacity-15">
           <div className="grid grid-cols-2 gap-0">
             <div className="bg-white"></div>
             <div className="bg-black"></div>
@@ -127,7 +154,15 @@ function Home() {
             <div className="bg-white"></div>
           </div>
         </div>
-        <div className="absolute bottom-20 left-24 w-8 h-8 opacity-10">
+        <div className="absolute bottom-20 left-24 w-10 h-10 opacity-12">
+          <div className="grid grid-cols-2 gap-0">
+            <div className="bg-white"></div>
+            <div className="bg-black"></div>
+            <div className="bg-black"></div>
+            <div className="bg-white"></div>
+          </div>
+        </div>
+        <div className="absolute top-48 right-20 w-8 h-8 opacity-10">
           <div className="grid grid-cols-2 gap-0">
             <div className="bg-white"></div>
             <div className="bg-black"></div>
@@ -136,34 +171,291 @@ function Home() {
           </div>
         </div>
 
-        {/* Enhanced floating game/racing particles */}
-        <div className="absolute top-20 left-12 w-4 h-4 bg-cyan-400/25 rounded-full animate-ping border border-cyan-400/40" />
-        <div className="absolute top-44 right-20 w-3 h-3 bg-pink-400/25 rounded-full animate-ping border border-pink-400/40" style={{ animationDelay: '1.8s' }} />
-        <div className="absolute bottom-36 left-1/3 w-5 h-5 bg-yellow-300/20 rounded-lg animate-pulse border border-yellow-300/30" style={{ animationDelay: '0.8s' }}>
-          <span className="text-yellow-300/70 text-sm flex items-center justify-center h-full">🏆</span>
+        {/* Rich decorative background elements */}
+        
+        {/* Tiny question marks - cyan side */}
+        <div className="absolute top-16 left-8 w-3 h-3 text-cyan-300/30 animate-pulse" style={{ animationDelay: '0.5s', animationDuration: '3s' }}>
+          <span className="text-lg">?</span>
         </div>
-        <div className="absolute top-60 right-1/3 w-4 h-4 bg-cyan-400/20 rounded-full animate-pulse border border-cyan-400/30" style={{ animationDelay: '2.8s' }}>
-          <span className="text-cyan-300/70 text-sm flex items-center justify-center h-full">?</span>
+        <div className="absolute top-28 left-24 w-2 h-2 text-cyan-300/25 animate-pulse" style={{ animationDelay: '2.1s', animationDuration: '3s' }}>
+          <span className="text-sm">?</span>
         </div>
-        <div className="absolute bottom-60 right-16 w-3 h-3 bg-pink-400/20 rounded-full animate-ping border border-pink-400/30" style={{ animationDelay: '2.3s' }} />
-        <div className="absolute top-76 left-1/4 w-4 h-4 bg-cyan-400/15 rounded animate-pulse border border-cyan-400/25" style={{ animationDelay: '1.3s' }}>
-          <span className="text-cyan-300/60 text-sm flex items-center justify-center h-full">⚡</span>
+        <div className="absolute top-64 left-16 w-2 h-2 text-cyan-300/20 animate-pulse" style={{ animationDelay: '3.7s', animationDuration: '3s' }}>
+          <span className="text-sm">?</span>
         </div>
-        <div className="absolute bottom-44 left-16 w-3 h-3 bg-pink-400/15 rounded-full animate-ping border border-pink-400/25" style={{ animationDelay: '3.3s' }} />
-        <div className="absolute top-32 right-12 w-2 h-2 bg-yellow-300/15 rounded-full animate-pulse border border-yellow-300/25" style={{ animationDelay: '2s' }}>
-          <span className="text-yellow-300/60 text-xs flex items-center justify-center h-full">🏁</span>
+        <div className="absolute bottom-24 left-8 w-3 h-3 text-cyan-300/25 animate-pulse" style={{ animationDelay: '1.3s', animationDuration: '3s' }}>
+          <span className="text-lg">?</span>
         </div>
+        
+        {/* Tiny question marks - pink side */}
+        <div className="absolute top-20 right-8 w-3 h-3 text-pink-300/30 animate-pulse" style={{ animationDelay: '1.8s', animationDuration: '3s' }}>
+          <span className="text-lg">?</span>
+        </div>
+        <div className="absolute top-48 right-24 w-2 h-2 text-pink-300/25 animate-pulse" style={{ animationDelay: '3.4s', animationDuration: '3s' }}>
+          <span className="text-sm">?</span>
+        </div>
+        <div className="absolute bottom-32 right-12 w-2 h-2 text-pink-300/20 animate-pulse" style={{ animationDelay: '0.9s', animationDuration: '3s' }}>
+          <span className="text-sm">?</span>
+        </div>
+        
+        {/* Tiny trophies */}
+        <div className="absolute top-12 left-32 w-4 h-4 text-yellow-300/35 animate-pulse" style={{ animationDelay: '2.6s', animationDuration: '4s' }}>
+          <span className="text-xl">🏆</span>
+        </div>
+        <div className="absolute bottom-16 right-32 w-3 h-3 text-yellow-300/30 animate-pulse" style={{ animationDelay: '4.2s', animationDuration: '4s' }}>
+          <span className="text-lg">🏆</span>
+        </div>
+        <div className="absolute top-72 right-40 w-2 h-2 text-yellow-300/25 animate-pulse" style={{ animationDelay: '1.1s', animationDuration: '4s' }}>
+          <span className="text-base">🏆</span>
+        </div>
+        
+        {/* Tiny lightning bolts */}
+        <div className="absolute top-36 left-8 w-3 h-3 text-cyan-300/40 animate-pulse" style={{ animationDelay: '0.7s', animationDuration: '2.5s' }}>
+          <span className="text-xl">⚡</span>
+        </div>
+        <div className="absolute top-56 left-28 w-2 h-2 text-cyan-300/30 animate-pulse" style={{ animationDelay: '2.9s', animationDuration: '2.5s' }}>
+          <span className="text-lg">⚡</span>
+        </div>
+        <div className="absolute bottom-40 right-8 w-3 h-3 text-pink-300/35 animate-pulse" style={{ animationDelay: '3.1s', animationDuration: '2.5s' }}>
+          <span className="text-xl">⚡</span>
+        </div>
+        <div className="absolute bottom-20 right-24 w-2 h-2 text-pink-300/25 animate-pulse" style={{ animationDelay: '4.6s', animationDuration: '2.5s' }}>
+          <span className="text-lg">⚡</span>
+        </div>
+        
+        {/* Tiny checkered flags */}
+        <div className="absolute top-8 left-48 w-2 h-2 opacity-15 animate-pulse" style={{ animationDelay: '1.5s', animationDuration: '3s' }}>
+          <div className="grid grid-cols-2 gap-0">
+            <div className="bg-white"></div>
+            <div className="bg-black"></div>
+            <div className="bg-black"></div>
+            <div className="bg-white"></div>
+          </div>
+        </div>
+        <div className="absolute bottom-8 right-48 w-2 h-2 opacity-12 animate-pulse" style={{ animationDelay: '3.8s', animationDuration: '3s' }}>
+          <div className="grid grid-cols-2 gap-0">
+            <div className="bg-white"></div>
+            <div className="bg-black"></div>
+            <div className="bg-black"></div>
+            <div className="bg-white"></div>
+          </div>
+        </div>
+        <div className="absolute top-40 right-36 w-1.5 h-1.5 opacity-10 animate-pulse" style={{ animationDelay: '2.2s', animationDuration: '3s' }}>
+          <div className="grid grid-cols-2 gap-0">
+            <div className="bg-white"></div>
+            <div className="bg-black"></div>
+            <div className="bg-black"></div>
+            <div className="bg-white"></div>
+          </div>
+        </div>
+        
+        {/* Tiny stars and sparkles */}
+        <div className="absolute top-24 left-40 w-2 h-2 text-cyan-300/35 animate-pulse" style={{ animationDelay: '1.9s', animationDuration: '2s' }}>
+          <span className="text-lg">✨</span>
+        </div>
+        <div className="absolute top-52 right-40 w-2 h-2 text-pink-300/30 animate-pulse" style={{ animationDelay: '3.3s', animationDuration: '2s' }}>
+          <span className="text-lg">✨</span>
+        </div>
+        <div className="absolute bottom-36 left-36 w-1.5 h-1.5 text-cyan-300/25 animate-pulse" style={{ animationDelay: '0.4s', animationDuration: '2s' }}>
+          <span className="text-base">✨</span>
+        </div>
+        <div className="absolute bottom-52 right-36 w-1.5 h-1.5 text-pink-300/20 animate-pulse" style={{ animationDelay: '4.1s', animationDuration: '2s' }}>
+          <span className="text-base">✨</span>
+        </div>
+        <div className="absolute top-68 left-44 w-1 h-1 text-cyan-300/20 animate-pulse" style={{ animationDelay: '2.7s', animationDuration: '2s' }}>
+          <span className="text-sm">✨</span>
+        </div>
+        <div className="absolute top-12 right-44 w-1 h-1 text-pink-300/15 animate-pulse" style={{ animationDelay: '4.8s', animationDuration: '2s' }}>
+          <span className="text-sm">✨</span>
+        </div>
+        
+        {/* Tiny game symbols */}
+        <div className="absolute top-32 left-12 w-2 h-2 text-cyan-300/30 animate-pulse" style={{ animationDelay: '1.2s', animationDuration: '3.5s' }}>
+          <span className="text-lg">🎮</span>
+        </div>
+        <div className="absolute top-64 right-12 w-2 h-2 text-pink-300/25 animate-pulse" style={{ animationDelay: '3.6s', animationDuration: '3.5s' }}>
+          <span className="text-lg">🎯</span>
+        </div>
+        <div className="absolute bottom-28 left-20 w-1.5 h-1.5 text-cyan-300/20 animate-pulse" style={{ animationDelay: '4.3s', animationDuration: '3.5s' }}>
+          <span className="text-base">🎮</span>
+        </div>
+        <div className="absolute bottom-12 right-20 w-1.5 h-1.5 text-pink-300/15 animate-pulse" style={{ animationDelay: '0.6s', animationDuration: '3.5s' }}>
+          <span className="text-base">🎯</span>
+        </div>
+        
+        {/* Tiny glowing dots/particles */}
+        <div className="absolute top-8 left-20 w-1.5 h-1.5 bg-cyan-400/25 rounded-full animate-ping" style={{ animationDelay: '0.8s' }} />
+        <div className="absolute top-16 right-20 w-1 h-1 bg-pink-400/20 rounded-full animate-ping" style={{ animationDelay: '2.3s' }} />
+        <div className="absolute top-40 left-8 w-1 h-1 bg-cyan-400/20 rounded-full animate-ping" style={{ animationDelay: '3.9s' }} />
+        <div className="absolute top-40 right-8 w-1.5 h-1.5 bg-pink-400/25 rounded-full animate-ping" style={{ animationDelay: '1.4s' }} />
+        <div className="absolute bottom-32 left-12 w-1 h-1 bg-cyan-400/15 rounded-full animate-ping" style={{ animationDelay: '4.5s' }} />
+        <div className="absolute bottom-32 right-12 w-1 h-1 bg-pink-400/15 rounded-full animate-ping" style={{ animationDelay: '2.8s' }} />
+        <div className="absolute bottom-8 left-36 w-1.5 h-1.5 bg-cyan-400/20 rounded-full animate-ping" style={{ animationDelay: '3.2s' }} />
+        <div className="absolute bottom-8 right-36 w-1 h-1 bg-pink-400/15 rounded-full animate-ping" style={{ animationDelay: '1.7s' }} />
+        <div className="absolute top-48 left-36 w-1 h-1 bg-cyan-400/15 rounded-full animate-ping" style={{ animationDelay: '4.7s' }} />
+        <div className="absolute top-48 right-36 w-1 h-1 bg-pink-400/15 rounded-full animate-ping" style={{ animationDelay: '0.3s' }} />
+        
+        {/* Tiny neon geometric shapes */}
+        <div className="absolute top-20 left-56 w-2 h-2 border-2 border-cyan-400/20 rotate-45 animate-pulse" style={{ animationDelay: '2.4s', animationDuration: '3s' }} />
+        <div className="absolute top-60 right-56 w-1.5 h-1.5 border-2 border-pink-400/15 rotate-45 animate-pulse" style={{ animationDelay: '4.9s', animationDuration: '3s' }} />
+        <div className="absolute bottom-24 left-56 w-1 h-1 border-2 border-cyan-400/15 rotate-45 animate-pulse" style={{ animationDelay: '1.6s', animationDuration: '3s' }} />
+        <div className="absolute bottom-48 right-56 w-1.5 h-1.5 border-2 border-pink-400/12 rotate-45 animate-pulse" style={{ animationDelay: '3.5s', animationDuration: '3s' }} />
+        
+        {/* Additional elements to fill empty spaces */}
+        
+        {/* More question marks for empty areas */}
+        <div className="absolute top-8 left-64 w-2 h-2 text-cyan-300/20 animate-pulse" style={{ animationDelay: '3.2s', animationDuration: '3s' }}>
+          <span className="text-sm">?</span>
+        </div>
+        <div className="absolute top-72 left-64 w-1.5 h-1.5 text-cyan-300/15 animate-pulse" style={{ animationDelay: '1.8s', animationDuration: '3s' }}>
+          <span className="text-base">?</span>
+        </div>
+        <div className="absolute top-8 right-64 w-2 h-2 text-pink-300/20 animate-pulse" style={{ animationDelay: '2.6s', animationDuration: '3s' }}>
+          <span className="text-sm">?</span>
+        </div>
+        <div className="absolute top-72 right-64 w-1.5 h-1.5 text-pink-300/15 animate-pulse" style={{ animationDelay: '4.3s', animationDuration: '3s' }}>
+          <span className="text-base">?</span>
+        </div>
+        
+        {/* More sparkles for sparse areas */}
+        <div className="absolute top-4 left-32 w-1.5 h-1.5 text-cyan-300/25 animate-pulse" style={{ animationDelay: '1.1s', animationDuration: '2s' }}>
+          <span className="text-base">✨</span>
+        </div>
+        <div className="absolute top-4 right-32 w-1.5 h-1.5 text-pink-300/20 animate-pulse" style={{ animationDelay: '3.7s', animationDuration: '2s' }}>
+          <span className="text-base">✨</span>
+        </div>
+        <div className="absolute bottom-4 left-32 w-1 h-1 text-cyan-300/20 animate-pulse" style={{ animationDelay: '2.9s', animationDuration: '2s' }}>
+          <span className="text-sm">✨</span>
+        </div>
+        <div className="absolute bottom-4 right-32 w-1 h-1 text-pink-300/15 animate-pulse" style={{ animationDelay: '4.5s', animationDuration: '2s' }}>
+          <span className="text-sm">✨</span>
+        </div>
+        
+        {/* More tiny dots for empty corners */}
+        <div className="absolute top-12 left-4 w-1 h-1 bg-cyan-400/20 rounded-full animate-ping" style={{ animationDelay: '1.3s' }} />
+        <div className="absolute top-28 left-4 w-1 h-1 bg-cyan-400/15 rounded-full animate-ping" style={{ animationDelay: '3.8s' }} />
+        <div className="absolute top-44 left-4 w-1 h-1 bg-cyan-400/18 rounded-full animate-ping" style={{ animationDelay: '2.1s' }} />
+        <div className="absolute top-60 left-4 w-1 h-1 bg-cyan-400/12 rounded-full animate-ping" style={{ animationDelay: '4.7s' }} />
+        <div className="absolute top-76 left-4 w-1 h-1 bg-cyan-400/10 rounded-full animate-ping" style={{ animationDelay: '0.9s' }} />
+        
+        <div className="absolute top-12 right-4 w-1 h-1 bg-pink-400/20 rounded-full animate-ping" style={{ animationDelay: '2.4s' }} />
+        <div className="absolute top-28 right-4 w-1 h-1 bg-pink-400/15 rounded-full animate-ping" style={{ animationDelay: '4.1s' }} />
+        <div className="absolute top-44 right-4 w-1 h-1 bg-pink-400/18 rounded-full animate-ping" style={{ animationDelay: '1.6s' }} />
+        <div className="absolute top-60 right-4 w-1 h-1 bg-pink-400/12 rounded-full animate-ping" style={{ animationDelay: '3.3s' }} />
+        <div className="absolute top-76 right-4 w-1 h-1 bg-pink-400/10 rounded-full animate-ping" style={{ animationDelay: '0.7s' }} />
+        
+        {/* More geometric shapes for empty spaces */}
+        <div className="absolute top-16 left-72 w-1.5 h-1.5 border border-cyan-400/15 rounded-full animate-pulse" style={{ animationDelay: '2.8s', animationDuration: '3s' }} />
+        <div className="absolute top-48 left-72 w-1 h-1 border border-cyan-400/12 rounded-full animate-pulse" style={{ animationDelay: '4.2s', animationDuration: '3s' }} />
+        <div className="absolute bottom-32 left-72 w-1.5 h-1.5 border border-cyan-400/10 rounded-full animate-pulse" style={{ animationDelay: '1.4s', animationDuration: '3s' }} />
+        
+        <div className="absolute top-16 right-72 w-1.5 h-1.5 border border-pink-400/15 rounded-full animate-pulse" style={{ animationDelay: '3.1s', animationDuration: '3s' }} />
+        <div className="absolute top-48 right-72 w-1 h-1 border border-pink-400/12 rounded-full animate-pulse" style={{ animationDelay: '0.5s', animationDuration: '3s' }} />
+        <div className="absolute bottom-32 right-72 w-1.5 h-1.5 border border-pink-400/10 rounded-full animate-pulse" style={{ animationDelay: '4.6s', animationDuration: '3s' }} />
+        
+        {/* More tiny trophies for sparse areas */}
+        <div className="absolute top-36 left-64 w-1.5 h-1.5 text-yellow-300/20 animate-pulse" style={{ animationDelay: '2.2s', animationDuration: '4s' }}>
+          <span className="text-base">🏆</span>
+        </div>
+        <div className="absolute bottom-56 left-64 w-1 h-1 text-yellow-300/15 animate-pulse" style={{ animationDelay: '3.9s', animationDuration: '4s' }}>
+          <span className="text-sm">🏆</span>
+        </div>
+        <div className="absolute top-36 right-64 w-1.5 h-1.5 text-yellow-300/20 animate-pulse" style={{ animationDelay: '1.7s', animationDuration: '4s' }}>
+          <span className="text-base">🏆</span>
+        </div>
+        <div className="absolute bottom-56 right-64 w-1 h-1 text-yellow-300/15 animate-pulse" style={{ animationDelay: '4.4s', animationDuration: '4s' }}>
+          <span className="text-sm">🏆</span>
+        </div>
+        
+        {/* More lightning for empty vertical spaces */}
+        <div className="absolute top-24 left-4 w-1.5 h-1.5 text-cyan-300/25 animate-pulse" style={{ animationDelay: '2.5s', animationDuration: '2.5s' }}>
+          <span className="text-base">⚡</span>
+        </div>
+        <div className="absolute top-52 left-4 w-1 h-1 text-cyan-300/20 animate-pulse" style={{ animationDelay: '4.8s', animationDuration: '2.5s' }}>
+          <span className="text-sm">⚡</span>
+        </div>
+        <div className="absolute top-24 right-4 w-1.5 h-1.5 text-pink-300/25 animate-pulse" style={{ animationDelay: '1.2s', animationDuration: '2.5s' }}>
+          <span className="text-base">⚡</span>
+        </div>
+        <div className="absolute top-52 right-4 w-1 h-1 text-pink-300/20 animate-pulse" style={{ animationDelay: '3.6s', animationDuration: '2.5s' }}>
+          <span className="text-sm">⚡</span>
+        </div>
+        
+        {/* More checkered flags for empty horizontal spaces */}
+        <div className="absolute top-40 left-4 w-1 h-1 opacity-12 animate-pulse" style={{ animationDelay: '2.7s', animationDuration: '3s' }}>
+          <div className="grid grid-cols-2 gap-0">
+            <div className="bg-white"></div>
+            <div className="bg-black"></div>
+            <div className="bg-black"></div>
+            <div className="bg-white"></div>
+          </div>
+        </div>
+        <div className="absolute top-40 right-4 w-1 h-1 opacity-10 animate-pulse" style={{ animationDelay: '1.9s', animationDuration: '3s' }}>
+          <div className="grid grid-cols-2 gap-0">
+            <div className="bg-white"></div>
+            <div className="bg-black"></div>
+            <div className="bg-black"></div>
+            <div className="bg-white"></div>
+          </div>
+        </div>
+        <div className="absolute bottom-16 left-4 w-1 h-1 opacity-8 animate-pulse" style={{ animationDelay: '3.4s', animationDuration: '3s' }}>
+          <div className="grid grid-cols-2 gap-0">
+            <div className="bg-white"></div>
+            <div className="bg-black"></div>
+            <div className="bg-black"></div>
+            <div className="bg-white"></div>
+          </div>
+        </div>
+        <div className="absolute bottom-16 right-4 w-1 h-1 opacity-8 animate-pulse" style={{ animationDelay: '0.8s', animationDuration: '3s' }}>
+          <div className="grid grid-cols-2 gap-0">
+            <div className="bg-white"></div>
+            <div className="bg-black"></div>
+            <div className="bg-black"></div>
+            <div className="bg-white"></div>
+          </div>
+        </div>
+        
+        {/* Enhanced floating game/racing particles (existing) */}
+        <div className="absolute top-20 left-12 w-5 h-5 bg-cyan-400/30 rounded-full animate-ping border border-cyan-400/50" />
+        <div className="absolute top-44 right-20 w-4 h-4 bg-pink-400/30 rounded-full animate-ping border border-pink-400/50" style={{ animationDelay: '1.8s' }} />
+        <div className="absolute bottom-36 left-1/3 w-6 h-6 bg-yellow-300/25 rounded-lg animate-pulse border border-yellow-300/40" style={{ animationDelay: '0.8s' }}>
+          <span className="text-yellow-300/80 text-sm flex items-center justify-center h-full">🏆</span>
+        </div>
+        <div className="absolute top-60 right-1/3 w-5 h-5 bg-cyan-400/25 rounded-full animate-pulse border border-cyan-400/40" style={{ animationDelay: '2.8s' }}>
+          <span className="text-cyan-300/80 text-sm flex items-center justify-center h-full">?</span>
+        </div>
+        <div className="absolute bottom-60 right-16 w-4 h-4 bg-pink-400/25 rounded-full animate-ping border border-pink-400/40" style={{ animationDelay: '2.3s' }} />
+        <div className="absolute top-76 left-1/4 w-5 h-5 bg-cyan-400/20 rounded animate-pulse border border-cyan-400/30" style={{ animationDelay: '1.3s' }}>
+          <span className="text-cyan-300/70 text-sm flex items-center justify-center h-full">⚡</span>
+        </div>
+        <div className="absolute bottom-44 left-16 w-4 h-4 bg-pink-400/20 rounded-full animate-ping border border-pink-400/30" style={{ animationDelay: '3.3s' }} />
+        <div className="absolute top-32 right-12 w-3 h-3 bg-yellow-300/20 rounded-full animate-pulse border border-yellow-300/30" style={{ animationDelay: '2s' }}>
+          <span className="text-yellow-300/70 text-xs flex items-center justify-center h-full">🏁</span>
+        </div>
+        <div className="absolute top-52 left-20 w-3 h-3 bg-cyan-400/15 rounded-full animate-ping border border-cyan-400/25" style={{ animationDelay: '4s' }} />
+        <div className="absolute bottom-28 right-28 w-3 h-3 bg-pink-400/15 rounded-full animate-pulse border border-pink-400/25" style={{ animationDelay: '4.5s' }} />
+        <div className="absolute top-68 left-32 w-2 h-2 bg-yellow-300/15 rounded-full animate-ping border border-yellow-300/25" style={{ animationDelay: '5s' }} />
 
         {/* Enhanced HUD decorations */}
-        <div className="absolute top-8 right-8 text-cyan-400/50 font-mono text-sm animate-pulse">
+        <div className="absolute top-8 right-8 text-cyan-400/60 font-mono text-sm animate-pulse">
           <div>LAP: 01</div>
           <div>TIME: --:--</div>
           <div className="text-xs mt-1">BEST: --:--</div>
+          <div className="text-xs mt-1">SPEED: 0</div>
         </div>
-        <div className="absolute bottom-8 left-8 text-pink-400/40 font-mono text-sm animate-pulse" style={{ animationDelay: '1s' }}>
+        <div className="absolute bottom-8 left-8 text-pink-400/50 font-mono text-sm animate-pulse" style={{ animationDelay: '1s' }}>
           <div>SPEED: 0</div>
           <div>GEAR: N</div>
           <div className="text-xs mt-1">MODE: RACE</div>
+          <div className="text-xs mt-1">POS: 1</div>
+        </div>
+        <div className="absolute top-32 left-8 text-cyan-400/40 font-mono text-xs animate-pulse" style={{ animationDelay: '2s' }}>
+          <div>TRACK: 01</div>
+          <div>WEATHER: CLEAR</div>
+        </div>
+        <div className="absolute bottom-32 right-8 text-pink-400/35 font-mono text-xs animate-pulse" style={{ animationDelay: '3s' }}>
+          <div>LAPS: 3/5</div>
+          <div>FUEL: 100%</div>
         </div>
       </div>
       
