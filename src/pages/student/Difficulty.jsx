@@ -349,6 +349,26 @@ function Difficulty() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
+  const handleDifficultySelect = (difficulty, points) => {
+    navigate("/student/question", {
+      state: {
+        ...state,
+        studentName,
+        gameCode,
+        sessionId,
+        currentRound: Number(state?.currentRound) || 1,
+        currentDifficulty: difficulty,
+        selectedDifficulty: difficulty,
+        pointsPerQuestion: points,
+        timePerQuestion,
+        disableTimerForTesting,
+        questionsByDifficulty,
+        roundTimerStartedAt,
+        roundTimerDuration,
+      },
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center px-6">
       {/* Rich racing background matching Join Game screen */}
