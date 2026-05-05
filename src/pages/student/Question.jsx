@@ -29,6 +29,7 @@ function Question() {
 
   const hasAnsweredRef = useRef(false);
   const timerStartRef = useRef(null);
+  const timeoutHandledRef = useRef(false);
 
   // Shared round timer from Difficulty screen
   const roundTimerStartedAt = state?.roundTimerStartedAt;
@@ -246,18 +247,10 @@ function Question() {
       const remaining = Math.max(0, roundTimerDuration - elapsed);
       setTimeLeft(remaining);
 
-      if (remaining === 0 && !hasAnsweredRef.current) {
-        // Time expired - navigate back to Difficulty without saving -1 answer
-        navigate("/student/difficulty", {
-          state: {
-            ...state,
-            studentName,
-            gameCode,
-            sessionId: resolvedSessionId || sessionId,
-            currentRound: safeCurrentRound,
-            questionCount: maxQuestions
-          }
-        });
+      if (remaining === 0 && !hasAnsweredRef.current && !timeoutHandledRef.current) {
+        // Time expired - handle timeout properly
+        timeoutHandledRef.current = true;
+        handleTimeout();
       }
     };
 
@@ -289,10 +282,195 @@ function Question() {
   ]);
 
   useEffect(() => {
+    // Reset timeout ref when a new question loads
+    timeoutHandledRef.current = false;
+    
     if (sessionId && sessionData?.current_question_id) {
       checkIfAlreadyAnswered();
     }
   }, [sessionId, sessionData?.current_question_id, currentQuestionId]);
+
+  const handleTimeout = async () => {
+    try {
+      // Resolve session ID safely
+      const targetSessionId = resolvedSessionId || sessionId;
+      const targetQuestionId = currentQuestionId || sessionData?.current_question_id;
+      
+      if (!targetSessionId || !targetQuestionId) {
+        console.error("[QuestionTimeout] missing session or question id");
+        navigate("/student/round-results", {
+          state: {
+            ...state,
+            studentName,
+            gameCode,
+            sessionId: targetSessionId,
+            currentQuestionId: targetQuestionId || "",
+            currentDifficulty,
+            currentRound: safeCurrentRound,
+            questionCount: Number(state?.questionCount) || Number(maxQuestions) || 1,
+            pointsAwarded: 0,
+            isCorrect: false,
+            selectedAnswer: null,
+            timedOut: true,
+            currentQuestion
+          }
+        });
+        return;
+      }
+
+      // Resolve player_id from session_players
+      const { data: playerRow } = await supabase
+        .from("session_players")
+        .select("id, student_name")
+        .eq("session_id", targetSessionId)
+        .eq("student_name", studentName)
+        .maybeSingle();
+
+      const resolvedPlayerId = playerRow?.student_name || studentName || playerId;
+
+      // Determine round number
+      const actualRoundNumber = Number(state?.currentRound) || Number(sessionData?.current_round) || 1;
+
+      // Get real question ID
+      const realQuestionId = currentQuestion?.id || 
+        currentQuestion?.question_id || 
+        currentQuestion?.qid || 
+        targetQuestionId;
+
+      console.log("[QuestionTimeoutDebug]", {
+        studentName,
+        gameCode,
+        targetSessionId,
+        resolvedSessionId,
+        sessionId,
+        currentRoundFromState: state?.currentRound,
+        sessionCurrentRound: sessionData?.current_round,
+        actualRoundNumber,
+        currentQuestionId,
+        targetQuestionId,
+        currentQuestion,
+        realQuestionId,
+        resolvedPlayerId,
+      });
+
+      if (!realQuestionId) {
+        console.error("[QuestionTimeout] no real question id found");
+        navigate("/student/round-results", {
+          state: {
+            ...state,
+            studentName,
+            gameCode,
+            sessionId: targetSessionId,
+            currentQuestionId: targetQuestionId || "",
+            currentDifficulty,
+            currentRound: actualRoundNumber,
+            questionCount: Number(state?.questionCount) || Number(maxQuestions) || 1,
+            pointsAwarded: 0,
+            isCorrect: false,
+            selectedAnswer: null,
+            timedOut: true,
+            currentQuestion
+          }
+        });
+        return;
+      }
+
+      // Check for existing response using the same unique constraint as normal answer
+      const { data: existingResponse } = await supabase
+        .from("responses")
+        .select("*")
+        .eq("session_id", targetSessionId)
+        .eq("question_id", String(realQuestionId))
+        .eq("player_id", resolvedPlayerId)
+        .maybeSingle();
+
+      console.log("[QuestionTimeoutDuplicateCheck]", {
+        targetSessionId,
+        realQuestionId,
+        resolvedPlayerId,
+        actualRoundNumber,
+        existingResponse,
+      });
+
+      if (!existingResponse) {
+        // Insert timeout response using upsert with same onConflict as normal answer
+        const timeoutResponse = {
+          session_id: targetSessionId,
+          question_id: String(realQuestionId),
+          player_id: resolvedPlayerId,
+          round_number: actualRoundNumber,
+          selected_answer: 0,
+          is_correct: false,
+          points_awarded: 0
+        };
+
+        const { error: upsertError } = await supabase
+          .from("responses")
+          .upsert(timeoutResponse, {
+            onConflict: "session_id,question_id,player_id"
+          });
+
+        console.log("[QuestionTimeoutUpsertResult]", {
+          timeoutResponse,
+          upsertError,
+        });
+
+        if (upsertError) throw upsertError;
+      }
+
+      // Clear round timer after timeout to prevent Difficulty from reopening with expired timer
+      const timerKey = `quizplay_round_timer_${gameCode}_${playerId}`;
+      localStorage.removeItem(timerKey);
+
+      // Navigate to RoundResults
+      navigate("/student/round-results", {
+        state: {
+          ...state,
+          studentName,
+          gameCode,
+          sessionId: targetSessionId,
+          currentQuestionId: String(realQuestionId),
+          currentDifficulty,
+          currentRound: actualRoundNumber,
+          questionCount: Number(state?.questionCount) || Number(maxQuestions) || 1,
+          timePerQuestion: (() => {
+                     const sentTimePerQuestion = Number(state?.timePerQuestion) ||
+                                                 Number(state?.time_per_question) ||
+                                                 Number(sessionData?.time_per_question) ||
+                                                 Number(roundTimerDuration) ||
+                                                 30;
+                     console.log("[TimerFlow] Question timeout -> RoundResults", { sentTimePerQuestion });
+                     return sentTimePerQuestion;
+                   })(),
+          pointsAwarded: 0,
+          isCorrect: false,
+          selectedAnswer: null,
+          timedOut: true,
+          currentQuestion,
+          questionsByDifficulty: sessionData?.questions_by_difficulty || {}
+        }
+      });
+
+    } catch (err) {
+      console.error("Error handling timeout:", err);
+      // Fallback navigation
+      navigate("/student/round-results", {
+        state: {
+          ...state,
+          studentName,
+          gameCode,
+          sessionId: resolvedSessionId || sessionId,
+          currentRound: safeCurrentRound,
+          questionCount: Number(state?.questionCount) || Number(maxQuestions) || 1,
+          pointsAwarded: 0,
+          isCorrect: false,
+          selectedAnswer: null,
+          timedOut: true,
+          currentQuestion
+        }
+      });
+    }
+  };
 
   const checkIfAlreadyAnswered = async () => {
     try {
@@ -353,6 +531,8 @@ function Question() {
     }
 
     setIsSubmitting(true);
+    // Prevent timeout from firing during normal answer submission
+    timeoutHandledRef.current = true;
 
     try {
       const targetSessionIdPre =

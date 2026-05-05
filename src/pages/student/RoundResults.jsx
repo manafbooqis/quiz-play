@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 
@@ -63,7 +63,9 @@ function RoundResults() {
   const [waitingStudents, setWaitingStudents] = useState([]);
   const [allReady, setAllReady] = useState(false);
   const [countdown, setCountdown] = useState(0);
-  const [pendingNavigation, setPendingNavigation] = useState(null);
+  const countdownStartedRef = useRef(false);
+  const countdownNavigationDoneRef = useRef(false);
+  const previousRoundRef = useRef(currentRound);
 
   // Polling logic for all-students sync
   useEffect(() => {
@@ -114,7 +116,7 @@ function RoundResults() {
 
         setAnsweredStudents(answered);
         setWaitingStudents(waiting);
-        setAllReady(waiting.length === 0);
+        setAllReady(players.length > 0 && waiting.length === 0);
 
         console.log("[RoundResults] sync", {
           currentRound,
@@ -131,32 +133,22 @@ function RoundResults() {
     return () => clearInterval(pollInterval);
   }, [gameCode, studentName, sessionId, currentRound]);
 
-  // 3-second countdown when all ready
+  // Start countdown when allReady becomes true
   useEffect(() => {
-    if (!allReady || countdown > 0) return;
-
+    if (!allReady || countdownStartedRef.current) return;
+    
+    countdownStartedRef.current = true;
     setCountdown(3);
+  }, [allReady]);
+
+  // Countdown timer - only decrement countdown
+  useEffect(() => {
+    if (countdown === 0) return;
+    
     const countdownInterval = setInterval(() => {
       setCountdown(prev => {
         if (prev <= 1) {
           clearInterval(countdownInterval);
-          // Navigate after countdown
-          if (answeredCount >= questionCount) {
-            navigate("/student/final-results", {
-              state: { studentName, gameCode, sessionId, questionCount }
-            });
-          } else {
-            navigate("/student/difficulty", {
-              state: {
-                studentName,
-                gameCode,
-                sessionId,
-                currentRound: currentRound + 1,
-                questionCount,
-                questionsByDifficulty: state?.questionsByDifficulty
-              }
-            });
-          }
           return 0;
         }
         return prev - 1;
@@ -164,7 +156,49 @@ function RoundResults() {
     }, 1000);
 
     return () => clearInterval(countdownInterval);
-  }, [allReady, answeredCount, questionCount, navigate, studentName, gameCode, sessionId, currentRound, state]);
+  }, [countdown]);
+
+  // Navigation after countdown reaches 0
+  useEffect(() => {
+    if (countdown === 0 && allReady && !countdownNavigationDoneRef.current) {
+      countdownNavigationDoneRef.current = true;
+      
+      if (Number(currentRound) >= Number(questionCount)) {
+        navigate("/student/final-results", {
+          state: { studentName, gameCode, sessionId, questionCount }
+        });
+      } else {
+        const sentTimePerQuestion = Number(state?.timePerQuestion) ||
+                                   Number(state?.time_per_question) ||
+                                   Number(sessionData?.time_per_question) ||
+                                   10;
+        
+        console.log("[TimerFlow] RoundResults -> Difficulty", { sentTimePerQuestion });
+        
+        navigate("/student/difficulty", {
+          state: {
+            studentName,
+            gameCode,
+            sessionId,
+            currentRound: Number(currentRound) + 1,
+            questionCount,
+            questionsByDifficulty: state?.questionsByDifficulty,
+            timePerQuestion: sentTimePerQuestion
+          }
+        });
+      }
+    }
+  }, [countdown, allReady, currentRound, questionCount, navigate, studentName, gameCode, sessionId, state]);
+
+  // Reset refs when currentRound changes
+  useEffect(() => {
+    if (previousRoundRef.current !== currentRound) {
+      countdownStartedRef.current = false;
+      countdownNavigationDoneRef.current = false;
+      setCountdown(0);
+      previousRoundRef.current = currentRound;
+    }
+  }, [currentRound]);
 
   useEffect(() => {
     if (!gameCode || !studentName) {
@@ -237,56 +271,7 @@ function RoundResults() {
     }
 
     loadData();
-
-    // Setup real-time subscription for session status changes
-    const subscription = supabase
-      .channel(`session-${gameCode}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'sessions',
-        filter: `game_code=eq.${gameCode}`
-      }, (payload) => {
-        const updatedSession = payload.new;
-        setSessionData(prev => ({ ...prev, ...updatedSession }));
-
-        // Set pending navigation based on status changes
-        if (updatedSession.status === "active") {
-          // Next round started
-          setPendingNavigation({
-            path: "/student/question",
-            state: {
-              studentName,
-              gameCode,
-              sessionId: updatedSession.id,
-              currentRound: updatedSession.current_round
-            }
-          });
-        } else if (updatedSession.status === "finished") {
-          // Quiz finished
-          setPendingNavigation({
-            path: "/student/final-results",
-            state: {
-              studentName,
-              gameCode,
-              sessionId: updatedSession.id
-            }
-          });
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(subscription);
-    };
   }, [gameCode, studentName, sessionId, currentRound]);
-
-  // Handle pending navigation
-  useEffect(() => {
-    if (!pendingNavigation) return;
-    navigate(pendingNavigation.path, { state: pendingNavigation.state });
-    setPendingNavigation(null);
-  }, [pendingNavigation, navigate]);
 
   if (loading) {
     return (
@@ -295,72 +280,6 @@ function RoundResults() {
       </div>
     );
   }
-
-  async function loadData() {
-    try {
-      // Load session data
-      const { data: session, error: sessionError } = await supabase
-        .from("sessions")
-        .select("*")
-        .eq("game_code", gameCode)
-        .single();
-
-      if (sessionError) throw sessionError;
-    setSessionData(session);
-
-    // Get my answered count
-    const localKey = `quizplay_answered_questions_${gameCode}_${studentName}`;
-    const stored = localStorage.getItem(localKey);
-    const answered = stored ? JSON.parse(stored) : [];
-    setAnsweredCount(answered.length);
-
-    // Load current round responses for ranking
-    const { data: responses, error: responsesError } = await supabase
-      .from("responses")
-      .select("*")
-      .eq("session_id", session.id)
-      .eq("round_number", currentRound);
-
-    if (responsesError) throw responsesError;
-
-    // Load students for names
-    const { data: players, error: playersError } = await supabase
-      .from("session_players")
-      .select("*")
-      .eq("session_id", session.id);
-
-    if (playersError) throw playersError;
-
-    // Create student name mapping
-    const studentMap = {};
-    players.forEach(player => {
-      studentMap[player.id] = getStudentName(player, 0);
-      studentMap[player.student_name] = getStudentName(player, 0);
-    });
-
-    // Process results with names and rankings
-    const processedResults = responses.map(response => ({
-      ...response,
-      studentName: studentMap[response.player_id] || response.player_id
-    })).sort((a, b) => b.points_awarded - a.points_awarded);
-
-    setRoundResults(processedResults);
-
-    // Find my result
-    const myResponse = processedResults.find(r => 
-      r.player_id === studentName || 
-      r.studentName === studentName
-    );
-    setMyResult(myResponse);
-
-      } catch (err) {
-        console.error("Error loading round results:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadData();
 
   const myRank = myResult ? roundResults.findIndex(r => r.player_id === myResult.player_id) + 1 : 0;
 

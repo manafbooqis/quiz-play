@@ -27,7 +27,11 @@ function Difficulty() {
     Number(session?.time_per_question) ||
     30;
 
-  console.log("[Timer] Difficulty timePerQuestion:", timePerQuestion);
+  console.log("[TimerFlow] Difficulty resolved", { 
+    stateTime: state?.timePerQuestion, 
+    sessionTime: session?.time_per_question, 
+    timePerQuestion 
+  });
 
   const maxQuestions =
     Number(state?.questionCount) ||
