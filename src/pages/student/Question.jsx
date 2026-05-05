@@ -721,77 +721,307 @@ function Question() {
   const options = currentQuestion.options || currentQuestion.choices || [];
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-6">
-      <div className="w-full max-w-3xl bg-slate-800 border border-slate-600 rounded-2xl shadow-xl p-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-          <div>
-            <h1 className="game-font text-3xl text-cyan-300">Question</h1>
-            <p className="text-slate-300 mt-1">
-              Round {currentRound} • Difficulty:{" "}
-              <span className="text-white capitalize">{sessionData?.current_difficulty || "unknown"}</span>
-            </p>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <div className="bg-slate-900 border border-slate-600 rounded-2xl px-5 py-3 text-center">
-              <p className="text-slate-300 text-sm">Time</p>
-              <p className="game-font text-2xl text-yellow-300">{formatTime(timeLeft)}</p>
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center px-6">
+      {/* Rich racing background matching other student screens */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        {/* Layered depth glows */}
+        <div className="absolute inset-0 bg-gradient-to-t from-cyan-400/5 via-transparent to-transparent animate-pulse" style={{ animationDuration: '8s' }} />
+        <div className="absolute inset-0 bg-gradient-radial from-cyan-400/8 via-transparent to-transparent opacity-60" style={{ background: 'radial-gradient(circle at center, rgba(6, 182, 212, 0.08) 0%, transparent 50%)' }} />
+        
+        {/* Cyan racing curves on sides */}
+        <svg className="absolute top-0 left-0 w-1/3 h-full" viewBox="0 0 300 800" style={{ opacity: 0.7 }}>
+          <defs>
+            <linearGradient id="cyanTrack" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.6" />
+              <stop offset="50%" stopColor="#0891b2" stopOpacity="0.8" />
+              <stop offset="100%" stopColor="#0e7490" stopOpacity="0.4" />
+            </linearGradient>
+            <filter id="cyanGlow">
+              <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
+          <path
+            d="M 20 0 Q 120 200 40 400 T 60 800"
+            stroke="url(#cyanTrack)"
+            strokeWidth="4"
+            fill="none"
+            filter="url(#cyanGlow)"
+            className="animate-pulse"
+            style={{ animationDuration: '3s' }}
+          />
+          <path
+            d="M 40 0 Q 140 200 60 400 T 80 800"
+            stroke="#06b6d4"
+            strokeWidth="2"
+            fill="none"
+            opacity="0.4"
+            className="animate-pulse"
+            style={{ animationDelay: '1s', animationDuration: '3s' }}
+          />
+        </svg>
+        
+        <svg className="absolute top-0 right-0 w-1/3 h-full" viewBox="0 0 300 800" style={{ opacity: 0.7 }}>
+          <path
+            d="M 280 0 Q 180 200 260 400 T 240 800"
+            stroke="url(#cyanTrack)"
+            strokeWidth="4"
+            fill="none"
+            filter="url(#cyanGlow)"
+            className="animate-pulse"
+            style={{ animationDuration: '3s', animationDelay: '1.5s' }}
+          />
+          <path
+            d="M 260 0 Q 160 200 240 400 T 220 800"
+            stroke="#06b6d4"
+            strokeWidth="2"
+            fill="none"
+            opacity="0.4"
+            className="animate-pulse"
+            style={{ animationDelay: '2.5s', animationDuration: '3s' }}
+          />
+        </svg>
+        
+        {/* Speed lines */}
+        <div className="absolute top-1/4 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent animate-pulse" style={{ animationDuration: '2s' }} />
+        <div className="absolute top-1/2 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-400/15 to-transparent animate-pulse" style={{ animationDelay: '1s', animationDuration: '2s' }} />
+        <div className="absolute top-3/4 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent animate-pulse" style={{ animationDelay: '1.4s', animationDuration: '2s' }} />
+        
+        {/* Floating decorative elements */}
+        <div className="absolute top-16 left-12 w-3 h-3 bg-cyan-400/25 rounded-full animate-ping border border-cyan-400/40" />
+        <div className="absolute top-32 right-16 w-2 h-2 bg-cyan-400/20 rounded-full animate-ping border border-cyan-400/30" style={{ animationDelay: '1.8s' }} />
+        <div className="absolute bottom-24 left-20 w-2 h-2 bg-cyan-400/15 rounded-full animate-pulse border border-cyan-400/25" style={{ animationDelay: '0.8s' }}>
+          <span className="text-cyan-300/70 text-xs flex items-center justify-center h-full">⚡</span>
+        </div>
+        <div className="absolute bottom-40 right-12 w-3 h-3 bg-cyan-400/20 rounded-full animate-ping border border-cyan-400/30" style={{ animationDelay: '2.3s' }} />
+        <div className="absolute top-48 left-24 w-2 h-2 text-cyan-300/25 animate-pulse" style={{ animationDelay: '1.3s' }}>
+          <span className="text-lg">?</span>
+        </div>
+        <div className="absolute top-48 right-24 w-2 h-2 text-cyan-300/20 animate-pulse" style={{ animationDelay: '2.8s' }}>
+          <span className="text-lg">?</span>
+        </div>
+        <div className="absolute bottom-48 left-16 w-2 h-2 text-cyan-300/15 animate-pulse" style={{ animationDelay: '3.2s' }}>
+          <span className="text-base">⚡</span>
+        </div>
+        <div className="absolute bottom-48 right-16 w-2 h-2 text-cyan-300/15 animate-pulse" style={{ animationDelay: '0.6s' }}>
+          <span className="text-base">⚡</span>
+        </div>
+        
+        {/* Question marks and flags */}
+        <div className="absolute top-24 left-32 w-2 h-2 text-cyan-300/20 animate-pulse" style={{ animationDelay: '2.1s' }}>
+          <span className="text-sm">?</span>
+        </div>
+        <div className="absolute top-72 right-32 w-2 h-2 text-cyan-300/18 animate-pulse" style={{ animationDelay: '1.5s' }}>
+          <span className="text-sm">?</span>
+        </div>
+        <div className="absolute top-36 left-64 w-1.5 h-1.5 text-cyan-300/20 animate-pulse" style={{ animationDelay: '2.2s' }}>
+          <span className="text-base">🏁</span>
+        </div>
+        <div className="absolute bottom-56 left-64 w-1 h-1 text-cyan-300/15 animate-pulse" style={{ animationDelay: '3.9s' }}>
+          <span className="text-sm">🏁</span>
+        </div>
+        <div className="absolute top-36 right-64 w-1.5 h-1.5 text-cyan-300/20 animate-pulse" style={{ animationDelay: '1.7s' }}>
+          <span className="text-base">🏁</span>
+        </div>
+        <div className="absolute bottom-56 right-64 w-1 h-1 text-cyan-300/15 animate-pulse" style={{ animationDelay: '4.4s' }}>
+          <span className="text-sm">🏁</span>
+        </div>
+        
+        {/* Tiny sparkles/stars */}
+        <div className="absolute top-4 left-24 w-1.5 h-1.5 text-cyan-300/25 animate-pulse" style={{ animationDelay: '1.1s' }}>
+          <span className="text-base">✨</span>
+        </div>
+        <div className="absolute top-4 right-24 w-1.5 h-1.5 text-cyan-300/20 animate-pulse" style={{ animationDelay: '3.7s' }}>
+          <span className="text-base">✨</span>
+        </div>
+        <div className="absolute bottom-4 left-24 w-1 h-1 text-cyan-300/20 animate-pulse" style={{ animationDelay: '2.9s' }}>
+          <span className="text-sm">✨</span>
+        </div>
+        <div className="absolute bottom-4 right-24 w-1 h-1 text-cyan-300/15 animate-pulse" style={{ animationDelay: '4.5s' }}>
+          <span className="text-sm">✨</span>
+        </div>
+        <div className="absolute top-40 left-8 w-1 h-1 text-cyan-300/20 animate-pulse" style={{ animationDelay: '2.7s' }}>
+          <span className="text-sm">✨</span>
+        </div>
+        <div className="absolute top-40 right-8 w-1 h-1 text-cyan-300/15 animate-pulse" style={{ animationDelay: '1.9s' }}>
+          <span className="text-sm">✨</span>
+        </div>
+        
+        {/* Small cyan particles */}
+        <div className="absolute top-12 left-4 w-1 h-1 bg-cyan-400/20 rounded-full animate-ping" style={{ animationDelay: '1.3s' }} />
+        <div className="absolute top-28 left-4 w-1 h-1 bg-cyan-400/15 rounded-full animate-ping" style={{ animationDelay: '3.8s' }} />
+        <div className="absolute top-44 left-4 w-1 h-1 bg-cyan-400/18 rounded-full animate-ping" style={{ animationDelay: '2.1s' }} />
+        <div className="absolute top-60 left-4 w-1 h-1 bg-cyan-400/12 rounded-full animate-ping" style={{ animationDelay: '4.7s' }} />
+        <div className="absolute top-76 left-4 w-1 h-1 bg-cyan-400/10 rounded-full animate-ping" style={{ animationDelay: '0.9s' }} />
+        
+        <div className="absolute top-12 right-4 w-1 h-1 bg-cyan-400/20 rounded-full animate-ping" style={{ animationDelay: '2.4s' }} />
+        <div className="absolute top-28 right-4 w-1 h-1 bg-cyan-400/15 rounded-full animate-ping" style={{ animationDelay: '4.1s' }} />
+        <div className="absolute top-44 right-4 w-1 h-1 bg-cyan-400/18 rounded-full animate-ping" style={{ animationDelay: '1.6s' }} />
+        <div className="absolute top-60 right-4 w-1 h-1 bg-cyan-400/12 rounded-full animate-ping" style={{ animationDelay: '3.3s' }} />
+        <div className="absolute top-76 right-4 w-1 h-1 bg-cyan-400/10 rounded-full animate-ping" style={{ animationDelay: '0.7s' }} />
+        
+        {/* Subtle racing dots */}
+        <div className="absolute top-16 left-72 w-1.5 h-1.5 border border-cyan-400/15 rounded-full animate-pulse" style={{ animationDelay: '2.8s', animationDuration: '3s' }} />
+        <div className="absolute top-48 left-72 w-1 h-1 border border-cyan-400/12 rounded-full animate-pulse" style={{ animationDelay: '4.2s', animationDuration: '3s' }} />
+        <div className="absolute bottom-32 left-72 w-1.5 h-1.5 border border-cyan-400/10 rounded-full animate-pulse" style={{ animationDelay: '1.4s', animationDuration: '3s' }} />
+        
+        <div className="absolute top-16 right-72 w-1.5 h-1.5 border border-cyan-400/15 rounded-full animate-pulse" style={{ animationDelay: '3.1s', animationDuration: '3s' }} />
+        <div className="absolute top-48 right-72 w-1 h-1 border border-cyan-400/12 rounded-full animate-pulse" style={{ animationDelay: '0.5s', animationDuration: '3s' }} />
+        <div className="absolute bottom-32 right-72 w-1.5 h-1.5 border border-cyan-400/10 rounded-full animate-pulse" style={{ animationDelay: '4.6s', animationDuration: '3s' }} />
+        
+        {/* Checkered hints */}
+        <div className="absolute top-32 left-4 w-1 h-1 opacity-12 animate-pulse" style={{ animationDelay: '2.7s', animationDuration: '3s' }}>
+          <div className="grid grid-cols-2 gap-0">
+            <div className="bg-white"></div>
+            <div className="bg-black"></div>
+            <div className="bg-black"></div>
+            <div className="bg-white"></div>
           </div>
         </div>
+        <div className="absolute top-32 right-4 w-1 h-1 opacity-10 animate-pulse" style={{ animationDelay: '1.9s', animationDuration: '3s' }}>
+          <div className="grid grid-cols-2 gap-0">
+            <div className="bg-white"></div>
+            <div className="bg-black"></div>
+            <div className="bg-black"></div>
+            <div className="bg-white"></div>
+          </div>
+        </div>
+        <div className="absolute bottom-16 left-4 w-1 h-1 opacity-8 animate-pulse" style={{ animationDelay: '3.4s', animationDuration: '3s' }}>
+          <div className="grid grid-cols-2 gap-0">
+            <div className="bg-white"></div>
+            <div className="bg-black"></div>
+            <div className="bg-black"></div>
+            <div className="bg-white"></div>
+          </div>
+        </div>
+        <div className="absolute bottom-16 right-4 w-1 h-1 opacity-8 animate-pulse" style={{ animationDelay: '0.8s', animationDuration: '3s' }}>
+          <div className="grid grid-cols-2 gap-0">
+            <div className="bg-white"></div>
+            <div className="bg-black"></div>
+            <div className="bg-black"></div>
+            <div className="bg-white"></div>
+          </div>
+        </div>
+        
+        {/* Extra speed streaks near edges */}
+        <div className="absolute top-1/6 left-0 w-full h-0.5 bg-gradient-to-r from-transparent via-cyan-400/25 to-transparent animate-pulse" style={{ animationDelay: '2.1s', animationDuration: '2s' }} />
+        <div className="absolute top-5/6 left-0 w-full h-0.5 bg-gradient-to-r from-transparent via-cyan-400/25 to-transparent animate-pulse" style={{ animationDelay: '2.8s', animationDuration: '2s' }} />
+        <div className="absolute top-20 right-1/4 w-32 h-0.5 bg-gradient-to-l from-transparent via-cyan-400/20 to-transparent transform rotate-45 animate-pulse" style={{ animationDelay: '0.3s', animationDuration: '2s' }} />
+        <div className="absolute bottom-32 left-1/4 w-28 h-0.5 bg-gradient-to-r from-transparent via-cyan-400/20 to-transparent transform rotate-12 animate-pulse" style={{ animationDelay: '1s', animationDuration: '2s' }} />
+        
+        {/* Enhanced HUD decorations */}
+        <div className="absolute top-8 right-8 text-cyan-400/50 font-mono text-xs animate-pulse">
+          <div>QUIZ: ACTIVE</div>
+          <div>MODE: ANSWER</div>
+          <div className="text-xs mt-1">TIME: {formatTime(timeLeft)}</div>
+        </div>
+        <div className="absolute bottom-8 left-8 text-cyan-400/40 font-mono text-xs animate-pulse" style={{ animationDelay: '1s' }}>
+          <div>STATUS: THINKING</div>
+          <div>ROUND: {currentRound}</div>
+          <div className="text-xs mt-1">POINTS: {sessionData?.current_difficulty || "unknown"}</div>
+        </div>
+        <div className="absolute top-32 left-8 text-cyan-400/35 font-mono text-xs animate-pulse" style={{ animationDelay: '2s' }}>
+          <div>QUESTION: {safeCurrentRound}</div>
+          <div>DIFFICULTY: {(sessionData?.current_difficulty || "unknown").toUpperCase()}</div>
+        </div>
+        <div className="absolute bottom-32 right-8 text-cyan-400/30 font-mono text-xs animate-pulse" style={{ animationDelay: '3s' }}>
+          <div>SESSION: {gameCode}</div>
+          <div>PLAYER: {studentName}</div>
+        </div>
+      </div>
+      
+      {/* Premium glassmorphic question card */}
+      <div className="relative w-full max-w-4xl bg-slate-800/60 backdrop-blur-xl rounded-3xl p-10 shadow-4xl border-2 border-cyan-400/40">
+        {/* Inner glow effect */}
+        <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/15 via-transparent to-blue-500/15 rounded-3xl opacity-60" />
+        <div className="relative z-10">
+          {/* Enhanced status header */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+            <div>
+              <h1 className="game-font text-4xl font-bold bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">Question</h1>
+              <p className="text-slate-300 mt-2 text-lg">
+                Round {currentRound} • Difficulty:{" "}
+                <span className="text-white font-semibold capitalize">{sessionData?.current_difficulty || "unknown"}</span>
+              </p>
+            </div>
 
-        <div className="text-center mb-8">
-          <h1 className="game-font text-4xl font-bold bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">
-            Question {safeCurrentRound}
-          </h1>
-          <p className="text-slate-400 mt-2">
-            {currentQuestion?.question || "Loading question..."}</p>
-          {disableTimerForTesting && (
-            <div className="mt-4 inline-flex items-center px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/50">
-              <span className="text-emerald-400 text-sm font-medium">Timer disabled for testing ∞</span>
+            <div className="flex items-center gap-4">
+              <div className="bg-slate-900/60 backdrop-blur-sm border border-slate-600 rounded-2xl px-6 py-4 text-center shadow-lg">
+                <p className="text-slate-400 text-sm uppercase tracking-wider">Time</p>
+                <p className="game-font text-3xl text-cyan-300">{formatTime(timeLeft)}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Question title area */}
+          <div className="text-center mb-8">
+            <h1 className="game-font text-5xl font-bold bg-gradient-to-r from-cyan-300 to-blue-400 bg-clip-text text-transparent">
+              Question {safeCurrentRound}
+            </h1>
+            {disableTimerForTesting && (
+              <div className="mt-4 inline-flex items-center px-4 py-2 rounded-full bg-emerald-500/20 backdrop-blur-sm border border-emerald-400/50">
+                <span className="text-emerald-400 text-sm font-medium">Timer disabled for testing ∞</span>
+              </div>
+            )}
+          </div>
+
+          {/* Premium question content card */}
+          <div className="bg-slate-900/40 backdrop-blur-md border border-slate-700/50 rounded-3xl p-8 mb-8 shadow-2xl">
+            <p className="game-font text-3xl mb-6 text-white leading-relaxed">{currentQuestion.question || currentQuestion.q || currentQuestion.question_text}</p>
+            <p className="text-slate-400 text-base">Choose one answer.</p>
+          </div>
+
+          {/* Premium answer cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            {options.map((option, index) => (
+              <button
+                type="button"
+                key={index}
+                onClick={() => {
+                  setSelectedAnswer(index);
+                  handleSubmit(index);
+                }}
+                disabled={hasAnswered || isSubmitting}
+                className={[
+                  "relative text-left rounded-2xl p-6 transition-all duration-300 transform border-2",
+                  hasAnswered || isSubmitting 
+                    ? "cursor-not-allowed bg-slate-900/40 border-slate-600/50 opacity-60" 
+                    : "bg-slate-900/30 backdrop-blur-sm border-slate-600/40 hover:bg-slate-900/40 hover:scale-105 hover:shadow-xl hover:border-cyan-400/60",
+                  selectedAnswer === index
+                    ? "border-cyan-400 bg-cyan-900/40 shadow-2xl shadow-cyan-500/25"
+                    : ""
+                ].join(" ")}
+              >
+                {/* Selected answer glow effect */}
+                {selectedAnswer === index && !hasAnswered && (
+                  <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/20 to-blue-500/20 rounded-2xl animate-pulse" style={{ animationDuration: '2s' }} />
+                )}
+                
+                <div className="relative z-10">
+                  <span className="text-white font-semibold text-lg">
+                    <span className="inline-block w-8 h-8 bg-cyan-400/20 border-2 border-cyan-400 rounded-full text-center text-cyan-300 font-bold mr-3">
+                      {String.fromCharCode(65 + index)}
+                    </span>
+                    {option}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+
+        
+          {/* Submitted waiting state */}
+          {hasAnswered && (
+            <div className="mt-8 p-6 rounded-2xl border border-cyan-400/50 bg-cyan-900/20 backdrop-blur-sm text-center shadow-xl">
+              <p className="text-cyan-200 text-lg font-medium">
+                Answer submitted! Waiting for other students...
+              </p>
             </div>
           )}
         </div>
-
-        <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 mb-6">
-          <p className="game-font text-2xl mb-4">{currentQuestion.question || currentQuestion.q || currentQuestion.question_text}</p>
-          <p className="text-slate-400 text-sm">Choose one answer.</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {options.map((option, index) => (
-            <button
-              type="button"
-              key={index}
-              onClick={() => {
-                setSelectedAnswer(index);
-                handleSubmit(index);
-              }}
-              disabled={hasAnswered || isSubmitting}
-              className={[
-                "text-left rounded-xl p-4 transition border-2",
-                hasAnswered || isSubmitting ? "cursor-not-allowed" : "hover:bg-slate-700",
-                "bg-slate-900",
-                selectedAnswer === index
-                  ? "border-cyan-400 bg-cyan-900/30"
-                  : "border-slate-700"
-              ].join(" ")}
-            >
-              <span className="text-white font-medium">
-                {String.fromCharCode(65 + index)}. {option}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        
-        {hasAnswered && (
-          <div className="mt-6 p-4 rounded-xl border border-cyan-200 bg-cyan-900/20 text-center">
-            <p className="text-cyan-200">
-              Answer submitted! Waiting for other students...
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );
