@@ -360,60 +360,278 @@ function Difficulty() {
   };
 
   const cards = [
-    { label: "Easy", diff: "easy", points: 10, badge: "bg-emerald-400" },
-    { label: "Medium", diff: "medium", points: 25, badge: "bg-yellow-300" },
-    { label: "Hard", diff: "hard", points: 50, badge: "bg-red-400" },
+    { 
+      label: "Easy", 
+      diff: "easy", 
+      points: 100, 
+      badge: "bg-gradient-to-r from-emerald-400 to-cyan-400",
+      borderColor: "border-emerald-400/60 hover:border-emerald-400/90",
+      glowColor: "hover:shadow-emerald-400/40",
+      theme: "from-emerald-400/30 to-cyan-400/30",
+      buttonBg: "bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400"
+    },
+    { 
+      label: "Medium", 
+      diff: "medium", 
+      points: 200, 
+      badge: "bg-gradient-to-r from-amber-400 to-yellow-400",
+      borderColor: "border-amber-400/60 hover:border-amber-400/90",
+      glowColor: "hover:shadow-amber-400/40",
+      theme: "from-amber-400/30 to-yellow-400/30",
+      buttonBg: "bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400"
+    },
+    { 
+      label: "Hard", 
+      diff: "hard", 
+      points: 300, 
+      badge: "bg-gradient-to-r from-red-400 to-pink-400",
+      borderColor: "border-red-400/60 hover:border-red-400/90",
+      glowColor: "hover:shadow-red-400/40",
+      theme: "from-red-400/30 to-pink-400/30",
+      buttonBg: "bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-400 hover:to-pink-400"
+    },
   ];
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-6">
-      <div className="w-full max-w-4xl bg-slate-800 border border-slate-600 rounded-2xl shadow-xl p-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
-          <div>
-            <h1 className="game-font text-3xl text-cyan-300">Pick Difficulty</h1>
-            <p className="text-slate-300 mt-2">
-              Answered: <span className="text-white font-semibold">{answeredIds.length}</span> / {maxQuestions}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-slate-400 text-sm">Time Remaining</p>
-            <p className={`game-font text-3xl mt-1 ${timeLeft <= 10 ? 'text-red-400' : 'text-yellow-300'}`}>
-              {timeLeft}s
-            </p>
-          </div>
+    <>
+      {/* Rich Racing Background */}
+      <div className="fixed inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 overflow-hidden pointer-events-none">
+        
+        {/* Layered depth glows */}
+        <div className="absolute inset-0 bg-gradient-to-t from-cyan-400/5 via-transparent to-pink-400/5 animate-pulse" style={{ animationDuration: '8s' }} />
+        <div className="absolute inset-0 bg-gradient-radial from-cyan-400/8 via-transparent to-transparent opacity-60" style={{ background: 'radial-gradient(circle at 30% 50%, rgba(6, 182, 212, 0.08) 0%, transparent 50%)' }} />
+        <div className="absolute inset-0 bg-gradient-radial from-pink-400/8 via-transparent to-transparent opacity-60" style={{ background: 'radial-gradient(circle at 70% 50%, rgba(236, 72, 153, 0.08) 0%, transparent 50%)' }} />
+        <div className="absolute inset-0 bg-gradient-radial from-yellow-400/4 via-transparent to-transparent opacity-50" style={{ background: 'radial-gradient(circle at 50% 30%, rgba(250, 204, 21, 0.04) 0%, transparent 50%)' }} />
+        
+        {/* Stronger curved neon racing lanes */}
+        <div className="absolute inset-0">
+          {/* Left side - enhanced cyan/blue racing track */}
+          <svg className="absolute top-0 left-0 w-1/3 h-full" viewBox="0 0 300 800" style={{ opacity: 0.7 }}>
+            <defs>
+              <linearGradient id="cyanTrack" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.6" />
+                <stop offset="50%" stopColor="#0891b2" stopOpacity="0.8" />
+                <stop offset="100%" stopColor="#0e7490" stopOpacity="0.4" />
+              </linearGradient>
+              <filter id="cyanGlow">
+                <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
+            <path d="M 50 100 Q 150 200 100 300 T 200 500 Q 250 600 150 700 L 100 800" 
+                  stroke="url(#cyanTrack)" strokeWidth="8" fill="none" filter="url(#cyanGlow)" className="animate-pulse" style={{ animationDuration: '3s' }} />
+            <path d="M 30 0 Q 130 200 30 400 T 50 800" 
+                  stroke="#06b6d4" strokeWidth="4" fill="none" opacity="0.6" className="animate-pulse" style={{ animationDelay: '1s', animationDuration: '3s' }} />
+            <path d="M 70 0 Q 170 200 70 400 T 90 800" 
+                  stroke="#0891b2" strokeWidth="3" fill="none" opacity="0.4" className="animate-pulse" style={{ animationDelay: '2s', animationDuration: '3s' }} />
+            <path d="M 90 0 Q 190 200 90 400 T 110 800" 
+                  stroke="#0e7490" strokeWidth="2" fill="none" opacity="0.2" className="animate-pulse" style={{ animationDelay: '3s', animationDuration: '3s' }} />
+          </svg>
+          
+          {/* Right side - enhanced pink/purple racing track */}
+          <svg className="absolute top-0 right-0 w-1/3 h-full" viewBox="0 0 300 800" style={{ opacity: 0.6 }}>
+            <defs>
+              <linearGradient id="pinkTrack" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#ec4899" stopOpacity="0.8" />
+                <stop offset="50%" stopColor="#db2777" stopOpacity="1" />
+                <stop offset="100%" stopColor="#be185d" stopOpacity="0.5" />
+              </linearGradient>
+              <filter id="pinkGlow">
+                <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
+            <path d="M 250 100 Q 150 200 250 300 T 200 500 Q 150 600 250 700 L 200 800" 
+                  stroke="url(#pinkTrack)" strokeWidth="8" fill="none" filter="url(#pinkGlow)" className="animate-pulse" style={{ animationDuration: '3s', animationDelay: '1.5s' }} />
+            <path d="M 270 0 Q 170 200 270 400 T 250 800" 
+                  stroke="#ec4899" strokeWidth="4" fill="none" opacity="0.6" className="animate-pulse" style={{ animationDelay: '2.5s', animationDuration: '3s' }} />
+            <path d="M 230 0 Q 130 200 230 400 T 210 800" 
+                  stroke="#db2777" strokeWidth="3" fill="none" opacity="0.4" className="animate-pulse" style={{ animationDelay: '3.5s', animationDuration: '3s' }} />
+            <path d="M 210 0 Q 110 200 210 400 T 190 800" 
+                  stroke="#be185d" strokeWidth="2" fill="none" opacity="0.2" className="animate-pulse" style={{ animationDelay: '4.5s', animationDuration: '3s' }} />
+          </svg>
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
-          {cards.map((c) => {
-            const availableCount = getAvailableCount(c.diff);
-            const isExhausted = availableCount === 0;
-
-            return (
-              <div
-                key={c.diff}
-                className={`relative border rounded-2xl p-6 transition ${isExhausted ? 'bg-slate-800 border-slate-700 opacity-60' : 'bg-slate-900 border-slate-700'}`}
-              >
-                {!isExhausted && (
-                  <div className={`absolute -top-4 left-1/2 -translate-x-1/2 ${c.badge} text-slate-900 font-bold rounded-full px-3 py-1 shadow`}>
-                    +{c.points}
-                  </div>
-                )}
-
-                <h2 className="game-font text-4xl text-white mt-10">{c.label}</h2>
-
-                <button
-                  onClick={() => handleDifficultySelect(c.diff, c.points)}
-                  disabled={isExhausted}
-                  className={`w-full mt-8 game-font py-3 rounded-xl transition ${isExhausted ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-yellow-300 hover:bg-yellow-200 text-slate-900'}`}
-                >
-                  {isExhausted ? "Exhausted" : "Select"}
-                </button>
-              </div>
-            );
-          })}
+        
+        {/* Enhanced speed lines */}
+        <div className="absolute top-1/4 left-0 w-full h-1.5 bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent animate-pulse" style={{ animationDuration: '2s' }} />
+        <div className="absolute top-1/2 left-0 w-full h-1.5 bg-gradient-to-r from-transparent via-pink-400/60 to-transparent animate-pulse" style={{ animationDelay: '0.7s', animationDuration: '2s' }} />
+        <div className="absolute top-3/4 left-0 w-full h-1.5 bg-gradient-to-r from-transparent via-yellow-300/40 to-transparent animate-pulse" style={{ animationDelay: '1.4s', animationDuration: '2s' }} />
+        <div className="absolute top-1/6 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent animate-pulse" style={{ animationDelay: '2.1s', animationDuration: '2s' }} />
+        <div className="absolute top-5/6 left-0 w-full h-1 bg-gradient-to-r from-transparent via-pink-400/30 to-transparent animate-pulse" style={{ animationDelay: '2.8s', animationDuration: '2s' }} />
+        
+        {/* Diagonal speed streaks */}
+        <div className="absolute top-20 right-1/4 w-48 h-1.5 bg-gradient-to-l from-transparent via-cyan-400/40 to-transparent transform rotate-45 animate-pulse" style={{ animationDelay: '0.3s', animationDuration: '2s' }} />
+        <div className="absolute bottom-32 left-1/4 w-40 h-1.5 bg-gradient-to-r from-transparent via-pink-400/40 to-transparent transform rotate-12 animate-pulse" style={{ animationDelay: '1s', animationDuration: '2s' }} />
+        <div className="absolute top-60 left-1/3 w-36 h-1 bg-gradient-to-r from-transparent via-cyan-400/35 to-transparent transform -rotate-12 animate-pulse" style={{ animationDelay: '1.7s', animationDuration: '2s' }} />
+        <div className="absolute bottom-48 right-1/3 w-44 h-1 bg-gradient-to-l from-transparent via-pink-400/35 to-transparent transform -rotate-6 animate-pulse" style={{ animationDelay: '2.3s', animationDuration: '2s' }} />
+        
+        {/* Floating decorative elements */}
+        <div className="absolute top-16 left-12 w-3 h-3 bg-cyan-400/25 rounded-full animate-ping border border-cyan-400/40" />
+        <div className="absolute top-32 right-16 w-2 h-2 bg-cyan-400/20 rounded-full animate-ping border border-cyan-400/30" style={{ animationDelay: '1.8s' }} />
+        <div className="absolute bottom-24 left-20 w-2 h-2 bg-cyan-400/15 rounded-full animate-pulse border border-cyan-400/25" style={{ animationDelay: '0.8s' }}>
+          <span className="text-cyan-300/70 text-xs flex items-center justify-center h-full">🏁</span>
+        </div>
+        <div className="absolute bottom-40 right-12 w-3 h-3 bg-cyan-400/20 rounded-full animate-ping border border-cyan-400/30" style={{ animationDelay: '2.3s' }} />
+        <div className="absolute top-48 left-24 w-2 h-2 text-cyan-300/25 animate-pulse" style={{ animationDelay: '1.3s' }}>
+          <span className="text-cyan-300/70 text-xs flex items-center justify-center h-full">⚡</span>
+        </div>
+        <div className="absolute top-24 right-24 w-2 h-2 text-cyan-300/20 animate-pulse" style={{ animationDelay: '2.6s' }}>
+          <span className="text-cyan-300/70 text-xs flex items-center justify-center h-full">⚡</span>
+        </div>
+        <div className="absolute bottom-12 right-24 w-2 h-2 text-cyan-300/15 animate-pulse" style={{ animationDelay: '3.2s' }}>
+          <span className="text-cyan-300/70 text-xs flex items-center justify-center h-full">⚡</span>
+        </div>
+        
+        {/* More lightning bolts */}
+        <div className="absolute top-12 left-8 w-1.5 h-1.5 text-cyan-300/25 animate-pulse" style={{ animationDelay: '2.5s', animationDuration: '2.5s' }}>
+          <span className="text-base">⚡</span>
+        </div>
+        <div className="absolute top-52 left-8 w-1 h-1 text-cyan-300/20 animate-pulse" style={{ animationDelay: '4.8s', animationDuration: '2.5s' }}>
+          <span className="text-sm">⚡</span>
+        </div>
+        <div className="absolute top-12 right-8 w-1.5 h-1.5 text-cyan-300/25 animate-pulse" style={{ animationDelay: '1.2s', animationDuration: '2.5s' }}>
+          <span className="text-base">⚡</span>
+        </div>
+        <div className="absolute top-52 right-8 w-1 h-1 text-cyan-300/20 animate-pulse" style={{ animationDelay: '3.6s', animationDuration: '2.5s' }}>
+          <span className="text-sm">⚡</span>
+        </div>
+        
+        {/* Flag icons */}
+        <div className="absolute top-36 left-64 w-1.5 h-1.5 text-cyan-300/20 animate-pulse" style={{ animationDelay: '2.2s', animationDuration: '3s' }}>
+          <span className="text-base">🏁</span>
+        </div>
+        <div className="absolute bottom-56 left-64 w-1 h-1 text-cyan-300/15 animate-pulse" style={{ animationDelay: '3.9s', animationDuration: '3s' }}>
+          <span className="text-sm">🏁</span>
+        </div>
+        <div className="absolute top-36 right-64 w-1.5 h-1.5 text-cyan-300/20 animate-pulse" style={{ animationDelay: '1.7s', animationDuration: '3s' }}>
+          <span className="text-base">🏁</span>
+        </div>
+        <div className="absolute bottom-56 right-64 w-1 h-1 text-cyan-300/15 animate-pulse" style={{ animationDelay: '4.4s', animationDuration: '3s' }}>
+          <span className="text-sm">🏁</span>
+        </div>
+        
+        {/* Tiny sparkles/stars */}
+        <div className="absolute top-4 left-24 w-1.5 h-1.5 text-cyan-300/25 animate-pulse" style={{ animationDelay: '1.1s', animationDuration: '2s' }}>
+          <span className="text-base">✨</span>
+        </div>
+        <div className="absolute top-4 right-24 w-1.5 h-1.5 text-cyan-300/20 animate-pulse" style={{ animationDelay: '3.7s', animationDuration: '2s' }}>
+          <span className="text-base">✨</span>
+        </div>
+        <div className="absolute bottom-4 left-24 w-1 h-1 text-cyan-300/20 animate-pulse" style={{ animationDelay: '2.9s', animationDuration: '2s' }}>
+          <span className="text-sm">✨</span>
+        </div>
+        <div className="absolute bottom-4 right-24 w-1 h-1 text-cyan-300/15 animate-pulse" style={{ animationDelay: '4.5s', animationDuration: '2s' }}>
+          <span className="text-sm">✨</span>
         </div>
       </div>
-    </div>
+      
+      {/* Radial overlay for depth */}
+      <div className="fixed inset-0 bg-gradient-radial from-transparent via-slate-900/20 to-slate-900/40 pointer-events-none z-20" style={{ background: 'radial-gradient(circle at center, transparent 0%, rgba(15, 23, 42, 0.2) 50%, rgba(15, 23, 42, 0.4) 100%)' }} />
+      
+      {/* Main Content */}
+      <div className="relative min-h-screen flex items-center justify-center px-6 z-30">
+        <div className="w-full max-w-5xl bg-slate-800/70 backdrop-blur-xl rounded-3xl shadow-3xl border-2 border-slate-600/50 p-8">
+          {/* Enhanced Header with Timer */}
+          <div className="flex flex-col items-center justify-center gap-8 mb-12">
+            {/* Timer Card - Centered Above */}
+            <div className="relative bg-slate-900/65 backdrop-blur-2xl border-2 border-cyan-400/55 rounded-3xl px-8 py-5 hover:border-cyan-400/75 transition-all duration-300 shadow-cyan-400/25 shadow-2xl">
+              {/* Enhanced glow effect */}
+              <div className="absolute inset-0 bg-cyan-400/22 rounded-3xl animate-pulse" style={{ animationDuration: '3s' }} />
+              <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/18 to-transparent rounded-3xl" />
+              <div className="absolute inset-0 bg-gradient-radial from-cyan-400/6 via-transparent to-transparent" style={{ background: 'radial-gradient(circle at center, rgba(6, 182, 212, 0.06) 0%, transparent 60%)' }} />
+              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/3 to-transparent opacity-20" />
+              <p className="text-cyan-300 text-xs font-bold tracking-wider uppercase relative z-10 mb-2">Time Remaining</p>
+              <p className="game-font text-4xl font-bold bg-gradient-to-r from-cyan-300 via-blue-400 to-cyan-300 bg-clip-text text-transparent relative z-10 animate-pulse" style={{ animationDuration: '2s' }}>
+                {timeLeft}s
+              </p>
+            </div>
+
+            {/* Premium Title */}
+            <h1 className="game-font text-6xl md:text-7xl font-bold relative text-center">
+              {/* Strong neon glow background */}
+              <span className="absolute inset-0 blur-3xl bg-gradient-to-r from-cyan-400/60 via-pink-400/50 to-cyan-400/60 animate-pulse" style={{ animationDuration: '3s' }} />
+              <span className="absolute inset-0 blur-xl bg-gradient-to-r from-cyan-400/40 via-pink-400/30 to-cyan-400/40 animate-pulse" style={{ animationDelay: '1.5s', animationDuration: '3s' }} />
+              <span className="relative bg-gradient-to-r from-cyan-300 via-pink-200 to-cyan-300 bg-clip-text text-transparent drop-shadow-lg">
+                Choose Difficulty
+              </span>
+            </h1>
+          </div>
+
+          {/* Enhanced Difficulty Cards Grid with premium styling */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+            {cards.map((c) => {
+              const availableCount = getAvailableCount(c.diff);
+              const isExhausted = availableCount === 0;
+
+              return (
+                <div
+                  key={c.diff}
+                  className={`relative border-2 ${c.borderColor} rounded-3xl p-12 transition-all duration-500 transform hover:scale-105 hover:shadow-3xl ${c.glowColor} ${
+                    isExhausted
+                      ? 'bg-slate-900/50 border-slate-600/40 opacity-50 cursor-not-allowed backdrop-blur-md'
+                      : 'bg-slate-900/25 border-slate-600/35 backdrop-blur-md hover:bg-slate-900/35 hover:shadow-4xl'
+                  }`}
+                >
+                  {/* Enhanced glow effect */}
+                  {!isExhausted && (
+                    <>
+                      <div className={`absolute inset-0 bg-gradient-to-br ${c.theme} opacity-22 rounded-3xl animate-pulse`} style={{ animationDuration: '3s' }} />
+                      <div className="absolute inset-0 bg-gradient-radial from-white/6 via-transparent to-transparent rounded-3xl" style={{ background: 'radial-gradient(circle at center, rgba(255, 255, 255, 0.06) 0%, transparent 60%)' }} />
+                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/2 to-transparent opacity-25" />
+                    </>
+                  )}
+
+                  {/* Enhanced points badge */}
+                  {!isExhausted && (
+                    <div className={`absolute -top-7 left-1/2 -translate-x-1/2 ${c.badge} text-slate-900 font-bold rounded-full px-7 py-4 shadow-3xl text-xl border-2 border-white/45 backdrop-blur-sm`}>
+                      +{c.points} pts
+                    </div>
+                  )}
+
+                  {/* Enhanced difficulty title */}
+                  <div className="relative z-10">
+                    <h2 className={`game-font text-7xl font-bold bg-gradient-to-r ${c.theme} bg-clip-text text-transparent mt-20 mb-10 drop-shadow-lg`}>
+                      {c.label}
+                    </h2>
+
+                    {/* Removed available count text as requested */}
+                    
+                    {/* Enhanced select button */}
+                    <button
+                      onClick={() => handleDifficultySelect(c.diff, c.points)}
+                      disabled={isExhausted}
+                      className={`relative w-full game-font py-6 rounded-2xl transition-all duration-500 transform hover:scale-105 shadow-2xl overflow-hidden group text-xl font-bold ${
+                        isExhausted
+                          ? 'bg-slate-700/50 text-slate-400 cursor-not-allowed border border-slate-600/50'
+                          : `${c.buttonBg} text-slate-900 hover:shadow-3xl border-2 border-white/35 hover:border-white/55 hover:shadow-lg`
+                      }`}
+                    >
+                      {/* Enhanced hover shine effect */}
+                      {!isExhausted && (
+                        <>
+                          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/45 to-transparent transform -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                          <span className="absolute inset-0 bg-gradient-to-t from-transparent to-white/12 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                          <span className="absolute inset-0 bg-gradient-to-br from-white/8 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                        </>
+                      )}
+                      <span className="relative z-10 tracking-wide">
+                        {isExhausted ? "Exhausted" : "Select"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
