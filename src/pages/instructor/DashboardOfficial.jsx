@@ -38,6 +38,8 @@ function DashboardOfficial() {
   const [selectedSession, setSelectedSession] = useState(null);
   const [selectedQuestionBank, setSelectedQuestionBank] = useState(null);
   const [selectedSessions, setSelectedSessions] = useState(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedBanks, setSelectedBanks] = useState(new Set());
   const [useExistingBank, setUseExistingBank] = useState(false);
 
@@ -742,521 +744,552 @@ function DashboardOfficial() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900">
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
-          <div>
+    <div className="min-h-screen bg-white text-slate-900">
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Header */}
+        <div className="bg-white border-b border-slate-200 px-6 py-4 mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900">
+                Instructor Dashboard
+              </h1>
+              <p className="text-slate-500 text-sm mt-1">
+                Create a quiz session
+              </p>
+            </div>
             
-            <h1 className="text-3xl md:text-4xl font-extrabold mt-1">
-              Instructor Dashboard
-            </h1>
+            {/* Profile/Account Menu */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuOpen((prev) => !prev)}
+                className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 hover:bg-slate-100 transition"
+              >
+                <div className="h-8 w-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-sm">
+                  {initials}
+                </div>
 
-            <p className="text-slate-500 mt-2">
-              Upload your file, set the quiz options, then create a session for students.
-            </p>
-          </div>
-
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setMenuOpen((prev) => !prev)}
-              className="flex items-center gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm hover:bg-slate-50 transition"
-            >
-              <div className="h-10 w-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold">
-                {initials}
-              </div>
-
-              <div className="text-left min-w-0 max-w-[180px]">
-                <p className="font-bold text-slate-900 truncate">
-                  {displayName}
-                </p>
-                <p className="text-sm text-slate-500 truncate">
-                  {displayEmail}
-                </p>
-              </div>
-
-              <span className="text-slate-400">▼</span>
-            </button>
-
-            {menuOpen && (
-              <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-2xl shadow-lg p-3 z-20">
-                <div className="px-2 py-2 border-b border-slate-100">
-                  <p className="font-semibold truncate">{displayName}</p>
+                <div className="text-left min-w-0 max-w-[180px]">
+                  <p className="font-semibold text-slate-900 truncate">
+                    {displayName}
+                  </p>
                   <p className="text-sm text-slate-500 truncate">
                     {displayEmail}
                   </p>
                 </div>
 
-                {isGuestUser && (
-                  <div className="mt-2 px-3 py-2 text-xs text-amber-700 bg-amber-50 rounded-xl">
-                    Guest session - sessions are saved locally
+                <span className="text-slate-400">▼</span>
+              </button>
+
+              {menuOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-lg shadow-lg p-3 z-50">
+                  <div className="px-2 py-2 border-b border-slate-100">
+                    <p className="font-semibold truncate">{displayName}</p>
+                    <p className="text-sm text-slate-500 truncate">
+                      {displayEmail}
+                    </p>
                   </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="mt-2 w-full text-left px-3 py-2.5 rounded-xl hover:bg-red-50 text-red-600 font-semibold transition"
-                >
-                  Logout
-                </button>
-              </div>
-            )}
+                  {isGuestUser && (
+                    <div className="mt-2 px-3 py-2 text-xs text-amber-700 bg-amber-50 rounded-lg">
+                      Guest session - sessions are saved locally
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="mt-2 w-full text-left px-3 py-2.5 rounded-lg hover:bg-red-50 text-red-600 font-semibold transition"
+                  >
+                    Logout
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+          
+                  </div>
 
+        {/* Messages */}
         {infoMessage && (
-          <div className="mb-5 rounded-2xl border border-cyan-200 bg-cyan-50 px-5 py-4 text-cyan-900">
+          <div className="mb-6 rounded-xl border border-cyan-200 bg-cyan-50 px-6 py-4 text-cyan-900">
             {infoMessage}
           </div>
         )}
 
         {error && (
-          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-700">
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-6 py-4 text-red-700">
             {error}
           </div>
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm">
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold">Quiz Setup</h2>
-              <p className="text-slate-500 text-sm mt-1">
-                Choose how you want to create this quiz.
-              </p>
-            </div>
+        {/* Main Content - Create New Session */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left: Create New Session Card */}
+          <div className="lg:col-span-2">
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+              <h2 className="text-xl font-bold text-slate-900 mb-6">Create New Session</h2>
+              
+              {/* 1. Choose Source */}
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold text-slate-900 mb-3">1. Choose Source</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* Saved Questions */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUseExistingBank(true);
+                      setSelectedFile(null);
+                    }}
+                    className={`p-4 rounded-lg border-2 transition-all text-left ${
+                      useExistingBank && !selectedFile
+                        ? 'border-cyan-500 bg-cyan-50 text-cyan-700'
+                        : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="font-medium mb-1">📚 Saved Questions</div>
+                    <div className="text-sm text-slate-600">Reuse existing question banks</div>
+                  </button>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 mb-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div>
-                  <p className="font-bold text-slate-900">
-                    Use Existing Question Bank
-                  </p>
+                  {/* Upload File */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUseExistingBank(false);
+                      setSelectedQuestionBank(null);
+                    }}
+                    className={`p-4 rounded-lg border-2 transition-all text-left ${
+                      !useExistingBank && !selectedQuestionBank
+                        ? 'border-cyan-500 bg-cyan-50 text-cyan-700'
+                        : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="font-medium mb-1">📁 Upload File</div>
+                    <div className="text-sm text-slate-600">Import questions from file</div>
+                  </button>
 
-                  <p className="text-sm text-slate-500 mt-1">
-                    Reuse a previously generated set of questions.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={useExistingBank}
-                      onChange={(e) => setUseExistingBank(e.target.checked)}
-                      className="w-4 h-4 rounded"
-                    />
-                    Enable
-                  </label>
-                  {savedQuestionBanks.length > 0 && (
-                    <>
-                      <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedBanks.size === savedQuestionBanks.length && savedQuestionBanks.length > 0}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedBanks(new Set(savedQuestionBanks.map(b => b.id)));
-                            } else {
-                              setSelectedBanks(new Set());
-                            }
-                          }}
-                          className="w-4 h-4 rounded"
-                        />
-                        Select All
-                      </label>
-                      <button
-                        type="button"
-                        onClick={deleteSelectedBanks}
-                        disabled={selectedBanks.size === 0}
-                        className={[
-                          "px-3 py-2 text-sm font-semibold rounded-xl transition",
-                          selectedBanks.size > 0
-                            ? "bg-red-600 text-white hover:bg-red-700"
-                            : "bg-slate-200 text-slate-500 cursor-not-allowed"
-                        ].join(" ")}
-                      >
-                        Delete Selected ({selectedBanks.size})
-                      </button>
-                    </>
-                  )}
+                  {/* Write Manually */}
+                  <button
+                    type="button"
+                    onClick={handleCreateManualSession}
+                    className={`p-4 rounded-lg border-2 transition-all text-left ${
+                      !useExistingBank && !selectedFile
+                        ? 'border-cyan-500 bg-cyan-50 text-cyan-700'
+                        : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="font-medium mb-1">✏️ Write Manually</div>
+                    <div className="text-sm text-slate-600">Create questions manually</div>
+                  </button>
                 </div>
               </div>
 
-              {useExistingBank && (
-                <div className="mt-4 space-y-3">
-                  {savedQuestionBanks.length === 0 ? (
-                    <div className="rounded-2xl bg-white border border-slate-200 p-4 text-sm text-slate-500">
-                      No existing question banks found. Please create one by
-                      uploading a file first.
-                    </div>
-                  ) : (
-                    savedQuestionBanks.map((bank) => (
-                      <div
-                        key={bank.id}
-                        className={[
-                          "rounded-2xl border p-4 transition flex gap-3 items-stretch",
-                          selectedQuestionBank?.id === bank.id
-                            ? "border-slate-900 bg-white shadow-sm"
-                            : selectedBanks.has(bank.id)
-                            ? "border-red-300 bg-red-50"
-                            : "border-slate-200 bg-white hover:bg-slate-50",
-                        ].join(" ")}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedBanks.has(bank.id)}
-                          onChange={(e) => {
-                            const newSelected = new Set(selectedBanks);
-                            if (e.target.checked) {
-                              newSelected.add(bank.id);
-                            } else {
-                              newSelected.delete(bank.id);
-                            }
-                            setSelectedBanks(newSelected);
-                          }}
-                          className="w-4 h-4 rounded cursor-pointer"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setSelectedQuestionBank(bank)}
-                          className="flex-1 min-w-0 text-left cursor-pointer"
-                        >
-                          <div className="flex justify-between gap-4">
-                            <div className="min-w-0">
-                              <p className="font-bold truncate">
-                                {bank.file_name || "Untitled"}
-                              </p>
-                              <p className="text-xs text-slate-500 mt-1">
-                                Created:{" "}
-                                {new Date(bank.created_at).toLocaleDateString()}{" "}
-                                • Code: {bank.game_code}
-                              </p>
-                            </div>
-
-                            <p className="text-sm font-bold text-slate-600 shrink-0">
-                              {bank.question_count} / tier
-                              <span className="block text-xs font-normal text-slate-500">
-                                Bank {Number(bank.question_count || 0) * 3}
-                              </span>
-                            </p>
-                          </div>
-
-                          {selectedQuestionBank?.id === bank.id && (
-                            <div className="mt-3 rounded-xl bg-slate-900 text-white text-center py-2 text-sm font-bold">
-                              Selected
-                            </div>
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          title="Delete this question bank"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteSessionRecord(bank, {
-                              listLabel: "question bank",
-                            });
-                          }}
-                          className="shrink-0 self-start p-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 transition"
-                        >
-                          <svg
-                            className="w-5 h-5"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            aria-hidden
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-
-            {!useExistingBank && (
-              <>
-                <div className="mb-6">
-                  <p className="text-sm font-bold mb-3 text-slate-700">
-                    Upload File
-                  </p>
-
-                  <label className="block w-full rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 cursor-pointer hover:bg-slate-100 transition">
-                    <input
-                      type="file"
-                      accept=".txt,.md,.doc,.docx,.pdf,.csv,.json,.html"
-                      className="hidden"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0] ?? null;
-                        setSelectedFile(file);
-
-                        // ── Clear ALL stale question/file state ──
-                        // This ensures old questions from a previous file never bleed into the new session.
-                        setFileContent("");
-                        setFileMimeType("");
-                        setUploadedFileId(Date.now().toString());
-                        setInfoMessage("");
-                        setError("");
-
-                        // Disable "Use Existing Bank" when a new file is chosen
-                        setUseExistingBank(false);
-                        setSelectedQuestionBank(null);
-
-                        // Clear any previously cached quizplay sessions from localStorage
-                        // so old question banks are never shown for the new file
-                        Object.keys(localStorage)
-                          .filter((k) => k.startsWith("quizplay_session_"))
-                          .forEach((k) => localStorage.removeItem(k));
-                        Object.keys(sessionStorage)
-                          .filter((k) => k.startsWith("quizplay_"))
-                          .forEach((k) => sessionStorage.removeItem(k));
-                      }}
-                    />
-
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                      <div>
-                        <p className="font-bold">Choose a file for the quiz</p>
-                        <p className="text-sm text-slate-500 mt-1">
-                          Upload a file to create quiz questions.
-                        </p>
-                      </div>
-
-                      <div className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-sm font-bold shadow-sm">
-                        Choose File
-                      </div>
-                    </div>
-
-                    <div className="mt-5 rounded-2xl bg-white border border-slate-200 px-4 py-3">
-                      <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">
-                        Selected File
-                      </p>
-                      <p className="font-semibold truncate">
-                        {selectedFile
-                          ? selectedFile.name
-                          : "No file uploaded yet"}
-                      </p>
-                    </div>
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                    <p className="text-sm font-bold text-slate-700 mb-1">
-                      Questions per difficulty
-                    </p>
-                    <p className="text-xs text-slate-500 mb-3">
-                      Bank size: {questionCount} easy + {questionCount} medium +{" "}
-                      {questionCount} hard ({questionCount * 3} total). Quiz uses{" "}
-                      {questionCount} rounds (same number).
-                    </p>
-
+              {/* 2. Settings */}
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold text-slate-900 mb-3">2. Settings</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Questions per difficulty */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Questions per difficulty</label>
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
                         onClick={decreaseQuestions}
-                        className="h-12 w-12 rounded-xl bg-white border border-slate-200 text-xl font-bold hover:bg-slate-100"
+                        disabled={questionCount <= MIN_QUESTIONS}
+                        className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
                       >
-                        -
+                        −
                       </button>
-
-                      <div className="flex-1 rounded-xl bg-white border border-slate-200 text-center py-3">
-                        <p className="text-xs text-slate-500">Selected</p>
-                        <p className="text-2xl font-extrabold">
-                          {questionCount}
-                        </p>
-                      </div>
-
+                      <span className="px-4 py-2 bg-slate-100 rounded-lg font-medium text-slate-900 min-w-[60px] text-center">
+                        {questionCount}
+                      </span>
                       <button
                         type="button"
                         onClick={increaseQuestions}
-                        className="h-12 w-12 rounded-xl bg-white border border-slate-200 text-xl font-bold hover:bg-slate-100"
+                        disabled={questionCount >= MAX_QUESTIONS}
+                        className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
                       >
                         +
                       </button>
                     </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      {questionCount * 3} total questions ({MIN_QUESTIONS}-{MAX_QUESTIONS})
+                    </div>
                   </div>
 
-                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                    <p className="text-sm font-bold text-slate-700 mb-3">
-                      Time per question (each question)
-                    </p>
-
+                  {/* Time per question */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Time per question (seconds)</label>
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
                         onClick={decreaseTime}
-                        className="h-12 w-12 rounded-xl bg-white border border-slate-200 text-xl font-bold hover:bg-slate-100"
+                        disabled={timePerQuestion <= MIN_TIME}
+                        className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
                       >
-                        -
+                        −
                       </button>
-
-                      <div className="flex-1 rounded-xl bg-white border border-slate-200 text-center py-3">
-                        <p className="text-xs text-slate-500">Selected</p>
-                        <p className="text-2xl font-extrabold">
-                          {timePerQuestion}s
-                        </p>
-                      </div>
-
+                      <span className="px-4 py-2 bg-slate-100 rounded-lg font-medium text-slate-900 min-w-[60px] text-center">
+                        {timePerQuestion}
+                      </span>
                       <button
                         type="button"
                         onClick={increaseTime}
-                        className="h-12 w-12 rounded-xl bg-white border border-slate-200 text-xl font-bold hover:bg-slate-100"
+                        disabled={timePerQuestion >= MAX_TIME}
+                        className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
                       >
                         +
                       </button>
                     </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      {Math.floor(timePerQuestion / 60)}m {timePerQuestion % 60}s per question ({MIN_TIME}-{MAX_TIME})
+                    </div>
                   </div>
                 </div>
-              </>
-            )}
+              </div>
+
+              {/* 3. Source Details */}
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 mb-3">3. Source Details</h3>
+                
+                {useExistingBank && selectedQuestionBank && (
+                  <div className="border border-slate-300 rounded-lg p-4 bg-slate-50">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h4 className="font-semibold text-slate-900">{selectedQuestionBank.file_name || "Untitled"}</h4>
+                        <p className="text-xs text-slate-500">Code: {selectedQuestionBank.game_code}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedQuestionBank(null)}
+                        className="text-sm text-cyan-600 hover:text-cyan-700 font-medium"
+                      >
+                        Change
+                      </button>
+                    </div>
+                    <div className="text-sm text-slate-600">
+                      <p>Questions: {selectedQuestionBank.question_count || 0}</p>
+                      <p>Time: {selectedQuestionBank.time_per_question || 30}s per question</p>
+                      <p>Created: {new Date(selectedQuestionBank.created_at).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                )}
+
+                {!useExistingBank && (
+                  <div>
+                    <label className="block w-full rounded-lg border-2 border-dashed border-cyan-300 bg-cyan-50 p-6 cursor-pointer hover:bg-cyan-100 transition">
+                      <input
+                        type="file"
+                        accept=".txt,.md,.doc,.docx,.pdf,.csv,.json,.html"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] ?? null;
+                          setSelectedFile(file);
+
+                          // Clear ALL stale question/file state
+                          setFileContent("");
+                          setFileMimeType("");
+                          setUploadedFileId(Date.now().toString());
+                          setInfoMessage("");
+                          setError("");
+
+                          // Disable "Use Existing Bank" when a new file is chosen
+                          setUseExistingBank(false);
+                          setSelectedQuestionBank(null);
+
+                          // Clear any previously cached quizplay sessions from localStorage
+                          Object.keys(localStorage)
+                            .filter((key) => key.startsWith("quizplay_session_"))
+                            .forEach((key) => localStorage.removeItem(key));
+                        }}
+                      />
+                      {selectedFile ? (
+                        <div className="text-center py-4">
+                          <div className="text-cyan-600 mb-2">📁</div>
+                          <p className="font-medium text-slate-900">{selectedFile.name}</p>
+                          <p className="text-sm text-slate-500">
+                            Size: {(selectedFile.size / 1024).toFixed(1)} KB
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="text-center py-4">
+                          <div className="text-2xl mb-2 text-cyan-600">📁</div>
+                          <p className="font-semibold text-slate-900 mb-2">Choose File</p>
+                          <p className="text-sm text-slate-600 mb-4">or drag and drop your PDF, DOCX, TXT, CSV, JSON, or HTML file</p>
+                          <button
+                            type="button"
+                            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-lg transition"
+                          >
+                            Browse File
+                          </button>
+                        </div>
+                      )}
+                    </label>
+                    {selectedFile && (
+                      <div className="mt-3 border border-slate-300 rounded-lg p-4 bg-slate-50">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h4 className="font-semibold text-slate-900">{selectedFile.name}</h4>
+                            <p className="text-xs text-slate-500">Size: {(selectedFile.size / 1024).toFixed(1)} KB</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedFile(null)}
+                            className="text-sm text-cyan-600 hover:text-cyan-700 font-medium"
+                          >
+                            Change
+                          </button>
+                        </div>
+                        <div className="text-sm text-slate-600">
+                          <p>Questions: {questionCount}</p>
+                          <p>Time: {timePerQuestion}s per question</p>
+                          <p>Type: {selectedFile.type}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {(!useExistingBank && !selectedFile && !selectedQuestionBank) && (
+                  <div className="text-center py-8 text-slate-500">
+                    <div className="text-2xl mb-2">📝</div>
+                    <p className="font-medium">Choose a source above to continue</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-7 shadow-sm h-fit">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-              Session Info
-            </p>
+          {/* Right: Session Summary */}
+          <div className="lg:col-span-1">
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm sticky top-8">
+              <h2 className="text-xl font-bold text-slate-900 mb-4">Session Summary</h2>
+              
+              <div className="space-y-4">
+                {(!useExistingBank && !selectedFile && !selectedQuestionBank) ? (
+                  <div className="text-center py-8 text-slate-500">
+                    <div className="text-sm">Choose a source to continue</div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Source */}
+                    <div>
+                      <div className="text-sm font-medium text-slate-700 mb-1">Source</div>
+                      <div className="bg-slate-50 rounded-lg px-3 py-2 text-slate-900">
+                        {useExistingBank && selectedQuestionBank && (
+                          <span>📚 {selectedQuestionBank.file_name || "Existing Bank"}</span>
+                        )}
+                        {!useExistingBank && selectedFile && (
+                          <span>📁 {selectedFile.name}</span>
+                        )}
+                        {!useExistingBank && !selectedFile && (
+                          <span>📁 Upload File</span>
+                        )}
+                      </div>
+                    </div>
 
-            <div className="mt-6 rounded-3xl bg-slate-50 border border-slate-200 p-5">
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                Game Code
-              </p>
-              <p className="text-3xl md:text-4xl font-extrabold tracking-[0.18em] mt-3">
-                {gameCode}
-              </p>
+                    {/* Questions */}
+                    <div>
+                      <div className="text-sm font-medium text-slate-700 mb-1">Total Questions</div>
+                      <div className="bg-slate-50 rounded-lg px-3 py-2 text-slate-900">
+                        {useExistingBank && selectedQuestionBank
+                          ? selectedQuestionBank.question_count || 0
+                          : questionCount * 3}
+                      </div>
+                    </div>
+
+                    {/* Time */}
+                    <div>
+                      <div className="text-sm font-medium text-slate-700 mb-1">Time per Question</div>
+                      <div className="bg-slate-50 rounded-lg px-3 py-2 text-slate-900">
+                        {useExistingBank && selectedQuestionBank
+                          ? selectedQuestionBank.time_per_question || 30
+                          : timePerQuestion}s
+                      </div>
+                    </div>
+
+                    {/* Status */}
+                    <div>
+                      <div className="text-sm font-medium text-slate-700 mb-3">Status</div>
+                      <div className="bg-slate-50 rounded-lg px-3 py-2 text-slate-900">
+                        {canCreateSession ? (
+                          <span className="text-green-700">✓ Ready to create</span>
+                        ) : (
+                          !useExistingBank && !selectedFile ? (
+                            <span className="text-slate-500">Choose a file</span>
+                          ) : (
+                            <span className="text-slate-500">⚠ Complete setup to continue</span>
+                          )
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Game Code - Only show prominently when ready */}
+                    {canCreateSession && gameCode && (
+                      <div>
+                        <div className="text-sm font-medium text-slate-700 mb-1">Game Code</div>
+                        <div className="bg-slate-50 rounded-lg px-3 py-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-lg font-bold text-cyan-600">{gameCode}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(gameCode);
+                              }}
+                              className="text-sm text-cyan-600 hover:text-cyan-700 font-medium"
+                            >
+                              Copy
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Create Session Button */}
+                <button
+                  type="button"
+                  onClick={handleGoToSession}
+                  disabled={!canCreateSession || isCreatingSession}
+                  className="w-full py-3 px-4 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-300 disabled:text-slate-500 text-white font-semibold rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+                >
+                  {isCreatingSession ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white/30 animate-spin rounded-full"></div>
+                      Creating Session...
+                    </>
+                  ) : (
+                    <>
+                      <span>🚀</span>
+                      Create Session
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
-
-            <button
-              type="button"
-              onClick={handleGoToSession}
-              disabled={!canCreateSession}
-              className={[
-                "mt-5 w-full px-5 py-3.5 rounded-2xl transition font-bold",
-                canCreateSession
-                  ? "bg-slate-900 text-white hover:bg-slate-800"
-                  : "bg-slate-200 text-slate-500 cursor-not-allowed",
-              ].join(" ")}
-            >
-              {isCreatingSession ? "Creating session..." : "Create Session"}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleCreateManualSession}
-              disabled={isCreatingSession}
-              className={[
-                "mt-3 w-full px-5 py-3.5 rounded-2xl transition font-bold",
-                isCreatingSession
-                  ? "bg-slate-200 text-slate-500 cursor-not-allowed"
-                  : "bg-emerald-600 text-white hover:bg-emerald-700",
-              ].join(" ")}
-            >
-              {isCreatingSession ? "Creating session..." : "Create Questions Manually"}
-            </button>
-
-            <p className="text-xs text-slate-500 mt-4 leading-5">
-              Share this code with students after creating the session.
-            </p>
           </div>
         </div>
 
-        <div className="mt-8 bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                History
-              </p>
-              <h2 className="text-2xl font-bold mt-2">
-                Your Recent Sessions
-              </h2>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">
-                {teacherSessions.length} sessions
-              </div>
-              {teacherSessions.length > 0 && (
-                <>
-                  <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={selectedSessions.size === teacherSessions.length && teacherSessions.length > 0}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedSessions(new Set(teacherSessions.map(s => s.id)));
-                        } else {
+        {/* Recent Sessions */}
+        <div className="mt-12">
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-slate-700">Recent Sessions</h2>
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                {teacherSessions.length > 0 && (
+                  <>
+                    {!isSelectionMode ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsSelectionMode(true);
                           setSelectedSessions(new Set());
-                        }
-                      }}
-                      className="w-4 h-4 rounded"
-                    />
-                    Select All
-                  </label>
-                  <button
-                    type="button"
-                    onClick={deleteSelectedSessions}
-                    disabled={selectedSessions.size === 0}
-                    className={[
-                      "px-3 py-2 text-sm font-semibold rounded-xl transition",
-                      selectedSessions.size > 0
-                        ? "bg-red-600 text-white hover:bg-red-700"
-                        : "bg-slate-200 text-slate-500 cursor-not-allowed"
-                    ].join(" ")}
-                  >
-                    Delete Selected ({selectedSessions.size})
-                  </button>
-                </>
-              )}
+                        }}
+                        className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition"
+                      >
+                        Select to Delete
+                      </button>
+                    ) : (
+                      <>
+                        <div className="mb-3">
+                          <p className="text-sm text-slate-600">Select sessions you want to delete.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (selectedSessions.size === teacherSessions.length) {
+                                setSelectedSessions(new Set());
+                              } else {
+                                setSelectedSessions(new Set(teacherSessions.map(s => s.id)));
+                              }
+                            }}
+                            className="text-cyan-600 hover:text-cyan-700 font-medium"
+                          >
+                            {selectedSessions.size === teacherSessions.length ? 'Deselect All' : 'Select All'}
+                          </button>
+                          <span className="text-slate-300">•</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsSelectionMode(false);
+                              setSelectedSessions(new Set());
+                            }}
+                            className="text-slate-600 hover:text-slate-700 font-medium"
+                          >
+                            Cancel
+                          </button>
+                          <span className="text-slate-300">•</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (selectedSessions.size > 0) {
+                                setShowDeleteModal(true);
+                              }
+                            }}
+                            disabled={selectedSessions.size === 0}
+                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed"
+                          >
+                            Delete Selected ({selectedSessions.size})
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-
-          <div className="space-y-4">
+            
             {isLoadingSessions ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-slate-500">
+              <div className="text-center py-6 text-slate-500">
                 Loading your sessions...
               </div>
             ) : teacherSessions.length === 0 ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-slate-500">
-                No saved sessions yet. Create one to start.
+              <div className="text-center py-6 text-slate-500">
+                <div className="text-xl mb-2">📋</div>
+                <p className="text-sm">No saved sessions yet</p>
               </div>
             ) : (
-              teacherSessions.map((session) => (
-                <div
-                  key={session.id}
-                  className={[
-                    "rounded-2xl border bg-slate-50 p-5 transition flex gap-3 items-start",
-                    selectedSessions.has(session.id)
-                      ? "border-red-300 bg-red-50"
-                      : "border-slate-200 hover:bg-slate-100"
-                  ].join(" ")}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedSessions.has(session.id)}
-                    onChange={(e) => {
-                      const newSelected = new Set(selectedSessions);
-                      if (e.target.checked) {
-                        newSelected.add(session.id);
-                      } else {
-                        newSelected.delete(session.id);
+              <div className="space-y-2">
+                {teacherSessions.map((session) => (
+                  <div
+                    key={session.id}
+                    className={`border border-slate-200 rounded-lg p-4 transition ${
+                      isSelectionMode ? 'hover:bg-slate-50' : 'hover:bg-slate-50 cursor-pointer'
+                    }`}
+                    onClick={() => {
+                      if (!isSelectionMode) {
+                        navigate("/instructor/final-results", {
+                          state: {
+                            sessionId: session.id,
+                            gameCode: session.game_code
+                          }
+                        });
                       }
-                      setSelectedSessions(newSelected);
                     }}
-                    className="w-4 h-4 rounded mt-1 cursor-pointer"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-bold text-slate-900 truncate">
+                  >
+                    <div className="flex items-center gap-4">
+                      {isSelectionMode && (
+                        <input
+                          type="checkbox"
+                          checked={selectedSessions.has(session.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            const newSelected = new Set(selectedSessions);
+                            if (e.target.checked) {
+                              newSelected.add(session.id);
+                            } else {
+                              newSelected.delete(session.id);
+                            }
+                            setSelectedSessions(newSelected);
+                          }}
+                          className="w-4 h-4 rounded cursor-pointer"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900 truncate">
                           {session.file_name || "Untitled file"}
                         </p>
-                        <p className="text-sm text-slate-500 mt-1">
+                        <p className="text-xs text-slate-500">
                           Code: {session.game_code}
                         </p>
                       </div>
@@ -1271,18 +1304,60 @@ function DashboardOfficial() {
                             }
                           });
                         }}
-                        className="px-3 py-2 text-sm font-semibold rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white shadow-sm transition flex-shrink-0"
+                        className="px-4 py-2 text-sm font-medium rounded-lg bg-cyan-100 text-cyan-700 hover:bg-cyan-200 transition flex-shrink-0"
                       >
                         View Analysis
                       </button>
                     </div>
                   </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md mx-4 shadow-lg">
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">Delete selected sessions?</h3>
+            <p className="text-sm text-slate-600 mb-6">
+              This will move selected sessions out of your dashboard. This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                }}
+                className="px-4 py-2 text-slate-600 hover:text-slate-700 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  selectedSessions.forEach(sessionId => {
+                    const session = teacherSessions.find(s => s.id === sessionId);
+                    if (session) {
+                      deleteSessionRecord(session, {
+                        listLabel: "selected sessions"
+                      });
+                    }
+                  });
+                  setShowDeleteModal(false);
+                  setIsSelectionMode(false);
+                  setSelectedSessions(new Set());
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg"
+              >
+                Delete Sessions
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
