@@ -40,8 +40,47 @@ function DashboardOfficial() {
   const [selectedSessions, setSelectedSessions] = useState(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedSource, setSelectedSource] = useState(null); // 'saved' | 'upload' | 'manual' | null
   const [selectedBanks, setSelectedBanks] = useState(new Set());
   const [useExistingBank, setUseExistingBank] = useState(false);
+
+  // Manual questions state
+  const [manualQuestions, setManualQuestions] = useState({ easy: [], medium: [], hard: [] });
+  const [selectedDifficulty, setSelectedDifficulty] = useState('easy');
+  const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0);
+
+  // Initialize manual questions when questionCount changes or manual mode is selected
+  useEffect(() => {
+    if (selectedSource === 'manual') {
+      setManualQuestions(prev => {
+        const newQuestions = { easy: [], medium: [], hard: [] };
+        
+        ['easy', 'medium', 'hard'].forEach(difficulty => {
+          const currentQuestions = prev[difficulty] || [];
+          const targetLength = questionCount;
+          
+          // Add or trim questions to match target length
+          if (currentQuestions.length < targetLength) {
+            // Add new empty questions
+            for (let i = currentQuestions.length; i < targetLength; i++) {
+              newQuestions[difficulty].push({
+                id: `${difficulty}-manual-${Date.now()}-${i}`,
+                difficulty,
+                question: "",
+                options: ["", "", "", ""],
+                correctAnswer: 0
+              });
+            }
+          } else {
+            // Keep existing questions up to target length
+            newQuestions[difficulty] = currentQuestions.slice(0, targetLength);
+          }
+        });
+        
+        return newQuestions;
+      });
+    }
+  }, [questionCount, selectedSource]);
 
   const [savedQuestionBanks, setSavedQuestionBanks] = useState([]);
 
@@ -198,7 +237,6 @@ function DashboardOfficial() {
 
           const uniqueBanks = Array.from(uniqueBanksMap.values()).slice(0, 10);
           setSavedQuestionBanks(uniqueBanks);
-          console.log("Loaded unique saved question banks:", uniqueBanks);
         }
       } catch (err) {
         console.error("Failed to load saved question banks:", err);
@@ -495,7 +533,12 @@ function DashboardOfficial() {
     // A newly selected file always wins over "existing bank" mode (checkbox can still be on by mistake).
     const fromExistingBank = useExistingBank && !selectedFile;
 
-    if (fromExistingBank) {
+    if (selectedSource === 'manual') {
+      if (!isManualModeComplete()) {
+        setError("Please complete all manual questions before creating a session.");
+        return;
+      }
+    } else if (fromExistingBank) {
       if (!selectedQuestionBank) {
         setError("Please select an existing question bank to use.");
         return;
@@ -543,24 +586,24 @@ function DashboardOfficial() {
         }
       }
 
-      const isGuestUser =
-        currentUser.is_anonymous || currentUser.user_metadata?.is_guest === true;
-
+      // ── Step 1: Determine question source and build questionsByDifficulty ──
+      let questionsByDifficulty = null;
+      const fromExistingBank = useExistingBank && selectedQuestionBank;
       const sessionFileName = fromExistingBank
         ? selectedQuestionBank.file_name || "Existing Bank"
-        : selectedFile.name;
-
+        : selectedSource === 'manual' ? "Manual Questions" : selectedFile?.name || "Manual Questions";
       const sessionQuestionCount = fromExistingBank
-        ? selectedQuestionBank.question_count
-        : questionCount;
-
+        ? selectedQuestionBank.question_count || questionCount * 3
+        : questionCount * 3;
       const sessionTimePerQuestion = fromExistingBank
-        ? selectedQuestionBank.time_per_question
+        ? selectedQuestionBank.time_per_question || timePerQuestion
         : timePerQuestion;
 
-      let questionsByDifficulty;
-
-      if (fromExistingBank && selectedQuestionBank) {
+      if (selectedSource === 'manual') {
+        console.log("[Manual] Using manual questions, skipping AI generation.");
+        questionsByDifficulty = manualQuestions;
+        setInfoMessage("Using manual questions.");
+      } else if (fromExistingBank && selectedQuestionBank) {
         console.log("[Bank] Using existing question bank, skipping AI generation.");
         questionsByDifficulty =
           selectedQuestionBank.questions_by_difficulty ||
@@ -729,11 +772,54 @@ function DashboardOfficial() {
 
   const displayEmail = isGuestUser ? "Guest Account" : teacherEmail || "";
 
+  // Helper functions for manual questions
+  const updateManualQuestion = (difficulty, questionIndex, field, value) => {
+    setManualQuestions(prev => {
+      const newQuestions = { ...prev };
+      const question = { ...newQuestions[difficulty][questionIndex] };
+      
+      if (field.startsWith('options.')) {
+        const optionIndex = parseInt(field.split('.')[1]);
+        const newOptions = [...question.options];
+        newOptions[optionIndex] = value;
+        question.options = newOptions;
+      } else {
+        question[field] = value;
+      }
+      
+      newQuestions[difficulty][questionIndex] = question;
+      return newQuestions;
+    });
+  };
+
+  const getCompletedManualQuestionsCount = () => {
+    let count = 0;
+    Object.entries(manualQuestions).forEach(([difficulty, questions]) => {
+      questions.forEach(question => {
+        if (question.question.trim() && 
+            question.options.every(opt => opt.trim()) && 
+            typeof question.correctAnswer === 'number' && 
+            question.correctAnswer >= 0 && 
+            question.correctAnswer <= 3) {
+          count++;
+        }
+      });
+    });
+    return count;
+  };
+
+  const isManualModeComplete = () => {
+    const totalQuestions = questionCount * 3;
+    return getCompletedManualQuestionsCount() === totalQuestions;
+  };
+
   // Upload wins over the "existing bank" checkbox when both are present.
   const fromBankOnly = useExistingBank && !selectedFile;
   const canCreateSession =
     !isCreatingSession &&
-    (selectedFile || (fromBankOnly && selectedQuestionBank));
+    ((selectedSource === 'saved' && selectedQuestionBank) ||
+     (selectedSource === 'upload' && selectedFile) ||
+     (selectedSource === 'manual' && isManualModeComplete()));
 
   if (isCheckingAuth) {
     return (
@@ -836,28 +922,31 @@ function DashboardOfficial() {
                   <button
                     type="button"
                     onClick={() => {
+                      setSelectedSource('saved');
                       setUseExistingBank(true);
+                      setSelectedQuestionBank(null);
                       setSelectedFile(null);
                     }}
                     className={`p-4 rounded-lg border-2 transition-all text-left ${
-                      useExistingBank && !selectedFile
+                      selectedSource === 'saved'
                         ? 'border-cyan-500 bg-cyan-50 text-cyan-700'
                         : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
                     }`}
                   >
                     <div className="font-medium mb-1">📚 Saved Questions</div>
-                    <div className="text-sm text-slate-600">Reuse existing question banks</div>
+                    <div className="text-sm text-slate-600">Use existing question bank</div>
                   </button>
 
                   {/* Upload File */}
                   <button
                     type="button"
                     onClick={() => {
+                      setSelectedSource('upload');
                       setUseExistingBank(false);
                       setSelectedQuestionBank(null);
                     }}
                     className={`p-4 rounded-lg border-2 transition-all text-left ${
-                      !useExistingBank && !selectedQuestionBank
+                      selectedSource === 'upload'
                         ? 'border-cyan-500 bg-cyan-50 text-cyan-700'
                         : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
                     }`}
@@ -869,15 +958,20 @@ function DashboardOfficial() {
                   {/* Write Manually */}
                   <button
                     type="button"
-                    onClick={handleCreateManualSession}
+                    onClick={() => {
+                      setSelectedSource('manual');
+                      setSelectedQuestionIndex(0);
+                      setSelectedDifficulty('easy');
+                    }}
                     className={`p-4 rounded-lg border-2 transition-all text-left ${
-                      !useExistingBank && !selectedFile
+                      selectedSource === 'manual'
                         ? 'border-cyan-500 bg-cyan-50 text-cyan-700'
                         : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
                     }`}
                   >
                     <div className="font-medium mb-1">✏️ Write Manually</div>
-                    <div className="text-sm text-slate-600">Create questions manually</div>
+                    <div className="text-sm text-slate-600">Create questions directly in the dashboard.</div>
+                    <div className="text-xs text-slate-500 mt-1">Write {questionCount * 3} questions manually.</div>
                   </button>
                 </div>
               </div>
@@ -885,72 +979,81 @@ function DashboardOfficial() {
               {/* 2. Settings */}
               <div className="mb-8">
                 <h3 className="text-lg font-semibold text-slate-900 mb-3">2. Settings</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Questions per difficulty */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Questions per difficulty</label>
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={decreaseQuestions}
-                        disabled={questionCount <= MIN_QUESTIONS}
-                        className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                      >
-                        −
-                      </button>
-                      <span className="px-4 py-2 bg-slate-100 rounded-lg font-medium text-slate-900 min-w-[60px] text-center">
-                        {questionCount}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={increaseQuestions}
-                        disabled={questionCount >= MAX_QUESTIONS}
-                        className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      {questionCount * 3} total questions ({MIN_QUESTIONS}-{MAX_QUESTIONS})
-                    </div>
+                
+                {!selectedSource ? (
+                  <div className="text-center py-8 text-slate-500">
+                    <div className="text-sm">Choose a source to configure settings.</div>
                   </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Questions per difficulty - Only show for Upload File and Write Manually */}
+                    {selectedSource !== 'saved' && (
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Questions per difficulty</label>
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={decreaseQuestions}
+                            disabled={questionCount <= MIN_QUESTIONS}
+                            className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                          >
+                            −
+                          </button>
+                          <span className="px-4 py-2 bg-slate-100 rounded-lg font-medium text-slate-900 min-w-[60px] text-center">
+                            {questionCount}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={increaseQuestions}
+                            disabled={questionCount >= MAX_QUESTIONS}
+                            className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          {questionCount * 3} total questions ({MIN_QUESTIONS}-{MAX_QUESTIONS})
+                        </div>
+                      </div>
+                    )}
 
-                  {/* Time per question */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Time per question (seconds)</label>
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={decreaseTime}
-                        disabled={timePerQuestion <= MIN_TIME}
-                        className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                      >
-                        −
-                      </button>
-                      <span className="px-4 py-2 bg-slate-100 rounded-lg font-medium text-slate-900 min-w-[60px] text-center">
-                        {timePerQuestion}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={increaseTime}
-                        disabled={timePerQuestion >= MAX_TIME}
-                        className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      {Math.floor(timePerQuestion / 60)}m {timePerQuestion % 60}s per question ({MIN_TIME}-{MAX_TIME})
+                    {/* Time per question - Always show when source is selected */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Time per question (seconds)</label>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={decreaseTime}
+                          disabled={timePerQuestion <= MIN_TIME}
+                          className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        >
+                          −
+                        </button>
+                        <span className="px-4 py-2 bg-slate-100 rounded-lg font-medium text-slate-900 min-w-[60px] text-center">
+                          {timePerQuestion}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={increaseTime}
+                          disabled={timePerQuestion >= MAX_TIME}
+                          className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        {Math.floor(timePerQuestion / 60)}m {timePerQuestion % 60}s per question ({MIN_TIME}-{MAX_TIME})
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* 3. Source Details */}
               <div>
                 <h3 className="text-lg font-semibold text-slate-900 mb-3">3. Source Details</h3>
                 
-                {useExistingBank && selectedQuestionBank && (
+                {selectedSource === 'saved' && selectedQuestionBank && (
                   <div className="border border-slate-300 rounded-lg p-4 bg-slate-50">
                     <div className="flex justify-between items-start mb-2">
                       <div>
@@ -973,7 +1076,7 @@ function DashboardOfficial() {
                   </div>
                 )}
 
-                {!useExistingBank && (
+                {selectedSource === 'upload' && (
                   <div>
                     <label className="block w-full rounded-lg border-2 border-dashed border-cyan-300 bg-cyan-50 p-6 cursor-pointer hover:bg-cyan-100 transition">
                       <input
@@ -1048,7 +1151,110 @@ function DashboardOfficial() {
                   </div>
                 )}
 
-                {(!useExistingBank && !selectedFile && !selectedQuestionBank) && (
+                {selectedSource === 'manual' && (
+                  <div className="border border-slate-300 rounded-lg p-4 bg-slate-50">
+                    {/* Question Set Selector - Horizontal Scroll */}
+                    <div className="mb-3">
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Question Set</label>
+                      <div className="overflow-x-auto pb-2">
+                        <div className="flex gap-1 min-w-max">
+                          {Array.from({ length: questionCount }, (_, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => setSelectedQuestionIndex(i)}
+                              className={`px-2 py-1 rounded text-xs font-medium transition whitespace-nowrap ${
+                                selectedQuestionIndex === i
+                                  ? 'bg-cyan-600 text-white'
+                                  : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+                              }`}
+                            >
+                              Set {i + 1}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Difficulty Tabs */}
+                    <div className="mb-3">
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Difficulty</label>
+                      <div className="flex gap-2">
+                        {['easy', 'medium', 'hard'].map(difficulty => (
+                          <button
+                            key={difficulty}
+                            type="button"
+                            onClick={() => setSelectedDifficulty(difficulty)}
+                            className={`px-3 py-1 rounded-lg text-sm font-medium capitalize transition ${
+                              selectedDifficulty === difficulty
+                                ? 'bg-cyan-600 text-white'
+                                : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            {difficulty}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Progress */}
+                    <div className="mb-4 text-sm text-slate-600">
+                      Manual Progress: {getCompletedManualQuestionsCount()} / {questionCount * 3} complete
+                    </div>
+
+                    {/* Question Form */}
+                    {(() => {
+                      const currentQuestion = manualQuestions[selectedDifficulty]?.[selectedQuestionIndex];
+                      if (!currentQuestion) return null;
+
+                      return (
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Question Text</label>
+                            <textarea
+                              value={currentQuestion.question}
+                              onChange={(e) => updateManualQuestion(selectedDifficulty, selectedQuestionIndex, 'question', e.target.value)}
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+                              rows={2}
+                              placeholder="Enter your question here..."
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Options</label>
+                            <div className="space-y-2">
+                              {['A', 'B', 'C', 'D'].map((label, index) => (
+                                <div key={label} className="flex items-center gap-2">
+                                  <span className="w-6 text-sm font-medium text-slate-600">{label}.</span>
+                                  <input
+                                    type="text"
+                                    value={currentQuestion.options[index]}
+                                    onChange={(e) => updateManualQuestion(selectedDifficulty, selectedQuestionIndex, `options.${index}`, e.target.value)}
+                                    className="flex-1 px-2 py-1 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 text-sm"
+                                    placeholder={`Option ${label}`}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => updateManualQuestion(selectedDifficulty, selectedQuestionIndex, 'correctAnswer', index)}
+                                    className={`px-2 py-1 rounded text-xs font-medium transition ${
+                                      currentQuestion.correctAnswer === index
+                                        ? 'bg-green-600 text-white'
+                                        : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    {currentQuestion.correctAnswer === index ? '✓' : ''}
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {!selectedSource && (
                   <div className="text-center py-8 text-slate-500">
                     <div className="text-2xl mb-2">📝</div>
                     <p className="font-medium">Choose a source above to continue</p>
@@ -1064,9 +1270,9 @@ function DashboardOfficial() {
               <h2 className="text-xl font-bold text-slate-900 mb-4">Session Summary</h2>
               
               <div className="space-y-4">
-                {(!useExistingBank && !selectedFile && !selectedQuestionBank) ? (
+                {!selectedSource ? (
                   <div className="text-center py-8 text-slate-500">
-                    <div className="text-sm">Choose a source to continue</div>
+                    <div className="text-sm">Choose a source above to continue</div>
                   </div>
                 ) : (
                   <>
@@ -1074,14 +1280,17 @@ function DashboardOfficial() {
                     <div>
                       <div className="text-sm font-medium text-slate-700 mb-1">Source</div>
                       <div className="bg-slate-50 rounded-lg px-3 py-2 text-slate-900">
-                        {useExistingBank && selectedQuestionBank && (
+                        {selectedSource === 'saved' && selectedQuestionBank && (
                           <span>📚 {selectedQuestionBank.file_name || "Existing Bank"}</span>
                         )}
-                        {!useExistingBank && selectedFile && (
+                        {selectedSource === 'upload' && selectedFile && (
                           <span>📁 {selectedFile.name}</span>
                         )}
-                        {!useExistingBank && !selectedFile && (
+                        {selectedSource === 'upload' && !selectedFile && (
                           <span>📁 Upload File</span>
+                        )}
+                        {selectedSource === 'manual' && (
+                          <span>✏️ Manual Questions</span>
                         )}
                       </div>
                     </div>
@@ -1090,7 +1299,7 @@ function DashboardOfficial() {
                     <div>
                       <div className="text-sm font-medium text-slate-700 mb-1">Total Questions</div>
                       <div className="bg-slate-50 rounded-lg px-3 py-2 text-slate-900">
-                        {useExistingBank && selectedQuestionBank
+                        {selectedSource === 'saved' && selectedQuestionBank
                           ? selectedQuestionBank.question_count || 0
                           : questionCount * 3}
                       </div>
@@ -1100,7 +1309,7 @@ function DashboardOfficial() {
                     <div>
                       <div className="text-sm font-medium text-slate-700 mb-1">Time per Question</div>
                       <div className="bg-slate-50 rounded-lg px-3 py-2 text-slate-900">
-                        {useExistingBank && selectedQuestionBank
+                        {selectedSource === 'saved' && selectedQuestionBank
                           ? selectedQuestionBank.time_per_question || 30
                           : timePerQuestion}s
                       </div>
@@ -1113,8 +1322,12 @@ function DashboardOfficial() {
                         {canCreateSession ? (
                           <span className="text-green-700">✓ Ready to create</span>
                         ) : (
-                          !useExistingBank && !selectedFile ? (
+                          selectedSource === 'saved' && !selectedQuestionBank ? (
+                            <span className="text-slate-500">Select a saved question bank</span>
+                          ) : selectedSource === 'upload' && !selectedFile ? (
                             <span className="text-slate-500">Choose a file</span>
+                          ) : selectedSource === 'manual' && !isManualModeComplete() ? (
+                            <span className="text-slate-500">Complete all manual questions</span>
                           ) : (
                             <span className="text-slate-500">⚠ Complete setup to continue</span>
                           )
@@ -1337,18 +1550,45 @@ function DashboardOfficial() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  selectedSessions.forEach(sessionId => {
-                    const session = teacherSessions.find(s => s.id === sessionId);
-                    if (session) {
-                      deleteSessionRecord(session, {
-                        listLabel: "selected sessions"
-                      });
+                onClick={async () => {
+                  try {
+                    // Convert Set to array and filter valid IDs
+                    const sessionIds = Array.from(selectedSessions).filter(id => 
+                      id && typeof id === 'string' && id.trim() !== ''
+                    );
+
+                    if (sessionIds.length === 0) {
+                      setError("No valid session IDs found for deletion.");
+                      return;
                     }
-                  });
-                  setShowDeleteModal(false);
-                  setIsSelectionMode(false);
-                  setSelectedSessions(new Set());
+
+                    // Delete all selected sessions at once
+                    const { error: delErr } = await supabase
+                      .from("sessions")
+                      .delete()
+                      .in("id", sessionIds);
+
+                    if (delErr) {
+                      setError(`Failed to delete sessions: ${delErr.message}`);
+                      return;
+                    }
+
+                    // Update local state
+                    setTeacherSessions((prev) => prev.filter((s) => !selectedSessions.has(s.id)));
+                    setSavedQuestionBanks((prev) => prev.filter((s) => !selectedSessions.has(s.id)));
+                    
+                    // Clear selected bank if it was deleted
+                    if (selectedQuestionBank && selectedSessions.has(selectedQuestionBank.id)) {
+                      setSelectedQuestionBank(null);
+                    }
+                    
+                    setError("");
+                    setShowDeleteModal(false);
+                    setIsSelectionMode(false);
+                    setSelectedSessions(new Set());
+                  } catch (err) {
+                    setError(`Failed to delete sessions: ${err.message || "Unknown error"}`);
+                  }
                 }}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg"
               >

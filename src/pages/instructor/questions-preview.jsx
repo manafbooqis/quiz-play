@@ -379,7 +379,23 @@ function QuestionsPreview() {
 
         {saveMessage && (
           <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-emerald-700">
-            {saveMessage}
+            <div className="mb-4">
+              {saveMessage}
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => navigate("/instructor/live-quiz", { state: { gameCode } })}
+                className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-semibold transition"
+              >
+                Open Live Control
+              </button>
+              <button
+                onClick={() => navigate("/instructor/session-official")}
+                className="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold transition"
+              >
+                Back to Dashboard
+              </button>
+            </div>
           </div>
         )}
 
