@@ -284,197 +284,330 @@ function RoundResults() {
   const myRank = myResult ? roundResults.findIndex(r => r.player_id === myResult.player_id) + 1 : 0;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-6">
-      <div className="w-full max-w-4xl bg-slate-800 border border-slate-600 rounded-2xl shadow-xl p-8">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="game-font text-4xl text-cyan-300 mb-4">Round Results</h1>
-          <div className="flex items-center justify-center gap-4 text-slate-300">
-            <span>Round {currentRound}</span>
-            <span>•</span>
-            <span>Game Code: {gameCode}</span>
-          </div>
-        </div>
-
-        {/* My Result Card (Phase 1 - from navigation state) */}
-        <div className="mb-8 bg-gradient-to-r from-cyan-600 to-blue-600 border-2 border-cyan-400 rounded-2xl p-6 text-center">
-          <div className="flex items-center justify-center mb-4">
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center font-bold text-2xl ${
-              isCorrect ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
-            }`}>
-              {isCorrect ? '✓' : '✗'}
-            </div>
-          </div>
-          <h2 className="text-2xl font-bold mb-2">Your Result</h2>
-          <div className="flex items-center justify-center gap-6">
-            <div>
-              <p className="text-3xl font-bold">{pointsAwarded}</p>
-              <p className="text-cyan-100">Points earned</p>
-            </div>
-            <div className="w-px h-12 bg-cyan-400"></div>
-            <div>
-              <p className="text-2xl font-bold capitalize">{currentDifficulty}</p>
-              <p className="text-cyan-100">Difficulty</p>
-            </div>
-          </div>
+    <>
+      {/* Rich Racing Background */}
+      <div className="fixed inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 overflow-hidden pointer-events-none">
+        
+        {/* Layered depth glows */}
+        <div className="absolute inset-0 bg-gradient-to-t from-cyan-400/5 via-transparent to-pink-400/5 animate-pulse" style={{ animationDuration: '8s' }} />
+        <div className="absolute inset-0 bg-gradient-radial from-cyan-400/8 via-transparent to-transparent opacity-60" style={{ background: 'radial-gradient(circle at 30% 50%, rgba(6, 182, 212, 0.08) 0%, transparent 50%)' }} />
+        <div className="absolute inset-0 bg-gradient-radial from-pink-400/8 via-transparent to-transparent opacity-60" style={{ background: 'radial-gradient(circle at 70% 50%, rgba(236, 72, 153, 0.08) 0%, transparent 50%)' }} />
+        <div className="absolute inset-0 bg-gradient-radial from-yellow-400/4 via-transparent to-transparent opacity-50" style={{ background: 'radial-gradient(circle at 50% 30%, rgba(250, 204, 21, 0.04) 0%, transparent 50%)' }} />
+        
+        {/* Stronger curved neon racing lanes */}
+        <div className="absolute inset-0">
+          {/* Left side - enhanced cyan/blue racing track */}
+          <svg className="absolute top-0 left-0 w-1/3 h-full" viewBox="0 0 300 800" style={{ opacity: 0.7 }}>
+            <defs>
+              <linearGradient id="cyanTrack" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.6" />
+                <stop offset="50%" stopColor="#0891b2" stopOpacity="0.8" />
+                <stop offset="100%" stopColor="#0e7490" stopOpacity="0.4" />
+              </linearGradient>
+              <filter id="cyanGlow">
+                <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
+            <path d="M 50 100 Q 150 200 100 300 T 200 500 Q 250 600 150 700 L 100 800" 
+                  stroke="url(#cyanTrack)" strokeWidth="8" fill="none" filter="url(#cyanGlow)" className="animate-pulse" style={{ animationDuration: '3s' }} />
+            <path d="M 30 0 Q 130 200 30 400 T 50 800" 
+                  stroke="#06b6d4" strokeWidth="4" fill="none" opacity="0.6" className="animate-pulse" style={{ animationDelay: '1s', animationDuration: '3s' }} />
+            <path d="M 70 0 Q 170 200 70 400 T 90 800" 
+                  stroke="#0891b2" strokeWidth="3" fill="none" opacity="0.4" className="animate-pulse" style={{ animationDelay: '2s', animationDuration: '3s' }} />
+            <path d="M 90 0 Q 190 200 90 400 T 110 800" 
+                  stroke="#0e7490" strokeWidth="2" fill="none" opacity="0.2" className="animate-pulse" style={{ animationDelay: '3s', animationDuration: '3s' }} />
+          </svg>
           
-          {/* Question Details */}
-          {currentQuestion && (
-            <div className="mt-6 text-left bg-white/10 rounded-xl p-4">
-              <p className="text-lg font-semibold mb-2">Question:</p>
-              <p className="text-cyan-100 mb-3">{currentQuestion.question_text || currentQuestion.questionText}</p>
-              
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="font-semibold text-cyan-200">Your Answer:</p>
-                  <p className="text-white">
-                    {selectedAnswer === 0 ? 'A' : selectedAnswer === 1 ? 'B' : selectedAnswer === 2 ? 'C' : selectedAnswer === 3 ? 'D' : '-'}
-                  </p>
-                </div>
-                <div>
-                  <p className="font-semibold text-emerald-200">Correct Answer:</p>
-                  <p className="text-white">
-                    {currentQuestion.correct_answer === 0 ? 'A' : currentQuestion.correct_answer === 1 ? 'B' : currentQuestion.correct_answer === 2 ? 'C' : currentQuestion.correct_answer === 3 ? 'D' : '-'}
-                  </p>
-                </div>
-              </div>
+          {/* Right side - enhanced pink/purple racing track */}
+          <svg className="absolute top-0 right-0 w-1/3 h-full" viewBox="0 0 300 800" style={{ opacity: 0.6 }}>
+            <defs>
+              <linearGradient id="pinkTrack" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#ec4899" stopOpacity="0.8" />
+                <stop offset="50%" stopColor="#db2777" stopOpacity="1" />
+                <stop offset="100%" stopColor="#be185d" stopOpacity="0.5" />
+              </linearGradient>
+              <filter id="pinkGlow">
+                <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
+            <path d="M 250 100 Q 150 200 250 300 T 200 500 Q 150 600 250 700 L 200 800" 
+                  stroke="url(#pinkTrack)" strokeWidth="8" fill="none" filter="url(#pinkGlow)" className="animate-pulse" style={{ animationDuration: '3s', animationDelay: '1.5s' }} />
+            <path d="M 270 0 Q 170 200 270 400 T 250 800" 
+                  stroke="#ec4899" strokeWidth="4" fill="none" opacity="0.6" className="animate-pulse" style={{ animationDelay: '2.5s', animationDuration: '3s' }} />
+            <path d="M 230 0 Q 130 200 230 400 T 210 800" 
+                  stroke="#db2777" strokeWidth="3" fill="none" opacity="0.4" className="animate-pulse" style={{ animationDelay: '3.5s', animationDuration: '3s' }} />
+            <path d="M 210 0 Q 110 200 210 400 T 190 800" 
+                  stroke="#be185d" strokeWidth="2" fill="none" opacity="0.2" className="animate-pulse" style={{ animationDelay: '4.5s', animationDuration: '3s' }} />
+          </svg>
+        </div>
+        
+        {/* Enhanced speed lines */}
+        <div className="absolute top-1/4 left-0 w-full h-1.5 bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent animate-pulse" style={{ animationDuration: '2s' }} />
+        <div className="absolute top-1/2 left-0 w-full h-1.5 bg-gradient-to-r from-transparent via-pink-400/60 to-transparent animate-pulse" style={{ animationDelay: '0.7s', animationDuration: '2s' }} />
+        <div className="absolute top-3/4 left-0 w-full h-1.5 bg-gradient-to-r from-transparent via-yellow-300/40 to-transparent animate-pulse" style={{ animationDelay: '1.4s', animationDuration: '2s' }} />
+        <div className="absolute top-1/6 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent animate-pulse" style={{ animationDelay: '2.1s', animationDuration: '2s' }} />
+        <div className="absolute top-5/6 left-0 w-full h-1 bg-gradient-to-r from-transparent via-pink-400/30 to-transparent animate-pulse" style={{ animationDelay: '2.8s', animationDuration: '2s' }} />
+        
+        {/* Diagonal speed streaks */}
+        <div className="absolute top-20 right-1/4 w-48 h-1.5 bg-gradient-to-l from-transparent via-cyan-400/40 to-transparent transform rotate-45 animate-pulse" style={{ animationDelay: '0.3s', animationDuration: '2s' }} />
+        <div className="absolute bottom-32 left-1/4 w-40 h-1.5 bg-gradient-to-r from-transparent via-pink-400/40 to-transparent transform rotate-12 animate-pulse" style={{ animationDelay: '1s', animationDuration: '2s' }} />
+        <div className="absolute top-60 left-1/3 w-36 h-1 bg-gradient-to-r from-transparent via-cyan-400/35 to-transparent transform -rotate-12 animate-pulse" style={{ animationDelay: '1.7s', animationDuration: '2s' }} />
+        <div className="absolute bottom-48 right-1/3 w-44 h-1 bg-gradient-to-l from-transparent via-pink-400/35 to-transparent transform -rotate-6 animate-pulse" style={{ animationDelay: '2.3s', animationDuration: '2s' }} />
+        
+        {/* Floating decorative elements */}
+        <div className="absolute top-16 left-12 w-3 h-3 bg-cyan-400/25 rounded-full animate-ping border border-cyan-400/40" />
+        <div className="absolute top-32 right-16 w-2 h-2 bg-cyan-400/20 rounded-full animate-ping border border-cyan-400/30" style={{ animationDelay: '1.8s' }} />
+        <div className="absolute bottom-24 left-20 w-2 h-2 bg-cyan-400/15 rounded-full animate-pulse border border-cyan-400/25" style={{ animationDelay: '0.8s' }}>
+          <span className="text-cyan-300/70 text-xs flex items-center justify-center h-full">🏁</span>
+        </div>
+        <div className="absolute bottom-40 right-12 w-3 h-3 bg-cyan-400/20 rounded-full animate-ping border border-cyan-400/30" style={{ animationDelay: '2.3s' }} />
+        <div className="absolute top-48 left-24 w-2 h-2 text-cyan-300/25 animate-pulse" style={{ animationDelay: '1.3s' }}>
+          <span className="text-cyan-300/70 text-xs flex items-center justify-center h-full">⚡</span>
+        </div>
+        <div className="absolute top-24 right-24 w-2 h-2 text-cyan-300/20 animate-pulse" style={{ animationDelay: '2.6s' }}>
+          <span className="text-cyan-300/70 text-xs flex items-center justify-center h-full">⚡</span>
+        </div>
+        <div className="absolute bottom-12 right-24 w-2 h-2 text-cyan-300/15 animate-pulse" style={{ animationDelay: '3.2s' }}>
+          <span className="text-cyan-300/70 text-xs flex items-center justify-center h-full">⚡</span>
+        </div>
+      </div>
+      
+      {/* Radial overlay for depth */}
+      <div className="fixed inset-0 bg-gradient-radial from-transparent via-slate-900/20 to-slate-900/40 pointer-events-none z-20" style={{ background: 'radial-gradient(circle at center, transparent 0%, rgba(15, 23, 42, 0.2) 50%, rgba(15, 23, 42, 0.4) 100%)' }} />
+      
+      {/* Main Content */}
+      <div className="relative min-h-screen flex items-start justify-center px-6 py-4 z-30">
+        <div className="w-full max-w-5xl bg-slate-800/70 backdrop-blur-xl rounded-3xl shadow-3xl border-2 border-slate-600/50 p-6">
+        {/* Premium Header */}
+          <div className="text-center mb-6">
+            <h1 className="game-font text-5xl md:text-6xl font-bold relative mb-3">
+              {/* Strong neon glow background */}
+              <span className="absolute inset-0 blur-3xl bg-gradient-to-r from-cyan-400/60 via-pink-400/50 to-cyan-400/60 animate-pulse" style={{ animationDuration: '3s' }} />
+              <span className="absolute inset-0 blur-xl bg-gradient-to-r from-cyan-400/40 via-pink-400/30 to-cyan-400/40 animate-pulse" style={{ animationDelay: '1.5s', animationDuration: '3s' }} />
+              <span className="relative bg-gradient-to-r from-cyan-300 via-pink-200 to-cyan-300 bg-clip-text text-transparent drop-shadow-lg">
+                Round Results
+              </span>
+            </h1>
+            <div className="flex items-center justify-center gap-6 text-slate-300 text-lg">
+              <span className="text-cyan-200 font-semibold">Round {currentRound}</span>
+              <span className="text-pink-300">•</span>
+              <span className="text-cyan-200">Game Code: {gameCode}</span>
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* Top Performers */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-center mb-6 text-cyan-300">Top Performers</h2>
-          <div className="space-y-3">
-            {roundResults.slice(0, 5).map((result, index) => (
-              <div 
-                key={result.id}
-                className={`flex items-center justify-between p-4 rounded-xl border transition ${
-                  result.player_id === myResult?.player_id
-                    ? "border-cyan-400 bg-cyan-900/30"
-                    : "border-slate-600 bg-slate-700/50"
-                }`}
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-bold">
-                    {index + 1}
-                  </div>
-                  <div>
-                    <p className="font-semibold">
-                      {result.studentName}
-                      {result.player_id === myResult?.player_id && (
-                        <span className="ml-2 text-cyan-400">(You)</span>
-                      )}
-                    </p>
-                    <p className="text-sm text-slate-400">
-                      {result.is_correct ? "Correct answer" : "Wrong answer"}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold text-xl">{result.points_awarded}</p>
-                  <p className="text-sm text-slate-400">points</p>
+        {/* Main Result Card with Glassmorphism */}
+          <div className="mb-6 relative bg-gradient-to-br from-slate-900/80 to-slate-800/60 backdrop-blur-xl border-2 border-cyan-400/60 rounded-3xl p-6 text-center shadow-2xl overflow-hidden">
+            {/* Multicolor edge glow effect */}
+            <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-cyan-400/20 via-blue-400/20 to-pink-400/20 animate-pulse" style={{ animationDuration: '4s' }} />
+            <div className="absolute inset-0 rounded-3xl bg-gradient-to-t from-amber-400/15 via-transparent to-transparent animate-pulse" style={{ animationDelay: '2s', animationDuration: '4s' }} />
+            <div className="absolute inset-0 rounded-3xl border-2 border-transparent bg-gradient-to-r from-cyan-400/30 via-blue-400/30 via-amber-400/30 to-pink-400/30 animate-pulse" style={{ animationDuration: '3s' }} />
+            <div className="absolute inset-0 rounded-3xl bg-gradient-to-b from-transparent via-white/5 to-transparent" />
+            
+            {/* Result content */}
+            <div className="relative z-10">
+              {/* Correct/Wrong Icon */}
+              <div className="flex items-center justify-center mb-4">
+                <div className={`relative w-20 h-20 rounded-full flex items-center justify-center font-bold text-3xl shadow-2xl ${
+                  isCorrect 
+                    ? 'bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-emerald-400/50' 
+                    : 'bg-gradient-to-br from-red-500 to-red-600 text-white shadow-red-400/50'
+                }`}>
+                  {/* Glow effect */}
+                  <div className={`absolute inset-0 rounded-full animate-ping ${
+                    isCorrect ? 'bg-emerald-400/40' : 'bg-red-400/40'
+                  }`} style={{ animationDelay: '1s' }} />
+                  <span className="relative z-10">{isCorrect ? '✓' : '✗'}</span>
                 </div>
               </div>
-            ))}
+              
+              <h2 className="text-3xl font-bold mb-4 text-white">Your Result</h2>
+              
+              {/* Points and Difficulty */}
+              <div className="flex items-center justify-center gap-8 mb-6">
+                <div className="text-center">
+                  <p className="text-4xl font-bold text-cyan-300">{pointsAwarded}</p>
+                  <p className="text-cyan-100 text-sm mt-1">Points earned</p>
+                </div>
+                <div className="w-px h-16 bg-gradient-to-b from-transparent via-cyan-400 to-transparent"></div>
+                <div className="text-center">
+                  <p className="text-3xl font-bold capitalize text-pink-300">{currentDifficulty}</p>
+                  <p className="text-pink-100 text-sm mt-1">Difficulty</p>
+                </div>
+              </div>
+              
+              {/* Question Details */}
+              {currentQuestion && (
+                <div className="text-left bg-slate-900/60 backdrop-blur-md rounded-2xl p-6 border border-cyan-400/30">
+                  <p className="text-lg font-semibold mb-3 text-cyan-200">Question:</p>
+                  <p className="text-white mb-4 leading-relaxed">{currentQuestion.question_text || currentQuestion.questionText}</p>
+                  
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <p className="font-semibold text-cyan-200 mb-2">Your Answer:</p>
+                      <p className="text-white text-lg font-medium">
+                        {selectedAnswer === 0 ? 'A' : selectedAnswer === 1 ? 'B' : selectedAnswer === 2 ? 'C' : selectedAnswer === 3 ? 'D' : '-'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-emerald-200 mb-2">Correct Answer:</p>
+                      <p className="text-white text-lg font-medium">
+                        {currentQuestion.correct_answer === 0 ? 'A' : currentQuestion.correct_answer === 1 ? 'B' : currentQuestion.correct_answer === 2 ? 'C' : currentQuestion.correct_answer === 3 ? 'D' : '-'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Full Results */}
-        {roundResults.length > 5 && (
-          <div className="mb-8">
-            <h3 className="text-xl font-bold text-center mb-4 text-slate-300">All Results</h3>
-            <div className="max-h-60 overflow-y-auto space-y-2">
-              {roundResults.slice(5).map((result) => (
+        {/* Top Performers Section */}
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-center mb-4 relative">
+              <span className="bg-gradient-to-r from-cyan-300 to-pink-300 bg-clip-text text-transparent">Top Performers</span>
+            </h2>
+            <div className="space-y-2">
+              {roundResults.slice(0, 5).map((result, index) => (
                 <div 
                   key={result.id}
-                  className={`flex items-center justify-between p-3 rounded-lg border transition ${
+                  className={`relative flex items-center justify-between p-4 rounded-2xl border transition-all duration-300 backdrop-blur-md overflow-hidden ${
                     result.player_id === myResult?.player_id
-                      ? "border-cyan-400 bg-cyan-900/30"
-                      : "border-slate-700 bg-slate-700/30"
+                    ? "border-cyan-400/60 bg-cyan-900/40 shadow-cyan-400/30"
+                    : "border-slate-600/50 bg-slate-700/40 hover:border-slate-500/50"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-sm font-bold">
-                      {roundResults.findIndex(r => r.id === result.id) + 1}
-                    </span>
-                    <span className={result.player_id === myResult?.player_id ? "text-cyan-400 font-semibold" : ""}>
-                      {result.studentName}
-                      {result.player_id === myResult?.player_id && " (You)"}
-                    </span>
+                  {/* Subtle glow effect for current user */}
+                  {result.player_id === myResult?.player_id && (
+                    <div className="absolute inset-0 bg-cyan-400/10 rounded-2xl animate-pulse" style={{ animationDuration: '2s' }} />
+                  )}
+                  
+                  <div className="flex items-center gap-4 relative z-10">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
+                      index === 0 ? 'bg-gradient-to-br from-amber-500 to-amber-600 text-white shadow-amber-400/50' :
+                      index === 1 ? 'bg-gradient-to-br from-slate-400 to-slate-500 text-white shadow-slate-400/50' :
+                      index === 2 ? 'bg-gradient-to-br from-orange-600 to-orange-700 text-white shadow-orange-400/50' :
+                      'bg-gradient-to-br from-slate-600 to-slate-700 text-white'
+                    }`}>
+                      {index + 1}
+                    </div>
+                    <div>
+                      <p className={`font-semibold text-lg ${
+                        result.player_id === myResult?.player_id ? "text-cyan-300" : "text-white"
+                      }`}>
+                        {result.studentName}
+                        {result.player_id === myResult?.player_id && (
+                          <span className="text-cyan-400 ml-2">(You)</span>
+                        )}
+                      </p>
+                    </div>
                   </div>
-                  <span className="font-bold">{result.points_awarded} pts</span>
+                  <span className={`font-bold text-lg relative z-10 ${
+                    result.player_id === myResult?.player_id ? "text-cyan-300" : "text-pink-300"
+                  }`}>
+                    {result.points_awarded} pts
+                  </span>
                 </div>
               ))}
             </div>
           </div>
-        )}
 
-        {/* Phase 2: All Students Sync */}
-        <div className="text-center">
-          <div className={`p-4 rounded-xl border mb-6 ${
-            allReady 
-              ? "border-emerald-400 bg-emerald-900/20" 
-              : "border-slate-600 bg-slate-700/50"
-          }`}>
-            <p className={allReady ? "text-emerald-300" : "text-slate-300"}>
-              <span className="font-semibold">
-                {allReady ? "All students are ready" : "Waiting for students..."}
-              </span>
-            </p>
-            <p className={`${allReady ? "text-emerald-400" : "text-slate-400"} text-sm mt-1`}>
-              {allReady 
-                ? countdown > 0 ? `Starting next round in ${countdown}...` : "Starting next round"
-                : `Answered: ${answeredStudents.length} / ${totalStudents}`
-              }
-            </p>
-          </div>
-
-          {/* Students List */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-3 text-slate-300">Students Status</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-              {/* Answered Students */}
-              <div>
-                <p className="font-semibold text-emerald-400 mb-2">Answered ({answeredStudents.length})</p>
-                <div className="space-y-1">
-                  {[...answeredStudents, ...waitingStudents]
-                    .sort((a, b) => b.total_score - a.total_score)
-                    .filter(student => answeredStudents.some(as => as.studentName === student.studentName))
-                    .map(student => (
-                      <div key={student.studentName} className="flex justify-between p-2 rounded bg-emerald-900/20 border border-emerald-800/50">
-                        <span className={student.studentName === studentName ? "text-cyan-400 font-semibold" : "text-emerald-300"}>
-                          {student.studentName}
-                          {student.studentName === studentName && " (You)"}
-                        </span>
-                        <span className="text-emerald-400">{student.total_score} pts</span>
-                      </div>
-                    ))}
-                </div>
+          {/* Phase 2: All Students Sync */}
+          <div className="text-center">
+            <div className={`relative p-4 rounded-2xl border mb-6 backdrop-blur-md overflow-hidden ${
+              allReady 
+                ? "border-emerald-400/60 bg-emerald-900/30 shadow-emerald-400/30" 
+                : "border-slate-600/50 bg-slate-700/40"
+            }`}>
+              {/* Glow effect for ready state */}
+              {allReady && (
+                <div className="absolute inset-0 bg-emerald-400/10 rounded-2xl animate-pulse" style={{ animationDuration: '2s' }} />
+              )}
+              
+              <div className="relative z-10">
+                <p className={`text-xl font-semibold mb-2 ${
+                  allReady ? "text-emerald-300" : "text-slate-300"
+                }`}>
+                  {allReady ? "All students are ready" : "Waiting for students..."}
+                </p>
+                <p className={`text-base ${
+                  allReady ? "text-emerald-400" : "text-slate-400"
+                }`}>
+                  {allReady 
+                    ? countdown > 0 ? `Starting next round in ${countdown}...` : "Starting next round"
+                    : `Answered: ${answeredStudents.length} / ${totalStudents}`
+                  }
+                </p>
               </div>
+            </div>
 
-              {/* Waiting Students */}
-              <div>
-                <p className="font-semibold text-amber-400 mb-2">Waiting ({waitingStudents.length})</p>
-                <div className="space-y-1">
-                  {waitingStudents
-                    .sort((a, b) => b.total_score - a.total_score)
-                    .map(student => (
-                      <div key={student.studentName} className="flex justify-between p-2 rounded bg-amber-900/20 border border-amber-800/50">
-                        <span className={student.studentName === studentName ? "text-cyan-400 font-semibold" : "text-amber-300"}>
-                          {student.studentName}
-                          {student.studentName === studentName && " (You)"}
-                        </span>
-                        <span className="text-amber-400">{student.total_score} pts</span>
-                      </div>
-                    ))}
+            {/* Students Status Section */}
+            <div className="relative">
+              <h3 className="text-xl font-bold mb-4 relative">
+                <span className="bg-gradient-to-r from-cyan-300 to-pink-300 bg-clip-text text-transparent">Students Status</span>
+              </h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Answered Students */}
+                <div className="relative bg-slate-900/60 backdrop-blur-md rounded-2xl p-3 border border-emerald-400/30">
+                  <div className="absolute inset-0 bg-emerald-400/5 rounded-2xl animate-pulse" style={{ animationDuration: '3s' }} />
+                  <div className="relative z-10">
+                    <p className="font-bold text-emerald-300 mb-2 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
+                      Answered ({answeredStudents.length})
+                    </p>
+                    <div className="max-h-48 overflow-y-auto space-y-2">
+                      {[...answeredStudents, ...waitingStudents]
+                        .sort((a, b) => b.total_score - a.total_score)
+                        .filter(student => answeredStudents.some(as => as.studentName === student.studentName))
+                        .map(student => (
+                          <div key={student.studentName} className="flex justify-between p-3 rounded-xl bg-emerald-900/20 border border-emerald-800/50 backdrop-blur-sm">
+                            <span className={student.studentName === studentName ? "text-cyan-400 font-semibold" : "text-emerald-300"}>
+                              {student.studentName}
+                              {student.studentName === studentName && " (You)"}
+                            </span>
+                            <span className="text-emerald-400 font-bold">{student.total_score} pts</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Waiting Students */}
+                <div className="relative bg-slate-900/60 backdrop-blur-md rounded-2xl p-3 border border-amber-400/30">
+                  <div className="absolute inset-0 bg-amber-400/5 rounded-2xl animate-pulse" style={{ animationDuration: '3s' }} />
+                  <div className="relative z-10">
+                    <p className="font-bold text-amber-300 mb-2 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></span>
+                      Waiting ({waitingStudents.length})
+                    </p>
+                    <div className="max-h-48 overflow-y-auto space-y-2">
+                      {waitingStudents
+                        .sort((a, b) => b.total_score - a.total_score)
+                        .map(student => (
+                          <div key={student.studentName} className="flex justify-between p-3 rounded-xl bg-amber-900/20 border border-amber-800/50 backdrop-blur-sm">
+                            <span className={student.studentName === studentName ? "text-cyan-400 font-semibold" : "text-amber-300"}>
+                              {student.studentName}
+                              {student.studentName === studentName && " (You)"}
+                            </span>
+                            <span className="text-amber-400 font-bold">{student.total_score} pts</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
