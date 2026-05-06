@@ -567,24 +567,49 @@ function DashboardOfficial() {
 
   if (isCheckingAuth) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-white flex items-center justify-center">
         <p className="text-slate-500 font-semibold">Checking login...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900">
-      <div className="max-w-6xl mx-auto px-6 py-8">
+    <div className="relative min-h-screen text-white bg-[radial-gradient(circle_at_top_right,_rgba(168,85,247,0.28),_transparent_28%),radial-gradient(circle_at_top_left,_rgba(6,182,212,0.22),_transparent_25%),linear-gradient(135deg,#050816_0%,#0b1023_45%,#050816_100%)]">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+  {Array.from({ length: 18 }).map((_, i) => (
+    <span
+      key={i}
+      className="absolute h-1.5 w-1.5 rounded-full bg-cyan-300/60 animate-pulse"
+      style={{
+        left: `${Math.random() * 100}%`,
+        top: `${Math.random() * 100}%`,
+        animationDuration: `${2 + Math.random() * 4}s`,
+        filter: "blur(1px)",
+      }}
+    />
+  ))}
+</div>
+  
+<div className="pointer-events-none absolute inset-0 overflow-hidden">
+  <div className="absolute left-[-8rem] top-[-5rem] h-72 w-72 rounded-full bg-cyan-400/15 blur-3xl animate-pulse" />
+  <div className="absolute right-[-8rem] top-24 h-80 w-80 rounded-full bg-fuchsia-500/15 blur-3xl animate-pulse" />
+  <div className="absolute bottom-[-6rem] left-1/3 h-72 w-72 rounded-full bg-violet-500/10 blur-3xl animate-pulse" />
+</div>
+
+      <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
           <div>
-            
-            <h1 className="text-3xl md:text-4xl font-extrabold mt-1">
+
+            <p className="text-xs uppercase tracking-[0.35em] text-cyan-300 font-bold">
+                Quiz Play Control Hub
+            </p>
+
+            <h1 className="text-4xl md:text-5xl font-black mt-2 bg-gradient-to-r from-cyan-300 via-fuchsia-300 to-violet-400 bg-clip-text text-transparent drop-shadow-[0_0_14px_rgba(168,85,247,0.35)]">
               Instructor Dashboard
             </h1>
 
-            <p className="text-slate-500 mt-2">
-              Upload your file, set the quiz options, then create a session for students.
+            <p className="text-slate-300 mt-3 max-w-2xl">
+              Build a neon-powered quiz arena, configure the match, and launch your session.
             </p>
           </div>
 
@@ -592,14 +617,14 @@ function DashboardOfficial() {
             <button
               type="button"
               onClick={() => setMenuOpen((prev) => !prev)}
-              className="flex items-center gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm hover:bg-slate-50 transition"
+              className="flex items-center gap-3 rounded-2xl px-4 py-3 border border-cyan-400/20 bg-white/5 backdrop-blur-xl shadow-[0_0_30px_rgba(34,211,238,0.08)] hover:border-cyan-300/40 transition"
             >
-              <div className="h-10 w-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-400 to-fuchsia-500 text-black flex items-center justify-center font-black shadow-[0_0_18px_rgba(34,211,238,0.45)]">
                 {initials}
               </div>
 
               <div className="text-left min-w-0 max-w-[180px]">
-                <p className="font-bold text-slate-900 truncate">
+                <p className="font-bold text-white truncate">
                   {displayName}
                 </p>
                 <p className="text-sm text-slate-500 truncate">
@@ -607,7 +632,7 @@ function DashboardOfficial() {
                 </p>
               </div>
 
-              <span className="text-slate-400">▼</span>
+              <span className="text-cyan-400">▼</span>
             </button>
 
             {menuOpen && (
@@ -650,7 +675,7 @@ function DashboardOfficial() {
         )}
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2 bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm">
+          <div className="xl:col-span-2 rounded-3xl p-6 md:p-8 border border-white/10 bg-white/5 backdrop-blur-2xl transition duration-300 hover:border-cyan-300/30 hover:shadow-[0_0_35px_rgba(34,211,238,0.12)] shadow-[0_0_40px_rgba(168,85,247,0.08)]">
             <div className="mb-6">
               <h2 className="text-2xl font-bold">Quiz Setup</h2>
               <p className="text-slate-500 text-sm mt-1">
@@ -658,10 +683,10 @@ function DashboardOfficial() {
               </p>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 mb-6">
+            <div className="rounded-2xl border border-cyan-400/10 bg-black/20 p-5 mb-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                  <p className="font-bold text-slate-900">
+                  <p className="font-bold text-white">
                     Use Existing Question Bank
                   </p>
 
@@ -696,8 +721,8 @@ function DashboardOfficial() {
                         className={[
                           "rounded-2xl border p-4 cursor-pointer transition",
                           selectedQuestionBank?.id === bank.id
-                            ? "border-slate-900 bg-white shadow-sm"
-                            : "border-slate-200 bg-white hover:bg-slate-50",
+                            ? "border-cyan-300 bg-cyan-400/10 shadow-[0_0_22px_rgba(34,211,238,0.18)]"
+                            : "border-white/10 bg-white/5 hover:bg-white/10",
                         ].join(" ")}
                       >
                         <div className="flex justify-between gap-4">
@@ -718,7 +743,7 @@ function DashboardOfficial() {
                         </div>
 
                         {selectedQuestionBank?.id === bank.id && (
-                          <div className="mt-3 rounded-xl bg-slate-900 text-white text-center py-2 text-sm font-bold">
+                          <div className="mt-3 rounded-xl bg-gradient-to-r from-cyan-400 to-fuchsia-500 text-black text-center py-2 text-sm font-black">
                             Selected
                           </div>
                         )}
@@ -736,7 +761,7 @@ function DashboardOfficial() {
                     Upload File
                   </p>
 
-                  <label className="block w-full rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-6 cursor-pointer hover:bg-slate-100 transition">
+                  <label className="block w-full rounded-3xl border border-dashed border-cyan-400/30 bg-black/20 p-6 cursor-pointer hover:bg-cyan-400/5 transition">
                     <input
                       type="file"
                       accept=".txt,.md,.doc,.docx,.pdf,.csv,.json,.html"
@@ -754,12 +779,12 @@ function DashboardOfficial() {
                         </p>
                       </div>
 
-                      <div className="px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-sm font-bold shadow-sm">
+                      <div className="px-4 py-2.5 rounded-xl bg-cyan-400/10 border border-cyan-300/20 text-sm font-bold text-cyan-200">
                         Choose File
                       </div>
                     </div>
 
-                    <div className="mt-5 rounded-2xl bg-white border border-slate-200 px-4 py-3">
+                    <div className="mt-5 rounded-2xl bg-white/5 border border-cyan-300/15 px-4 py-3 backdrop-blur-xl">
                       <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">
                         Selected File
                       </p>
@@ -773,7 +798,7 @@ function DashboardOfficial() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                  <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
                     <p className="text-sm font-bold text-slate-700 mb-3">
                       Number of Questions
                     </p>
@@ -782,12 +807,12 @@ function DashboardOfficial() {
                       <button
                         type="button"
                         onClick={decreaseQuestions}
-                        className="h-12 w-12 rounded-xl bg-white border border-slate-200 text-xl font-bold hover:bg-slate-100"
+                        className="h-12 w-12 rounded-xl bg-white/5 border border-cyan-300/20 text-cyan-200 text-xl font-black hover:bg-cyan-400/10"
                       >
                         -
                       </button>
 
-                      <div className="flex-1 rounded-xl bg-white border border-slate-200 text-center py-3">
+                      <div className="flex-1 rounded-xl bg-white/5 border border-cyan-300/15 text-center py-3 backdrop-blur-xl">
                         <p className="text-xs text-slate-500">Selected</p>
                         <p className="text-2xl font-extrabold">
                           {questionCount}
@@ -797,14 +822,14 @@ function DashboardOfficial() {
                       <button
                         type="button"
                         onClick={increaseQuestions}
-                        className="h-12 w-12 rounded-xl bg-white border border-slate-200 text-xl font-bold hover:bg-slate-100"
+                        className="h-12 w-12 rounded-xl bg-white/5 border border-cyan-300/20 text-cyan-200 text-xl font-black hover:bg-cyan-400/10"
                       >
                         +
                       </button>
                     </div>
                   </div>
 
-                  <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                  <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
                     <p className="text-sm font-bold text-slate-700 mb-3">
                       Time per Question
                     </p>
@@ -813,12 +838,12 @@ function DashboardOfficial() {
                       <button
                         type="button"
                         onClick={decreaseTime}
-                        className="h-12 w-12 rounded-xl bg-white border border-slate-200 text-xl font-bold hover:bg-slate-100"
+                        className="h-12 w-12 rounded-xl bg-white/5 border border-cyan-300/20 text-cyan-200 text-xl font-black hover:bg-cyan-400/10"
                       >
                         -
                       </button>
 
-                      <div className="flex-1 rounded-xl bg-white border border-slate-200 text-center py-3">
+                      <div className="flex-1 rounded-xl bg-white/5 border border-cyan-300/15 text-center py-3 backdrop-blur-xl">
                         <p className="text-xs text-slate-500">Selected</p>
                         <p className="text-2xl font-extrabold">
                           {timePerQuestion}s
@@ -828,7 +853,7 @@ function DashboardOfficial() {
                       <button
                         type="button"
                         onClick={increaseTime}
-                        className="h-12 w-12 rounded-xl bg-white border border-slate-200 text-xl font-bold hover:bg-slate-100"
+                        className="h-12 w-12 rounded-xl bg-white/5 border border-cyan-300/20 text-cyan-200 text-xl font-black hover:bg-cyan-400/10"
                       >
                         +
                       </button>
@@ -839,16 +864,16 @@ function DashboardOfficial() {
             )}
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-7 shadow-sm h-fit">
+          <div className="rounded-3xl p-6 md:p-8 border border-white/10 bg-white/5 backdrop-blur-2xl transition duration-300 hover:border-cyan-300/30 hover:shadow-[0_0_35px_rgba(34,211,238,0.12)] shadow-[0_0_40px_rgba(168,85,247,0.08)]">
             <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
               Session Info
             </p>
 
-            <div className="mt-6 rounded-3xl bg-slate-50 border border-slate-200 p-5">
+            <div className="mt-6 rounded-3xl bg-black/30 border border-cyan-400/15 p-5">
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
                 Game Code
               </p>
-              <p className="text-3xl md:text-4xl font-extrabold tracking-[0.18em] mt-3">
+              <p className="text-4xl md:text-5xl font-black tracking-[0.22em] mt-3 text-cyan-300 animate-pulse drop-shadow-[0_0_16px_rgba(34,211,238,0.65)]">
                 {gameCode}
               </p>
             </div>
@@ -866,8 +891,8 @@ function DashboardOfficial() {
                 !isCreatingSession &&
                 ((useExistingBank && selectedQuestionBank) ||
                   (!useExistingBank && selectedFile))
-                  ? "bg-slate-900 text-white hover:bg-slate-800"
-                  : "bg-slate-200 text-slate-500 cursor-not-allowed",
+                  ? "bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-violet-500 text-black hover:scale-[1.02] active:scale-[0.98] shadow-[0_0_25px_rgba(34,211,238,0.35)] transition duration-200"
+                  : "bg-white/10 text-slate-400 cursor-not-allowed"
               ].join(" ")}
             >
               {isCreatingSession ? "Creating session..." : "Create Session"}
@@ -879,7 +904,7 @@ function DashboardOfficial() {
           </div>
         </div>
 
-        <div className="mt-8 bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm">
+        <div className="mt-8 rounded-3xl p-6 md:p-8 border border-white/10 bg-white/5 backdrop-blur-2xl transition duration-300 hover:border-cyan-300/30 hover:shadow-[0_0_35px_rgba(34,211,238,0.12)] shadow-[0_0_40px_rgba(168,85,247,0.08)]">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
@@ -908,11 +933,11 @@ function DashboardOfficial() {
               teacherSessions.map((session) => (
                 <div
                   key={session.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-5 hover:bg-slate-100 transition"
+                  className="rounded-2xl border border-white/10 bg-white/5 p-5 hover:bg-white/10 hover:border-cyan-300/20 hover:shadow-[0_0_22px_rgba(34,211,238,0.08)] transition duration-300"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-bold text-slate-900 truncate">
+                      <p className="font-bold text-white truncate">
                         {session.file_name || "Untitled file"}
                       </p>
                       <p className="text-sm text-slate-500 mt-1">

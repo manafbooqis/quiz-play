@@ -44,7 +44,8 @@ function JoinGame() {
     }
 
     try {
-      const { data: sessionData, error: sessionError } = await getSessionById(trimmedCode);
+      const { data: sessionData, error: sessionError } =
+        await getSessionById(trimmedCode);
 
       if (sessionError) {
         throw sessionError;
@@ -56,7 +57,8 @@ function JoinGame() {
         return;
       }
 
-      const { data: existingPlayer, error: playerError } = await getSessionPlayers(trimmedCode);
+      const { data: existingPlayer, error: playerError } =
+        await getSessionPlayers(trimmedCode);
 
       if (playerError) {
         throw playerError;
@@ -68,7 +70,7 @@ function JoinGame() {
 
       if (!matchingPlayer) {
         const { error: insertError } = await insertSessionPlayer({
-          session_id: sessionData.id, // Use actual session UUID, not game code
+          session_id: sessionData.id,
           student_name: trimmedName,
           joined_at: new Date().toISOString(),
         });
@@ -78,7 +80,8 @@ function JoinGame() {
         }
       }
 
-      const { data: updatedPlayers, error: refreshedPlayersError } = await getSessionPlayers(trimmedCode);
+      const { data: updatedPlayers, error: refreshedPlayersError } =
+        await getSessionPlayers(trimmedCode);
 
       if (refreshedPlayersError) {
         throw refreshedPlayersError;
@@ -109,45 +112,94 @@ function JoinGame() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-6">
-      <div className="w-full max-w-md bg-slate-800 rounded-2xl p-8 shadow-xl">
-        <h1 className="game-font text-3xl text-center mb-6">Join Game</h1>
+    <div className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
+      {/* animated background */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.18),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(236,72,153,0.18),_transparent_35%),linear-gradient(135deg,_#020617_0%,_#0f172a_45%,_#020617_100%)]" />
 
-        <form onSubmit={handleJoin} className="space-y-4">
-          <div>
-            <label className="block mb-2">Your Name</label>
-            <input
-              type="text"
-              value={studentName}
-              onChange={(e) => setStudentName(e.target.value)}
-              placeholder="Enter your name"
-              className="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 outline-none focus:border-cyan-400"
-              required
-            />
+      {/* floating particles */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-16 left-20 h-2 w-2 rounded-full bg-cyan-400 animate-ping" />
+        <div className="absolute top-40 right-32 h-2 w-2 rounded-full bg-pink-400 animate-pulse" />
+        <div className="absolute bottom-24 left-1/4 h-1.5 w-1.5 rounded-full bg-cyan-300 animate-bounce" />
+        <div className="absolute bottom-36 right-1/4 h-1.5 w-1.5 rounded-full bg-fuchsia-400 animate-pulse" />
+      </div>
+
+      {/* moving HUD border */}
+      <div className="pointer-events-none absolute inset-0 opacity-30">
+        <div className="absolute inset-6 rounded-[36px] border border-cyan-500/20" />
+        <div className="absolute inset-10 rounded-[32px] border border-pink-500/10 animate-pulse" />
+      </div>
+
+      <div className="relative z-10 flex min-h-screen items-center justify-center px-6">
+        <div className="w-full max-w-md">
+          <div className="rounded-[30px] border border-white/10 bg-white/5 backdrop-blur-xl p-8 shadow-2xl">
+            <p className="text-center text-xs tracking-[0.35em] text-cyan-300 uppercase animate-pulse">
+              Player Entrance
+            </p>
+
+            <h1 className="game-font text-center text-4xl md:text-5xl mt-3 font-black tracking-wide text-cyan-300 drop-shadow-[0_0_18px_rgba(34,211,238,0.8)] animate-pulse">
+              Join Game
+            </h1>
+
+            <p className="mt-3 text-center text-sm text-slate-300">
+              Enter your player name and game code to join the arena.
+            </p>
+
+            <form onSubmit={handleJoin} className="mt-8 space-y-5">
+              <div>
+                <label className="mb-2 block text-xs uppercase tracking-[0.22em] text-slate-300">
+                  Your Name
+                </label>
+
+                <input
+                  type="text"
+                  value={studentName}
+                  onChange={(e) => setStudentName(e.target.value)}
+                  placeholder="Enter your name"
+                  className="w-full rounded-2xl border border-cyan-500/20 bg-slate-950/80 px-4 py-3 text-white placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:shadow-[0_0_18px_rgba(34,211,238,0.25)]"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs uppercase tracking-[0.22em] text-slate-300">
+                  Game Code
+                </label>
+
+                <input
+                  type="text"
+                  value={gameCode}
+                  onChange={(e) => setGameCode(e.target.value.toUpperCase())}
+                  placeholder="Enter game code"
+                  className="w-full rounded-2xl border border-cyan-500/20 bg-slate-950/80 px-4 py-3 text-white placeholder:text-slate-500 outline-none transition focus:border-cyan-400 focus:shadow-[0_0_18px_rgba(34,211,238,0.25)] uppercase tracking-[0.35em] font-bold"
+                  required
+                />
+              </div>
+
+              {error && (
+                <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="group relative w-full overflow-hidden rounded-2xl border border-cyan-400/20 bg-cyan-400/90 py-3 font-black text-slate-950 transition hover:scale-[1.02] hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <span className="absolute inset-0 bg-white/10 opacity-0 transition group-hover:opacity-100" />
+                <span className="relative">
+                  {loading ? "Joining..." : "Enter Arena"}
+                </span>
+              </button>
+            </form>
+
+            <div className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
+              Waiting for host access
+            </div>
           </div>
-
-          <div>
-            <label className="block mb-2">Game Code</label>
-            <input
-              type="text"
-              value={gameCode}
-              onChange={(e) => setGameCode(e.target.value.toUpperCase())}
-              placeholder="Enter game code"
-              className="w-full p-3 rounded-xl bg-slate-700 border border-slate-600 outline-none focus:border-cyan-400 uppercase"
-              required
-            />
-          </div>
-
-          {error && <p className="text-red-400 text-sm font-medium">{error}</p>}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-cyan-500 hover:bg-cyan-400 disabled:bg-cyan-700 text-slate-900 font-bold py-3 rounded-xl transition"
-          >
-            {loading ? "Joining..." : "Join"}
-          </button>
-        </form>
+        </div>
       </div>
     </div>
   );

@@ -217,66 +217,133 @@ function Lobby() {
   return playersArray.map((player, index) => getStudentName(player, index));
 };
 
-const players = config?.players
-    ? [...normalizePlayers(config.players), studentName]
-    : ["Radi", "Sara", "Fahad", studentName];
+const players = Array.from(
+  new Set([
+    ...(config?.players ? normalizePlayers(config.players) : ["Radi", "Sara", "Fahad"]),
+    studentName,
+  ])
+);
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-6">
-      <div className="w-full max-w-2xl bg-slate-800 border border-slate-600 rounded-2xl shadow-xl p-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+  <div className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
+    {/* background */}
+    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.18),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(236,72,153,0.18),_transparent_35%),linear-gradient(135deg,_#020617_0%,_#0f172a_45%,_#020617_100%)]" />
+
+    {/* floating particles */}
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="absolute top-20 left-20 h-2 w-2 rounded-full bg-cyan-400 animate-ping" />
+      <div className="absolute top-36 right-28 h-2 w-2 rounded-full bg-pink-400 animate-pulse" />
+      <div className="absolute bottom-28 left-1/4 h-1.5 w-1.5 rounded-full bg-cyan-300 animate-bounce" />
+      <div className="absolute bottom-40 right-1/4 h-1.5 w-1.5 rounded-full bg-fuchsia-400 animate-pulse" />
+    </div>
+
+    {/* HUD borders */}
+    <div className="pointer-events-none absolute inset-0 opacity-30">
+      <div className="absolute inset-6 rounded-[36px] border border-cyan-500/20" />
+      <div className="absolute inset-10 rounded-[32px] border border-pink-500/10 animate-pulse" />
+    </div>
+
+    <div className="relative z-10 flex min-h-screen items-center justify-center px-6 py-10">
+      <div className="w-full max-w-3xl rounded-[30px] border border-white/10 bg-white/5 backdrop-blur-xl p-8 shadow-2xl">
+        {/* top section */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-5 mb-8">
           <div>
-            <h1 className="game-font text-3xl text-cyan-300">Waiting Room</h1>
-            <p className="text-slate-300 mt-2">
-              Hi <span className="text-white font-semibold">{studentName}</span>
+            <p className="text-xs tracking-[0.35em] text-cyan-300 uppercase animate-pulse">
+              Multiplayer Lobby
             </p>
+
+            <h1 className="game-font text-4xl md:text-5xl mt-2 text-cyan-300 font-black drop-shadow-[0_0_18px_rgba(34,211,238,0.75)]">
+              Waiting Room
+            </h1>
+
+            <p className="text-slate-300 mt-3">
+              Welcome back{" "}
+              <span className="font-bold text-white">{studentName}</span>
+            </p>
+
             <p className="text-slate-400 text-sm mt-1">
               Questions: {totalQuestions} • Time: {timePerQuestion}s
             </p>
           </div>
 
-          <div className="bg-slate-900 border border-slate-600 rounded-2xl px-5 py-4 text-center">
-            <p className="text-slate-300 text-sm">Game Code</p>
-            <p className="game-font text-3xl text-yellow-300 mt-1">{gameCode}</p>
+          <div className="rounded-3xl border border-cyan-500/20 bg-slate-950/80 px-6 py-5 text-center shadow-[0_0_20px_rgba(34,211,238,0.08)]">
+            <p className="text-xs uppercase tracking-[0.25em] text-slate-400">
+              Game Code
+            </p>
+
+            <p className="game-font text-4xl mt-2 tracking-[0.28em] text-yellow-300">
+              {gameCode}
+            </p>
           </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 mb-6">
-          <p className="text-slate-300">
-            Waiting for the instructor to start the quiz...
-          </p>
-          <div className="mt-4 h-2 w-full bg-slate-700 rounded-full overflow-hidden">
+        {/* waiting status */}
+        <div className="rounded-3xl border border-cyan-500/15 bg-slate-950/70 p-6 mb-7">
+          <div className="flex items-center gap-3">
+            <span className="h-3 w-3 rounded-full bg-cyan-400 animate-pulse" />
+            <p className="font-semibold text-cyan-200">
+              Waiting for instructor to start the quiz...
+            </p>
+          </div>
+
+          <div className="mt-5 h-2 w-full rounded-full bg-slate-800 overflow-hidden">
             <div className="h-full w-1/2 bg-cyan-400 animate-pulse" />
           </div>
+
+          <p className="text-xs text-slate-500 mt-3">
+            Stay ready — the game can begin at any moment.
+          </p>
         </div>
 
-        <div className="flex items-center justify-between mb-3">
+        {/* players */}
+        <div className="flex items-center justify-between mb-4">
           <h2 className="game-font text-2xl text-pink-300">Players</h2>
-          <span className="text-slate-300 text-sm">{players.length} joined</span>
+
+          <div className="rounded-xl border border-white/5 bg-white/5 px-3 py-2 text-sm text-slate-300">
+            {players.length} joined
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {players.map((p, idx) => (
-            <div
-              key={`${getStudentName(p, idx)}-${idx}`}
-              className="bg-slate-900 border border-slate-700 rounded-xl px-4 py-3"
-            >
-              <span className="text-white">{getStudentName(p, idx)}</span>
-            </div>
-          ))}
+          {players.map((p, idx) => {
+            const name = getStudentName(p, idx);
+            const isCurrentUser = name === studentName;
+
+            return (
+              <div
+                key={`${name}-${idx}`}
+                className={[
+                  "rounded-2xl border px-4 py-4 transition",
+                  isCurrentUser
+                    ? "border-cyan-400/30 bg-cyan-500/10 shadow-[0_0_18px_rgba(34,211,238,0.08)]"
+                    : "border-white/5 bg-white/5 hover:bg-white/10",
+                ].join(" ")}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-white">{name}</span>
+
+                  {isCurrentUser && (
+                    <span className="text-xs font-bold uppercase tracking-[0.2em] text-cyan-300">
+                      You
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Waiting for instructor to start the quiz */}
-
+        {/* bottom action */}
         <button
           onClick={() => navigate("/")}
-          className="w-full mt-3 bg-transparent border border-slate-600 hover:bg-slate-700 py-3 rounded-xl transition"
+          className="w-full mt-7 rounded-2xl border border-white/10 bg-white/5 py-3 font-semibold text-slate-200 transition hover:bg-white/10"
         >
-          Back to Home
+          Leave Lobby
         </button>
       </div>
     </div>
-  );
+  </div>
+);
 }
 
 export default Lobby;
