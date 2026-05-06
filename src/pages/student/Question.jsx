@@ -716,66 +716,248 @@ function Question() {
   const options = currentQuestion.options || currentQuestion.choices || [];
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-6">
-      <div className="w-full max-w-3xl bg-slate-800 border border-slate-600 rounded-2xl shadow-xl p-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-          <div>
-            <h1 className="game-font text-3xl text-cyan-300">Question</h1>
-            <p className="text-slate-300 mt-1">
-              Round {currentRound} • Difficulty:{" "}
-              <span className="text-white capitalize">{sessionData?.current_difficulty || "unknown"}</span>
-            </p>
-          </div>
+    <>
+      {/* Rich Racing Background */}
+      <div className="fixed inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 overflow-hidden pointer-events-none">
+        
+        {/* Layered depth glows */}
+        <div className="absolute inset-0 bg-gradient-to-t from-cyan-400/5 via-transparent to-pink-400/5 animate-pulse" style={{ animationDuration: '8s' }} />
+        <div className="absolute inset-0 bg-gradient-radial from-cyan-400/8 via-transparent to-transparent opacity-60" style={{ background: 'radial-gradient(circle at 30% 50%, rgba(6, 182, 212, 0.08) 0%, transparent 50%)' }} />
+        <div className="absolute inset-0 bg-gradient-radial from-pink-400/8 via-transparent to-transparent opacity-60" style={{ background: 'radial-gradient(circle at 70% 50%, rgba(236, 72, 153, 0.08) 0%, transparent 50%)' }} />
+        <div className="absolute inset-0 bg-gradient-radial from-yellow-400/4 via-transparent to-transparent opacity-50" style={{ background: 'radial-gradient(circle at 50% 30%, rgba(250, 204, 21, 0.04) 0%, transparent 50%)' }} />
+        
+        {/* Stronger curved neon racing lanes */}
+        <div className="absolute inset-0">
+          {/* Left side - enhanced cyan/blue racing track */}
+          <svg className="absolute top-0 left-0 w-1/3 h-full" viewBox="0 0 300 800" style={{ opacity: 0.7 }}>
+            <defs>
+              <linearGradient id="cyanTrack" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.6" />
+                <stop offset="50%" stopColor="#0891b2" stopOpacity="0.8" />
+                <stop offset="100%" stopColor="#0e7490" stopOpacity="0.4" />
+              </linearGradient>
+              <filter id="cyanGlow">
+                <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
+            <path d="M 50 100 Q 150 200 100 300 T 200 500 Q 250 600 150 700 L 100 800" 
+                  stroke="url(#cyanTrack)" strokeWidth="8" fill="none" filter="url(#cyanGlow)" className="animate-pulse" style={{ animationDuration: '3s' }} />
+            <path d="M 30 0 Q 130 200 30 400 T 50 800" 
+                  stroke="#06b6d4" strokeWidth="4" fill="none" opacity="0.6" className="animate-pulse" style={{ animationDelay: '1s', animationDuration: '3s' }} />
+            <path d="M 70 0 Q 170 200 70 400 T 90 800" 
+                  stroke="#0891b2" strokeWidth="3" fill="none" opacity="0.4" className="animate-pulse" style={{ animationDelay: '2s', animationDuration: '3s' }} />
+            <path d="M 90 0 Q 190 200 90 400 T 110 800" 
+                  stroke="#0e7490" strokeWidth="2" fill="none" opacity="0.2" className="animate-pulse" style={{ animationDelay: '3s', animationDuration: '3s' }} />
+          </svg>
+          
+          {/* Right side - enhanced pink/purple racing track */}
+          <svg className="absolute top-0 right-0 w-1/3 h-full" viewBox="0 0 300 800" style={{ opacity: 0.6 }}>
+            <defs>
+              <linearGradient id="pinkTrack" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#ec4899" stopOpacity="0.8" />
+                <stop offset="50%" stopColor="#db2777" stopOpacity="1" />
+                <stop offset="100%" stopColor="#be185d" stopOpacity="0.5" />
+              </linearGradient>
+              <filter id="pinkGlow">
+                <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
+            <path d="M 250 100 Q 150 200 250 300 T 200 500 Q 150 600 250 700 L 200 800" 
+                  stroke="url(#pinkTrack)" strokeWidth="8" fill="none" filter="url(#pinkGlow)" className="animate-pulse" style={{ animationDuration: '3s', animationDelay: '1.5s' }} />
+            <path d="M 270 0 Q 170 200 270 400 T 250 800" 
+                  stroke="#ec4899" strokeWidth="4" fill="none" opacity="0.6" className="animate-pulse" style={{ animationDelay: '2.5s', animationDuration: '3s' }} />
+            <path d="M 230 0 Q 130 200 230 400 T 210 800" 
+                  stroke="#db2777" strokeWidth="3" fill="none" opacity="0.4" className="animate-pulse" style={{ animationDelay: '3.5s', animationDuration: '3s' }} />
+            <path d="M 210 0 Q 110 200 210 400 T 190 800" 
+                  stroke="#be185d" strokeWidth="2" fill="none" opacity="0.2" className="animate-pulse" style={{ animationDelay: '4.5s', animationDuration: '3s' }} />
+          </svg>
+        </div>
+        
+        {/* Enhanced speed lines */}
+        <div className="absolute top-1/4 left-0 w-full h-1.5 bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent animate-pulse" style={{ animationDuration: '2s' }} />
+        <div className="absolute top-1/2 left-0 w-full h-1.5 bg-gradient-to-r from-transparent via-pink-400/60 to-transparent animate-pulse" style={{ animationDelay: '0.7s', animationDuration: '2s' }} />
+        <div className="absolute top-3/4 left-0 w-full h-1.5 bg-gradient-to-r from-transparent via-yellow-300/40 to-transparent animate-pulse" style={{ animationDelay: '1.4s', animationDuration: '2s' }} />
+        <div className="absolute top-1/6 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent animate-pulse" style={{ animationDelay: '2.1s', animationDuration: '2s' }} />
+        <div className="absolute top-5/6 left-0 w-full h-1 bg-gradient-to-r from-transparent via-pink-400/30 to-transparent animate-pulse" style={{ animationDelay: '2.8s', animationDuration: '2s' }} />
+        
+        {/* Diagonal speed streaks */}
+        <div className="absolute top-20 right-1/4 w-48 h-1.5 bg-gradient-to-l from-transparent via-cyan-400/40 to-transparent transform rotate-45 animate-pulse" style={{ animationDelay: '0.3s', animationDuration: '2s' }} />
+        <div className="absolute bottom-32 left-1/4 w-40 h-1.5 bg-gradient-to-r from-transparent via-pink-400/40 to-transparent transform rotate-12 animate-pulse" style={{ animationDelay: '1s', animationDuration: '2s' }} />
+        <div className="absolute top-60 left-1/3 w-36 h-1 bg-gradient-to-r from-transparent via-cyan-400/35 to-transparent transform -rotate-12 animate-pulse" style={{ animationDelay: '1.7s', animationDuration: '2s' }} />
+        <div className="absolute bottom-48 right-1/3 w-44 h-1 bg-gradient-to-l from-transparent via-pink-400/35 to-transparent transform -rotate-6 animate-pulse" style={{ animationDelay: '2.3s', animationDuration: '2s' }} />
+        
+        {/* Floating decorative elements */}
+        <div className="absolute top-16 left-12 w-3 h-3 bg-cyan-400/25 rounded-full animate-ping border border-cyan-400/40" />
+        <div className="absolute top-32 right-16 w-2 h-2 bg-cyan-400/20 rounded-full animate-ping border border-cyan-400/30" style={{ animationDelay: '1.8s' }} />
+        <div className="absolute bottom-24 left-20 w-2 h-2 bg-cyan-400/15 rounded-full animate-pulse border border-cyan-400/25" style={{ animationDelay: '0.8s' }}>
+          <span className="text-cyan-300/70 text-xs flex items-center justify-center h-full">🏁</span>
+        </div>
+        <div className="absolute bottom-40 right-12 w-3 h-3 bg-cyan-400/20 rounded-full animate-ping border border-cyan-400/30" style={{ animationDelay: '2.3s' }} />
+        <div className="absolute top-48 left-24 w-2 h-2 text-cyan-300/25 animate-pulse" style={{ animationDelay: '1.3s' }}>
+          <span className="text-cyan-300/70 text-xs flex items-center justify-center h-full">⚡</span>
+        </div>
+        <div className="absolute top-24 right-24 w-2 h-2 text-cyan-300/20 animate-pulse" style={{ animationDelay: '2.6s' }}>
+          <span className="text-cyan-300/70 text-xs flex items-center justify-center h-full">⚡</span>
+        </div>
+        <div className="absolute bottom-12 right-24 w-2 h-2 text-cyan-300/15 animate-pulse" style={{ animationDelay: '3.2s' }}>
+          <span className="text-cyan-300/70 text-xs flex items-center justify-center h-full">⚡</span>
+        </div>
+      </div>
+      
+      {/* Radial overlay for depth */}
+      <div className="fixed inset-0 bg-gradient-radial from-transparent via-slate-900/20 to-slate-900/40 pointer-events-none z-20" style={{ background: 'radial-gradient(circle at center, transparent 0%, rgba(15, 23, 42, 0.2) 50%, rgba(15, 23, 42, 0.4) 100%)' }} />
+      
+      {/* Main Content - Wide Desktop Panel */}
+      <div className="relative min-h-screen flex items-center justify-center px-6 z-30">
+        <div className="w-[90vw] max-w-6xl bg-slate-800/70 backdrop-blur-xl rounded-3xl shadow-3xl border-2 border-slate-600/50 p-8">
+          {/* Enhanced Header with Timer */}
+          <div className="flex flex-col items-center justify-center gap-8 mb-12">
+            {/* Premium Title */}
+            <h1 className="game-font text-6xl md:text-7xl font-bold relative text-center">
+              {/* Strong neon glow background */}
+              <span className="absolute inset-0 blur-3xl bg-gradient-to-r from-cyan-400/60 via-pink-400/50 to-cyan-400/60 animate-pulse" style={{ animationDuration: '3s' }} />
+              <span className="absolute inset-0 blur-xl bg-gradient-to-r from-cyan-400/40 via-pink-400/30 to-cyan-400/40 animate-pulse" style={{ animationDelay: '1.5s', animationDuration: '3s' }} />
+              <span className="relative bg-gradient-to-r from-cyan-300 via-pink-200 to-cyan-300 bg-clip-text text-transparent drop-shadow-lg">
+                QUESTION {currentRound}
+              </span>
+            </h1>
 
-          <div className="flex items-center gap-4">
-            <div className="bg-slate-900 border border-slate-600 rounded-2xl px-5 py-3 text-center">
-              <p className="text-slate-300 text-sm">Time</p>
-              <p className="game-font text-2xl text-yellow-300">{formatTime(timeLeft)}</p>
+            {/* Subtitle */}
+            <p className="text-slate-300 text-xl text-center">
+              Round {currentRound} • Difficulty:{" "}
+              <span className="text-white capitalize font-semibold">{sessionData?.current_difficulty || currentDifficulty || "unknown"}</span>
+            </p>
+
+            {/* Centered Timer Card */}
+            <div className="relative bg-slate-900/65 backdrop-blur-2xl border-2 border-cyan-400/55 rounded-3xl px-8 py-5 hover:border-cyan-400/75 transition-all duration-300 shadow-cyan-400/25 shadow-2xl">
+              {/* Enhanced glow effect */}
+              <div className="absolute inset-0 bg-cyan-400/22 rounded-3xl animate-pulse" style={{ animationDuration: '3s' }} />
+              <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/18 to-transparent rounded-3xl" />
+              <div className="absolute inset-0 bg-gradient-radial from-cyan-400/6 via-transparent to-transparent" style={{ background: 'radial-gradient(circle at center, rgba(6, 182, 212, 0.06) 0%, transparent 60%)' }} />
+              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/3 to-transparent opacity-20" />
+              <p className="text-cyan-300 text-xs font-bold tracking-wider uppercase relative z-10 mb-2">Time Remaining</p>
+              <p className="game-font text-4xl font-bold bg-gradient-to-r from-cyan-300 via-blue-400 to-cyan-300 bg-clip-text text-transparent relative z-10 animate-pulse" style={{ animationDuration: '2s' }}>
+                {formatTime(timeLeft)}
+              </p>
             </div>
           </div>
-        </div>
 
-        <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 mb-6">
-          <p className="game-font text-2xl mb-4">{currentQuestion.question || currentQuestion.q || currentQuestion.question_text}</p>
-          <p className="text-slate-400 text-sm">Choose one answer.</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {options.map((option, index) => (
-            <button
-              type="button"
-              key={index}
-              onClick={() => {
-                setSelectedAnswer(index);
-                handleSubmit(index);
-              }}
-              disabled={hasAnswered || isSubmitting}
-              className={[
-                "text-left rounded-xl p-4 transition border-2",
-                hasAnswered || isSubmitting ? "cursor-not-allowed" : "hover:bg-slate-700",
-                "bg-slate-900",
-                selectedAnswer === index
-                  ? "border-cyan-400 bg-cyan-900/30"
-                  : "border-slate-700"
-              ].join(" ")}
-            >
-              <span className="text-white font-medium">
-                {String.fromCharCode(65 + index)}. {option}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        
-        {hasAnswered && (
-          <div className="mt-6 p-4 rounded-xl border border-cyan-200 bg-cyan-900/20 text-center">
-            <p className="text-cyan-200">
-              Answer submitted! Waiting for other students...
-            </p>
+        {/* Question Card with Clean Multicolor Edge Glow */}
+          <div className="relative w-full bg-slate-900/80 backdrop-blur-xl rounded-3xl p-8 mb-8 border-2 border-transparent shadow-2xl overflow-hidden">
+            {/* Multicolor edge glow effect */}
+            <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-cyan-400/20 via-blue-400/20 to-pink-400/20 animate-pulse" style={{ animationDuration: '4s' }} />
+            <div className="absolute inset-0 rounded-3xl bg-gradient-to-t from-amber-400/15 via-transparent to-transparent animate-pulse" style={{ animationDelay: '2s', animationDuration: '4s' }} />
+            <div className="absolute inset-0 rounded-3xl border-2 border-transparent bg-gradient-to-r from-cyan-400/30 via-blue-400/30 via-amber-400/30 to-pink-400/30 animate-pulse" style={{ animationDuration: '3s' }} />
+            <div className="absolute inset-0 rounded-3xl bg-gradient-to-b from-transparent via-white/5 to-transparent" />
+            
+            {/* Question content */}
+            <div className="relative z-10">
+              <p className="game-font text-3xl font-bold text-white mb-4 leading-relaxed">
+                {currentQuestion.question || currentQuestion.q || currentQuestion.question_text}
+              </p>
+              <p className="text-slate-300 text-base">Choose one answer.</p>
+            </div>
           </div>
-        )}
+
+        {/* Answer Cards with A/B/C/D Color Themes */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 w-full">
+            {options.map((option, index) => {
+              // Color themes for each answer option
+              const answerThemes = {
+                0: { // A - Cyan/Teal
+                  bg: 'from-cyan-500/20 to-teal-500/20',
+                  border: 'border-cyan-400/60 hover:border-cyan-400/90',
+                  glow: 'hover:shadow-cyan-400/40',
+                  selected: 'border-cyan-400 bg-cyan-900/40 shadow-cyan-400/50',
+                  letter: 'text-cyan-300'
+                },
+                1: { // B - Blue
+                  bg: 'from-blue-500/20 to-indigo-500/20',
+                  border: 'border-blue-400/60 hover:border-blue-400/90',
+                  glow: 'hover:shadow-blue-400/40',
+                  selected: 'border-blue-400 bg-blue-900/40 shadow-blue-400/50',
+                  letter: 'text-blue-300'
+                },
+                2: { // C - Amber/Yellow
+                  bg: 'from-amber-500/20 to-yellow-500/20',
+                  border: 'border-amber-400/60 hover:border-amber-400/90',
+                  glow: 'hover:shadow-amber-400/40',
+                  selected: 'border-amber-400 bg-amber-900/40 shadow-amber-400/50',
+                  letter: 'text-amber-300'
+                },
+                3: { // D - Pink/Magenta
+                  bg: 'from-pink-500/20 to-magenta-500/20',
+                  border: 'border-pink-400/60 hover:border-pink-400/90',
+                  glow: 'hover:shadow-pink-400/40',
+                  selected: 'border-pink-400 bg-pink-900/40 shadow-pink-400/50',
+                  letter: 'text-pink-300'
+                }
+              };
+
+              const theme = answerThemes[index] || answerThemes[0];
+              const isSelected = selectedAnswer === index;
+
+              return (
+                <button
+                  type="button"
+                  key={index}
+                  onClick={() => {
+                    setSelectedAnswer(index);
+                    handleSubmit(index);
+                  }}
+                  disabled={hasAnswered || isSubmitting}
+                  className={`relative w-full text-left rounded-2xl p-6 transition-all duration-300 transform hover:scale-[1.02] border-2 backdrop-blur-md overflow-hidden group ${
+                    hasAnswered || isSubmitting 
+                      ? 'cursor-not-allowed bg-slate-900/50 border-slate-600/40 opacity-60' 
+                      : `bg-gradient-to-br ${theme.bg} ${theme.border} hover:bg-slate-900/30 ${theme.glow} hover:shadow-2xl`
+                  } ${isSelected ? theme.selected : ''}`}
+                >
+                  {/* Subtle glow effect */}
+                  {!hasAnswered && !isSubmitting && (
+                    <div className={`absolute inset-0 bg-gradient-to-br ${theme.bg} opacity-0 group-hover:opacity-50 transition-opacity duration-300`} />
+                  )}
+                  
+                  {/* Answer content */}
+                  <div className="relative z-10">
+                    <div className="flex items-start gap-4">
+                      <span className={`text-2xl font-bold ${theme.letter} ${isSelected ? 'animate-pulse' : ''}`}>
+                        {String.fromCharCode(65 + index)}
+                      </span>
+                      <span className="text-white font-medium text-lg leading-relaxed flex-1">
+                        {option}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Selection indicator */}
+                  {isSelected && (
+                    <div className="absolute top-2 right-2 w-3 h-3 bg-white rounded-full animate-ping" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Answer submitted message */}
+          {hasAnswered && (
+            <div className="relative mt-6 p-6 rounded-2xl border-2 border-cyan-400/50 bg-cyan-900/20 backdrop-blur-md text-center">
+              <div className="absolute inset-0 bg-cyan-400/10 rounded-2xl animate-pulse" style={{ animationDuration: '2s' }} />
+              <p className="text-cyan-200 text-lg font-semibold relative z-10">
+                Answer submitted! Waiting for other students...
+              </p>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
