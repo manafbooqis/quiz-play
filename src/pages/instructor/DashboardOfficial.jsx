@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   supabase,
@@ -44,10 +44,18 @@ function DashboardOfficial() {
   const [selectedBanks, setSelectedBanks] = useState(new Set());
   const [useExistingBank, setUseExistingBank] = useState(false);
 
+  // Delete selection mode for saved question banks
+  const [isBankDeleteMode, setIsBankDeleteMode] = useState(false);
+  const [selectedBanksForDeletion, setSelectedBanksForDeletion] = useState(new Set());
+  const [showBankDeleteModal, setShowBankDeleteModal] = useState(false);
+
   // Manual questions state
   const [manualQuestions, setManualQuestions] = useState({ easy: [], medium: [], hard: [] });
   const [selectedDifficulty, setSelectedDifficulty] = useState('easy');
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0);
+
+  // File input ref for programmatic clicking
+  const fileInputRef = useRef(null);
 
   // Initialize manual questions when questionCount changes or manual mode is selected
   useEffect(() => {
@@ -384,6 +392,24 @@ function DashboardOfficial() {
     setTimePerQuestion((prev) => Math.max(prev - TIME_STEP, MIN_TIME));
   }
 
+  // Toggle bank selection for deletion
+  const toggleBankSelectionForDeletion = (bankId) => {
+    setSelectedBanksForDeletion(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(bankId)) {
+        newSet.delete(bankId);
+      } else {
+        newSet.add(bankId);
+      }
+      return newSet;
+    });
+  };
+
+  // Select all banks for deletion
+  const selectAllBanksForDeletion = () => {
+    setSelectedBanksForDeletion(new Set(savedQuestionBanks.map(bank => bank.id)));
+  };
+
   // Empty placeholder used while AI is generating — avoids hardcoded unrelated questions
   function emptyQuestionBanks() {
     return { easy: [], medium: [], hard: [] };
@@ -530,8 +556,10 @@ function DashboardOfficial() {
   }
 
   async function handleGoToSession() {
-    // A newly selected file always wins over "existing bank" mode (checkbox can still be on by mistake).
-    const fromExistingBank = useExistingBank && !selectedFile;
+    // Define source type variables at the top
+    const fromExistingBank = selectedSource === "bank" || useExistingBank;
+    const fromManual = selectedSource === "manual";
+    const fromUploadFile = selectedSource === "upload" || (!fromExistingBank && !fromManual);
 
     if (selectedSource === 'manual') {
       if (!isManualModeComplete()) {
@@ -588,13 +616,12 @@ function DashboardOfficial() {
 
       // ── Step 1: Determine question source and build questionsByDifficulty ──
       let questionsByDifficulty = null;
-      const fromExistingBank = useExistingBank && selectedQuestionBank;
       const sessionFileName = fromExistingBank
         ? selectedQuestionBank.file_name || "Existing Bank"
         : selectedSource === 'manual' ? "Manual Questions" : selectedFile?.name || "Manual Questions";
       const sessionQuestionCount = fromExistingBank
-        ? selectedQuestionBank.question_count || questionCount * 3
-        : questionCount * 3;
+        ? selectedQuestionBank.question_count || Number(questionCount)
+        : Number(questionCount);
       const sessionTimePerQuestion = fromExistingBank
         ? selectedQuestionBank.time_per_question || timePerQuestion
         : timePerQuestion;
@@ -1053,26 +1080,153 @@ function DashboardOfficial() {
               <div>
                 <h3 className="text-lg font-semibold text-slate-900 mb-3">3. Source Details</h3>
                 
-                {selectedSource === 'saved' && selectedQuestionBank && (
-                  <div className="border border-slate-300 rounded-lg p-4 bg-slate-50">
-                    <div className="flex justify-between items-start mb-2">
+                {selectedSource === 'saved' && (
+                  <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                    <div className="flex items-center justify-between mb-4">
                       <div>
-                        <h4 className="font-semibold text-slate-900">{selectedQuestionBank.file_name || "Untitled"}</h4>
-                        <p className="text-xs text-slate-500">Code: {selectedQuestionBank.game_code}</p>
+                        <h2 className="text-lg font-semibold text-slate-700">Saved Question Banks</h2>
+                        <p className="text-sm text-slate-600">Select a question bank to use.</p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedQuestionBank(null)}
-                        className="text-sm text-cyan-600 hover:text-cyan-700 font-medium"
-                      >
-                        Change
-                      </button>
+                      <div className="flex items-center gap-2 text-sm text-slate-600">
+                        {savedQuestionBanks.length > 0 && (
+                          <>
+                            <span>{savedQuestionBanks.length} bank{savedQuestionBanks.length !== 1 ? 's' : ''}</span>
+                            {!isBankDeleteMode ? (
+                              <button
+                                type="button"
+                                onClick={() => setIsBankDeleteMode(true)}
+                                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition"
+                              >
+                                Select to Delete
+                              </button>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={selectAllBanksForDeletion}
+                                    className="text-cyan-600 hover:text-cyan-700 font-medium"
+                                  >
+                                    {selectedBanksForDeletion.size === savedQuestionBanks.length ? 'Deselect All' : 'Select All'}
+                                  </button>
+                                  <span className="text-slate-300">•</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setIsBankDeleteMode(false);
+                                      setSelectedBanksForDeletion(new Set());
+                                    }}
+                                    className="text-slate-600 hover:text-slate-700 font-medium"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <span className="text-slate-300">•</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (selectedBanksForDeletion.size > 0) {
+                                        setShowBankDeleteModal(true);
+                                      }
+                                    }}
+                                    disabled={selectedBanksForDeletion.size === 0}
+                                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition disabled:bg-slate-300 disabled:text-slate-500 disabled:cursor-not-allowed"
+                                  >
+                                    Delete Selected ({selectedBanksForDeletion.size})
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-sm text-slate-600">
-                      <p>Questions: {selectedQuestionBank.question_count || 0}</p>
-                      <p>Time: {selectedQuestionBank.time_per_question || 30}s per question</p>
-                      <p>Created: {new Date(selectedQuestionBank.created_at).toLocaleDateString()}</p>
-                    </div>
+                    
+                    {isBankDeleteMode && (
+                      <div className="mb-3">
+                        <p className="text-sm text-slate-600">Select question banks you want to delete.</p>
+                      </div>
+                    )}
+                    
+                    {selectedQuestionBank && !isBankDeleteMode ? (
+                      <div className="border border-slate-300 rounded-lg p-4 bg-slate-50 mb-4">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h4 className="font-semibold text-slate-900">{selectedQuestionBank.file_name || "Untitled"}</h4>
+                            <p className="text-xs text-slate-500">Code: {selectedQuestionBank.game_code}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedQuestionBank(null)}
+                            className="text-sm text-cyan-600 hover:text-cyan-700 font-medium"
+                          >
+                            Change
+                          </button>
+                        </div>
+                        <div className="text-sm text-slate-600">
+                          <p>Questions: {selectedQuestionBank.question_count || 0}</p>
+                          <p>Time: {selectedQuestionBank.time_per_question || 30}s per question</p>
+                          <p>Created: {new Date(selectedQuestionBank.created_at).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                    ) : null}
+                    
+                    {savedQuestionBanks.length === 0 ? (
+                      <div className="text-center py-6 text-slate-500">
+                        <div className="text-xl mb-2">📚</div>
+                        <p className="text-sm">No saved question banks yet</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {savedQuestionBanks.map((bank) => (
+                          <div
+                            key={bank.id}
+                            className={`border border-slate-200 rounded-lg p-4 transition ${
+                              selectedQuestionBank?.id === bank.id && !isBankDeleteMode
+                                ? 'border-cyan-500 bg-cyan-50'
+                                : 'border-slate-200'
+                            } ${isBankDeleteMode ? 'hover:bg-slate-50' : 'hover:bg-slate-50 cursor-pointer'}`}
+                            onClick={() => {
+                              if (!isBankDeleteMode) {
+                                setSelectedQuestionBank(bank);
+                              }
+                            }}
+                          >
+                            <div className="flex items-center gap-4">
+                              {isBankDeleteMode && (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedBanksForDeletion.has(bank.id)}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    toggleBankSelectionForDeletion(bank.id);
+                                  }}
+                                  className="w-4 h-4 rounded cursor-pointer"
+                                />
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-slate-900 truncate">
+                                  {bank.file_name || "Untitled bank"}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  Code: {bank.game_code}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  Created: {new Date(bank.created_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <p className="text-sm font-medium text-cyan-600">
+                                  {bank.question_count || 0} questions
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {bank.time_per_question || 30}s each
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1080,6 +1234,7 @@ function DashboardOfficial() {
                   <div>
                     <label className="block w-full rounded-lg border-2 border-dashed border-cyan-300 bg-cyan-50 p-6 cursor-pointer hover:bg-cyan-100 transition">
                       <input
+                        ref={fileInputRef}
                         type="file"
                         accept=".txt,.md,.doc,.docx,.pdf,.csv,.json,.html"
                         className="hidden"
@@ -1120,6 +1275,11 @@ function DashboardOfficial() {
                           <button
                             type="button"
                             className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-lg transition"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              fileInputRef.current?.click();
+                            }}
                           >
                             Browse File
                           </button>
