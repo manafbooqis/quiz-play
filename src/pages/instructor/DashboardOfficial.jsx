@@ -1758,6 +1758,73 @@ function DashboardOfficial() {
           </div>
         </div>
       )}
+
+      {/* Question Bank Delete Confirmation Modal */}
+      {showBankDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md mx-4 shadow-lg">
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">Delete selected question banks?</h3>
+            <p className="text-sm text-slate-600 mb-6">
+              This will remove the selected saved question banks. This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowBankDeleteModal(false)}
+                className="px-4 py-2 text-slate-600 hover:text-slate-700 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    // Convert Set to array and filter valid IDs
+                    const bankIds = Array.from(selectedBanksForDeletion).filter(id => 
+                      id && typeof id === 'string' && id.trim() !== ''
+                    );
+
+                    if (bankIds.length === 0) {
+                      setError("No valid question bank IDs found for deletion.");
+                      return;
+                    }
+
+                    // Delete all selected banks at once
+                    const { error: delErr } = await supabase
+                      .from("sessions")
+                      .delete()
+                      .in("id", bankIds);
+
+                    if (delErr) {
+                      setError(`Failed to delete question banks: ${delErr.message}`);
+                      return;
+                    }
+
+                    // Update local state
+                    setSavedQuestionBanks((prev) => prev.filter((bank) => !selectedBanksForDeletion.has(bank.id)));
+                    
+                    // Clear selected bank if it was deleted
+                    if (selectedQuestionBank && selectedBanksForDeletion.has(selectedQuestionBank.id)) {
+                      setSelectedQuestionBank(null);
+                      setUseExistingBank(false);
+                    }
+                    
+                    setError("");
+                    setShowBankDeleteModal(false);
+                    setIsBankDeleteMode(false);
+                    setSelectedBanksForDeletion(new Set());
+                  } catch (err) {
+                    setError(`Failed to delete question banks: ${err.message || "Unknown error"}`);
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg"
+              >
+                Delete Question Banks
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
