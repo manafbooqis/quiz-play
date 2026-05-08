@@ -401,7 +401,8 @@ function Question() {
           round_number: actualRoundNumber,
           selected_answer: 0,
           is_correct: false,
-          points_awarded: 0
+          points_awarded: 0,
+          time_taken_seconds: roundTimerDuration,
         };
 
         const { error: upsertError } = await supabase
@@ -568,6 +569,10 @@ function Question() {
         ? (existingResponses[0].round_number || 0) + 1
         : 1;
 
+      // Calculate time taken for this question
+      const timeTaken = Math.max(0, Math.min(roundTimerDuration, roundTimerDuration - timeLeft));
+      const clampedTimeTaken = Math.max(0, Math.min(timeTaken, roundTimerDuration));
+
       const responsePayload = {
         session_id: targetSessionId,
         question_id: String(targetQuestionId ?? ""),
@@ -576,6 +581,7 @@ function Question() {
         selected_answer: answerToSubmit,
         is_correct: isCorrect,
         points_awarded: pointsAwarded,
+        time_taken_seconds: clampedTimeTaken,
       };
 
       console.log("Selected answer before submit:", answerToSubmit);

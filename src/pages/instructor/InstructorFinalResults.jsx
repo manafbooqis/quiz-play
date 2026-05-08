@@ -124,11 +124,11 @@ function InstructorFinalResults() {
 
     let avgTime = "N/A";
     const timeResponses = qResponses.filter(
-      (r) => r.response_time !== undefined && r.response_time !== null
+      (r) => r.time_taken_seconds !== undefined && r.time_taken_seconds !== null
     );
     if (timeResponses.length > 0) {
       const sum = timeResponses.reduce(
-        (acc, r) => acc + Number(r.response_time),
+        (acc, r) => acc + Number(r.time_taken_seconds),
         0
       );
       avgTime = (sum / timeResponses.length).toFixed(1) + "s";
