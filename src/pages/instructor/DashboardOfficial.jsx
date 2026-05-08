@@ -863,10 +863,10 @@ function DashboardOfficial() {
         <div className="bg-white border-b border-slate-200 px-6 py-4 mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900">
+              <h1 className="text-3xl md:text-4xl font-extrabold mt-1">
                 Instructor Dashboard
               </h1>
-              <p className="text-slate-500 text-sm mt-1">
+              <p className="text-slate-500 mt-2">
                 Create a quiz session
               </p>
             </div>
@@ -939,11 +939,11 @@ function DashboardOfficial() {
           {/* Left: Create New Session Card */}
           <div className="lg:col-span-2">
             <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-              <h2 className="text-xl font-bold text-slate-900 mb-6">Create New Session</h2>
+              <h2 className="text-2xl font-bold mb-6">Create New Session</h2>
               
               {/* 1. Choose Source */}
               <div className="mb-8">
-                <h3 className="text-lg font-semibold text-slate-900 mb-3">1. Choose Source</h3>
+                <h3 className="text-xl font-bold mb-3">1. Choose Source</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {/* Saved Questions */}
                   <button
@@ -960,7 +960,7 @@ function DashboardOfficial() {
                         : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <div className="font-medium mb-1">📚 Saved Questions</div>
+                    <div className="text-lg font-semibold mb-1">📚 Saved Questions</div>
                     <div className="text-sm text-slate-600">Use existing question bank</div>
                   </button>
 
@@ -978,7 +978,7 @@ function DashboardOfficial() {
                         : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <div className="font-medium mb-1">📁 Upload File</div>
+                    <div className="text-lg font-semibold mb-1">📁 Upload File</div>
                     <div className="text-sm text-slate-600">Import questions from file</div>
                   </button>
 
@@ -996,7 +996,7 @@ function DashboardOfficial() {
                         : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <div className="font-medium mb-1">✏️ Write Manually</div>
+                    <div className="text-lg font-semibold mb-1">✏️ Write Manually</div>
                     <div className="text-sm text-slate-600">Create questions directly in the dashboard.</div>
                     <div className="text-xs text-slate-500 mt-1">Write {questionCount * 3} questions manually.</div>
                   </button>
@@ -1005,7 +1005,7 @@ function DashboardOfficial() {
 
               {/* 2. Settings */}
               <div className="mb-8">
-                <h3 className="text-lg font-semibold text-slate-900 mb-3">2. Settings</h3>
+                <h3 className="text-xl font-bold mb-3">2. Settings</h3>
                 
                 {!selectedSource ? (
                   <div className="text-center py-8 text-slate-500">
@@ -1078,7 +1078,7 @@ function DashboardOfficial() {
 
               {/* 3. Source Details */}
               <div>
-                <h3 className="text-lg font-semibold text-slate-900 mb-3">3. Source Details</h3>
+                <h3 className="text-xl font-bold mb-3">3. Source Details</h3>
                 
                 {selectedSource === 'saved' && (
                   <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
@@ -1427,7 +1427,7 @@ function DashboardOfficial() {
           {/* Right: Session Summary */}
           <div className="lg:col-span-1">
             <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm sticky top-8">
-              <h2 className="text-xl font-bold text-slate-900 mb-4">Session Summary</h2>
+              <h2 className="text-2xl font-bold mb-4">Session Summary</h2>
               
               <div className="space-y-4">
                 {!selectedSource ? (
@@ -1438,7 +1438,7 @@ function DashboardOfficial() {
                   <>
                     {/* Source */}
                     <div>
-                      <div className="text-sm font-medium text-slate-700 mb-1">Source</div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">Source</div>
                       <div className="bg-slate-50 rounded-lg px-3 py-2 text-slate-900">
                         {selectedSource === 'saved' && selectedQuestionBank && (
                           <span>📚 {selectedQuestionBank.file_name || "Existing Bank"}</span>
@@ -1457,7 +1457,7 @@ function DashboardOfficial() {
 
                     {/* Questions */}
                     <div>
-                      <div className="text-sm font-medium text-slate-700 mb-1">Total Questions</div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">Total Questions</div>
                       <div className="bg-slate-50 rounded-lg px-3 py-2 text-slate-900">
                         {selectedSource === 'saved' && selectedQuestionBank
                           ? selectedQuestionBank.question_count || 0
@@ -1467,7 +1467,7 @@ function DashboardOfficial() {
 
                     {/* Time */}
                     <div>
-                      <div className="text-sm font-medium text-slate-700 mb-1">Time per Question</div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">Time per Question</div>
                       <div className="bg-slate-50 rounded-lg px-3 py-2 text-slate-900">
                         {selectedSource === 'saved' && selectedQuestionBank
                           ? selectedQuestionBank.time_per_question || 30
@@ -1477,7 +1477,7 @@ function DashboardOfficial() {
 
                     {/* Status */}
                     <div>
-                      <div className="text-sm font-medium text-slate-700 mb-3">Status</div>
+                      <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">Status</div>
                       <div className="bg-slate-50 rounded-lg px-3 py-2 text-slate-900">
                         {canCreateSession ? (
                           <span className="text-green-700">✓ Ready to create</span>
@@ -1523,7 +1523,7 @@ function DashboardOfficial() {
                   type="button"
                   onClick={handleGoToSession}
                   disabled={!canCreateSession || isCreatingSession}
-                  className="w-full py-3 px-4 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-300 disabled:text-slate-500 text-white font-semibold rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
+                  className="w-full py-3 px-4 bg-cyan-600 hover:bg-cyan-700 disabled:bg-slate-300 disabled:text-slate-500 text-white font-bold rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
                 >
                   {isCreatingSession ? (
                     <>
@@ -1546,7 +1546,7 @@ function DashboardOfficial() {
         <div className="mt-12">
           <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-slate-700">Recent Sessions</h2>
+              <h2 className="text-2xl font-bold">Recent Sessions</h2>
               <div className="flex items-center gap-2 text-sm text-slate-600">
                 {teacherSessions.length > 0 && (
                   <>
