@@ -538,22 +538,22 @@ function Difficulty() {
       <div className="relative min-h-screen flex items-center justify-center px-6 z-30">
         <div className="w-full max-w-5xl bg-slate-800/70 backdrop-blur-xl rounded-3xl shadow-3xl border-2 border-slate-600/50 p-8">
           {/* Enhanced Header with Timer */}
-          <div className="flex flex-col items-center justify-center gap-8 mb-12">
+          <div className="flex flex-col items-center justify-center gap-4 md:gap-8 mb-6 md:mb-12">
             {/* Timer Card - Centered Above */}
-            <div className="relative bg-slate-900/65 backdrop-blur-2xl border-2 border-cyan-400/55 rounded-3xl px-8 py-5 hover:border-cyan-400/75 transition-all duration-300 shadow-cyan-400/25 shadow-2xl">
+            <div className="relative bg-slate-900/65 backdrop-blur-2xl border-2 border-cyan-400/55 rounded-2xl px-4 py-3 md:px-8 md:py-5 hover:border-cyan-400/75 transition-all duration-300 shadow-cyan-400/25 shadow-2xl">
               {/* Enhanced glow effect */}
               <div className="absolute inset-0 bg-cyan-400/22 rounded-3xl animate-pulse" style={{ animationDuration: '3s' }} />
               <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/18 to-transparent rounded-3xl" />
               <div className="absolute inset-0 bg-gradient-radial from-cyan-400/6 via-transparent to-transparent" style={{ background: 'radial-gradient(circle at center, rgba(6, 182, 212, 0.06) 0%, transparent 60%)' }} />
               <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/3 to-transparent opacity-20" />
-              <p className="text-cyan-300 text-xs font-bold tracking-wider uppercase relative z-10 mb-2">Time Remaining</p>
-              <p className="game-font text-4xl font-bold bg-gradient-to-r from-cyan-300 via-blue-400 to-cyan-300 bg-clip-text text-transparent relative z-10 animate-pulse" style={{ animationDuration: '2s' }}>
+              <p className="text-cyan-300 text-xs font-bold tracking-wider uppercase relative z-10 mb-1 md:mb-2">Time Remaining</p>
+              <p className="game-font text-2xl md:text-4xl font-bold bg-gradient-to-r from-cyan-300 via-blue-400 to-cyan-300 bg-clip-text text-transparent relative z-10 animate-pulse" style={{ animationDuration: '2s' }}>
                 {timeLeft}s
               </p>
             </div>
 
             {/* Premium Title */}
-            <h1 className="game-font text-6xl md:text-7xl font-bold relative text-center">
+            <h1 className="game-font text-4xl md:text-6xl font-bold relative text-center">
               {/* Strong neon glow background */}
               <span className="absolute inset-0 blur-3xl bg-gradient-to-r from-cyan-400/60 via-pink-400/50 to-cyan-400/60 animate-pulse" style={{ animationDuration: '3s' }} />
               <span className="absolute inset-0 blur-xl bg-gradient-to-r from-cyan-400/40 via-pink-400/30 to-cyan-400/40 animate-pulse" style={{ animationDelay: '1.5s', animationDuration: '3s' }} />
@@ -564,7 +564,7 @@ function Difficulty() {
           </div>
 
           {/* Enhanced Difficulty Cards Grid with premium styling */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-10">
             {cards.map((c) => {
               const availableCount = getAvailableCount(c.diff);
               const isExhausted = availableCount === 0;
@@ -572,7 +572,7 @@ function Difficulty() {
               return (
                 <div
                   key={c.diff}
-                  className={`relative border-2 ${c.borderColor} rounded-3xl p-12 transition-all duration-500 transform hover:scale-105 hover:shadow-3xl ${c.glowColor} ${
+                  className={`relative border-2 ${c.borderColor} rounded-2xl p-6 md:p-12 transition-all duration-500 transform hover:scale-105 hover:shadow-3xl ${c.glowColor} ${
                     isExhausted
                       ? 'bg-slate-900/50 border-slate-600/40 opacity-50 cursor-not-allowed backdrop-blur-md'
                       : 'bg-slate-900/25 border-slate-600/35 backdrop-blur-md hover:bg-slate-900/35 hover:shadow-4xl'
@@ -589,14 +589,14 @@ function Difficulty() {
 
                   {/* Enhanced points badge */}
                   {!isExhausted && (
-                    <div className={`absolute -top-7 left-1/2 -translate-x-1/2 ${c.badge} text-slate-900 font-bold rounded-full px-7 py-4 shadow-3xl text-xl border-2 border-white/45 backdrop-blur-sm`}>
+                    <div className={`absolute -top-5 md:-top-7 left-1/2 -translate-x-1/2 ${c.badge} text-slate-900 font-bold rounded-full px-4 py-2 md:px-7 md:py-4 shadow-3xl text-lg md:text-xl border-2 border-white/45 backdrop-blur-sm`}>
                       +{c.points} pts
                     </div>
                   )}
 
                   {/* Enhanced difficulty title */}
                   <div className="relative z-10">
-                    <h2 className={`game-font text-7xl font-bold bg-gradient-to-r ${c.theme} bg-clip-text text-transparent mt-20 mb-10 drop-shadow-lg`}>
+                    <h2 className={`game-font text-4xl md:text-7xl font-bold bg-gradient-to-r ${c.theme} bg-clip-text text-transparent mt-8 md:mt-20 mb-6 md:mb-10 drop-shadow-lg`}>
                       {c.label}
                     </h2>
 
@@ -606,7 +606,7 @@ function Difficulty() {
                     <button
                       onClick={() => handleDifficultySelect(c.diff, c.points)}
                       disabled={isExhausted}
-                      className={`relative w-full game-font py-6 rounded-2xl transition-all duration-500 transform hover:scale-105 shadow-2xl overflow-hidden group text-xl font-bold ${
+                      className={`relative w-full game-font py-4 md:py-6 rounded-2xl transition-all duration-500 transform hover:scale-105 shadow-2xl overflow-hidden group text-lg md:text-xl font-bold ${
                         isExhausted
                           ? 'bg-slate-700/50 text-slate-400 cursor-not-allowed border border-slate-600/50'
                           : `${c.buttonBg} text-slate-900 hover:shadow-3xl border-2 border-white/35 hover:border-white/55 hover:shadow-lg`
