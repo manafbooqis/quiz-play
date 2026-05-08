@@ -832,7 +832,7 @@ function Question() {
 
             {/* Subtitle */}
             <p className="text-slate-300 text-xl text-center">
-              Round {currentRound} • Difficulty:{" "}
+              Question {currentRound} • Difficulty:{" "}
               <span className="text-white capitalize font-semibold">{sessionData?.current_difficulty || currentDifficulty || "unknown"}</span>
             </p>
 

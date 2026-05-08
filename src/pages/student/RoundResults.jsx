@@ -393,11 +393,11 @@ function RoundResults() {
               <span className="absolute inset-0 blur-3xl bg-gradient-to-r from-cyan-400/60 via-pink-400/50 to-cyan-400/60 animate-pulse" style={{ animationDuration: '3s' }} />
               <span className="absolute inset-0 blur-xl bg-gradient-to-r from-cyan-400/40 via-pink-400/30 to-cyan-400/40 animate-pulse" style={{ animationDelay: '1.5s', animationDuration: '3s' }} />
               <span className="relative bg-gradient-to-r from-cyan-300 via-pink-200 to-cyan-300 bg-clip-text text-transparent drop-shadow-lg">
-                Round Results
+                Question Results
               </span>
             </h1>
             <div className="flex items-center justify-center gap-6 text-slate-300 text-lg">
-              <span className="text-cyan-200 font-semibold">Round {currentRound}</span>
+              <span className="text-cyan-200 font-semibold">Question {currentRound}</span>
               <span className="text-pink-300">•</span>
               <span className="text-cyan-200">Game Code: {gameCode}</span>
             </div>

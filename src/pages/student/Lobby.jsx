@@ -553,7 +553,7 @@ function Lobby() {
                   <div className="mb-4">
                     <p className="text-cyan-300 text-lg font-semibold mb-2">Quiz Details</p>
                     <p className="text-slate-300 text-lg">
-                      Rounds: <span className="text-white font-bold">{totalQuestions}</span> • 
+                      Questions: <span className="text-white font-bold">{totalQuestions}</span> • 
                       Time: <span className="text-white font-bold">{timePerQuestion}s</span>
                     </p>
                   </div>

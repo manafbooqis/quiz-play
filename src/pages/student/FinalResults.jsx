@@ -299,13 +299,6 @@ function FinalResults() {
                 Final Results
               </span>
             </h1>
-            
-            {/* Subtitle with game info */}
-            <div className="flex items-center justify-center gap-4 text-slate-300 text-lg">
-              <span className="text-cyan-200 font-semibold">Round {questionCount}</span>
-              <span className="text-pink-300">•</span>
-              <span className="text-cyan-200">Game Code: {gameCode}</span>
-            </div>
           </div>
 
           {/* Main Content Grid */}

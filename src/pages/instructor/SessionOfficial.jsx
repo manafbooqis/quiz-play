@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { QRCodeCanvas } from "qrcode.react";
 import {
@@ -693,10 +693,10 @@ function SessionOfficial() {
 
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                 <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">
-                  Quiz rounds &amp; bank
+                  Questions &amp; bank
                 </p>
                 <p className="text-2xl font-bold text-slate-900">
-                  {questionCount} rounds
+                  {questionCount} Questions
                 </p>
                 <p className="text-sm text-slate-500 mt-1">
                   {questionCount} per difficulty in bank ({questionCount * 3}{" "}
