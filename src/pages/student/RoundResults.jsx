@@ -138,7 +138,7 @@ function RoundResults() {
     if (!allReady || countdownStartedRef.current) return;
     
     countdownStartedRef.current = true;
-    setCountdown(3);
+    setCountdown(8);
   }, [allReady]);
 
   // Countdown timer - only decrement countdown

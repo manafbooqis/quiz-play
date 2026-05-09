@@ -814,12 +814,6 @@ function InstructorLiveQuiz() {
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold">Live Quiz Control</h1>
-            <p className="text-slate-500 mt-2">
-              Game Code: <span className="font-semibold">{gameCode}</span> • 
-              Round: <span className="font-semibold">{currentRound}</span> • 
-              Answered: <span className="font-semibold">{answeredCount} / {totalStudents}</span> • 
-              Status: <span className="font-semibold capitalize">{sessionData?.status || 'waiting'}</span>
-            </p>
           </div>
           <button
             onClick={() => navigate("/instructor/session-official")}
