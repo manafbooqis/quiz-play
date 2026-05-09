@@ -86,29 +86,45 @@ function InstructorLiveQuiz() {
   };
 
   const getCorrectAnswer = (q) => {
-    if (!q) return "";
-    const correct = q.correct_answer || q.correctAnswer || q.correct_option || q.answer || "";
+    if (!q) return "No correct answer found";
+    
+    let correct = null;
+    if (q.correct_answer !== undefined && q.correct_answer !== null && q.correct_answer !== "") correct = q.correct_answer;
+    else if (q.correctAnswer !== undefined && q.correctAnswer !== null && q.correctAnswer !== "") correct = q.correctAnswer;
+    else if (q.correct_option !== undefined && q.correct_option !== null && q.correct_option !== "") correct = q.correct_option;
+    else if (q.answer !== undefined && q.answer !== null && q.answer !== "") correct = q.answer;
+
+    if (correct === null) {
+      return "No correct answer found";
+    }
+
     const options = getOptions(q);
     
-    if (typeof correct === 'number') {
-      const optionLetter = ['A', 'B', 'C', 'D'][correct];
-      const optionText = options[correct];
-      return optionLetter + (optionText ? `) ${optionText}` : '');
+    if (typeof correct === 'number' || (!isNaN(parseInt(correct)) && String(parseInt(correct)) === String(correct))) {
+      const index = parseInt(correct);
+      if (index >= 0 && index < options.length && options[index]) {
+        return options[index];
+      }
     }
+    
     if (typeof correct === 'string') {
-      const upperCorrect = correct.toUpperCase();
+      const upperCorrect = correct.trim().toUpperCase();
       if (['A', 'B', 'C', 'D'].includes(upperCorrect)) {
         const index = ['A', 'B', 'C', 'D'].indexOf(upperCorrect);
-        const optionText = options[index];
-        return upperCorrect + (optionText ? `) ${optionText}` : '');
+        if (index >= 0 && index < options.length && options[index]) {
+          return options[index];
+        }
       }
-      return upperCorrect;
+      return correct;
     }
-    return correct;
+    
+    return String(correct);
   };
 
   // Prevent repeated navigation to results
   const hasNavigatedToResultsRef = useRef(false);
+  const hasEndedCurrentQuestionRef = useRef(false);
+  const autoNextRoundRef = useRef(false);
 
   // Calculate total questions
   const totalQuestions = useMemo(() => {
@@ -534,7 +550,7 @@ function InstructorLiveQuiz() {
         const { error: updateError } = await supabase
           .from("sessions")
           .update({
-            status: "waiting",
+            status: "choosing_difficulty",
             current_round: nextRoundNumber,
             current_question_id: null,
             current_difficulty: null,
@@ -550,6 +566,11 @@ function InstructorLiveQuiz() {
 
       } catch (err) {
         console.error("Error moving to next round:", err);
+        console.error("Error moving to next round — message:", err?.message);
+        console.error("Error moving to next round — details:", err?.details);
+        console.error("Error moving to next round — hint:", err?.hint);
+        console.error("Error moving to next round — code:", err?.code);
+        console.error("Error moving to next round — full:", JSON.stringify(err, null, 2));
         setError("Failed to move to next round");
       }
     }
@@ -622,18 +643,73 @@ function InstructorLiveQuiz() {
       };
     }).sort((a, b) => b.totalScore - a.totalScore);
     
-    // Debug log
-    console.log("[InstructorRankings]", {
-      currentRound,
-      totalStudents: students.length,
-      responses: responses.length,
-      answeredCount,
-      ranking
-    });
-    
     setLiveRanking(ranking);
 
   }, [sessionData, students, responses]);
+
+  // Reset the end round ref when a new question starts
+  useEffect(() => {
+    hasEndedCurrentQuestionRef.current = false;
+  }, [sessionData?.current_question_id]);
+
+  // Auto end round when everyone has answered
+  useEffect(() => {
+    if (
+      sessionData?.status === "active" &&
+      sessionData?.current_question_id &&
+      totalStudents > 0 &&
+      answeredCount >= totalStudents &&
+      !hasEndedCurrentQuestionRef.current
+    ) {
+      console.log("[EndRoundTriggered]", {
+        answeredCount,
+        totalStudents,
+        currentQuestionId: sessionData.current_question_id,
+      });
+
+      hasEndedCurrentQuestionRef.current = true;
+      endRound();
+    }
+  }, [
+    answeredCount,
+    totalStudents,
+    sessionData?.status,
+    sessionData?.current_question_id,
+  ]);
+
+  // Automatic progression to next question
+  useEffect(() => {
+    if (
+      sessionData?.status === "round_results" &&
+      Number(sessionData?.current_round || 1) < Number(sessionData?.question_count || sessionData?.questionCount || 1) &&
+      !autoNextRoundRef.current
+    ) {
+      console.log("[AutoNextRoundScheduled]", { currentRound: sessionData?.current_round });
+      autoNextRoundRef.current = true;
+
+      const timer = setTimeout(() => {
+        console.log("[AutoNextRoundFired]", { currentRound: sessionData?.current_round });
+        nextRound();
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [
+    sessionData?.status,
+    sessionData?.current_round,
+    sessionData?.question_count,
+    sessionData?.questionCount,
+  ]);
+
+  // Reset the automatic progression ref when entering choosing_difficulty or a new active question
+  useEffect(() => {
+    if (
+      sessionData?.status === "choosing_difficulty" ||
+      (sessionData?.status === "active" && sessionData?.current_question_id)
+    ) {
+      autoNextRoundRef.current = false;
+    }
+  }, [sessionData?.status, sessionData?.current_question_id]);
 
   // Simple polling for instructor data refresh
   useEffect(() => {
@@ -667,35 +743,60 @@ function InstructorLiveQuiz() {
         if (freshSession) setSessionData(freshSession);
 
       } catch (err) {
-        console.error("Polling error:", err);
+        // Silently handle polling errors
       }
     }, 1000);
 
     return () => clearInterval(interval);
   }, [sessionId]);
 
-  // Update preview question when difficulty changes
+  // Update preview question when session data changes
   useEffect(() => {
-    if (!sessionData?.questions_by_difficulty || !currentRound) return;
+    const currentQuestionId = sessionData?.current_question_id;
+    const currentDifficulty = sessionData?.current_difficulty;
+    const bank = sessionData?.questions_by_difficulty || sessionData?.questionsByDifficulty || {};
 
-    const questionIndex = currentRound - 1;
-    const bank = sessionData?.questions_by_difficulty || {};
-    const previewList = bank[selectedMonitorDifficulty] || [];
-    const previewQuestion = previewList[questionIndex] || null;
-    
-    // Debug log
-    console.log("[InstructorPreview]", {
-      hasBank: !!sessionData?.questions_by_difficulty,
-      selectedMonitorDifficulty,
-      currentRound,
-      questionIndex,
-      previewListLength: previewList.length,
-      previewQuestion
-    });
-    
-    setPreviewQuestion(previewQuestion);
+    if (currentQuestionId) {
+      const findQuestion = (id) => {
+        // First search the current difficulty bank
+        if (currentDifficulty && bank[currentDifficulty]) {
+          const found = bank[currentDifficulty].find(q => 
+            String(q.id) === String(id) || 
+            String(q.question_id) === String(id) || 
+            String(q.qid) === String(id)
+          );
+          if (found) return found;
+        }
+        // If not found, search all banks
+        for (const difficulty of ['easy', 'medium', 'hard']) {
+          if (difficulty === currentDifficulty) continue;
+          if (bank[difficulty]) {
+            const found = bank[difficulty].find(q => 
+              String(q.id) === String(id) || 
+              String(q.question_id) === String(id) || 
+              String(q.qid) === String(id)
+            );
+            if (found) return found;
+          }
+        }
+        return null;
+      };
 
-  }, [selectedMonitorDifficulty, currentRound, sessionData]);
+      const foundQuestion = findQuestion(currentQuestionId);
+      setPreviewQuestion(foundQuestion);
+    } else {
+      const questionIndex = Math.max(0, currentRound - 1);
+      const previewList = bank[selectedMonitorDifficulty] || [];
+      setPreviewQuestion(previewList[questionIndex] || null);
+    }
+  }, [
+    sessionData?.current_question_id, 
+    sessionData?.current_difficulty, 
+    sessionData?.questions_by_difficulty, 
+    sessionData?.questionsByDifficulty,
+    selectedMonitorDifficulty,
+    currentRound
+  ]);
 
   if (loading) {
     return (
@@ -767,20 +868,20 @@ function InstructorLiveQuiz() {
               </div>
             </div>
 
-            {/* Current Round Question Preview */}
+            {/* Current Question Preview */}
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">Current Round Question Preview</h2>
+                <h2 className="text-xl font-bold">Current Question Preview</h2>
                 <div className="flex items-center gap-3">
                   <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold text-sm">
-                    Round {currentRound}
+                    Question {currentRound}
                   </span>
                   <span className="px-3 py-1 rounded-full bg-cyan-100 text-cyan-900 font-semibold text-sm">
                     Answered: {answeredCount} / {totalStudents}
                   </span>
                 </div>
               </div>
-              
+
               {/* Difficulty Tabs */}
               <div className="flex gap-2 mb-4">
                 {["easy", "medium", "hard"].map((difficulty) => (
@@ -828,13 +929,7 @@ function InstructorLiveQuiz() {
                 </div>
               ) : (
                 <div className="text-center py-8 text-slate-500">
-                  <p>No question found for this difficulty/round.</p>
-                  <div className="mt-4 text-sm text-slate-400">
-                    <p>Debug info:</p>
-                    <p>Selected difficulty: {selectedMonitorDifficulty}</p>
-                    <p>Current round: {currentRound}</p>
-                    <p>Question index: {currentRound - 1}</p>
-                  </div>
+                  <p>No active question yet</p>
                 </div>
               )}
             </div>

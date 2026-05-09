@@ -102,23 +102,24 @@ function Lobby() {
           console.log("Lobby session status:", session.status);
           console.log("Lobby current question:", session.current_question_id);
 
-          // If session is already active, navigate to question page
-          if (session.status === "active") {
+          // If session is active or choosing_difficulty, navigate to difficulty page
+          if (session.status === "active" || session.status === "choosing_difficulty") {
             const saved = localStorage.getItem(`quizplay_session_${gameCode}`);
             const savedSession = saved ? JSON.parse(saved) : null;
             const questionsByDifficulty = savedSession?.questionsByDifficulty || savedSession?.questions_by_difficulty || session.questions_by_difficulty;
             
-            console.log("Navigating student to difficulty page (initial load)");
+            console.log("Navigating student to difficulty page (initial load)", session.status);
             navigate("/student/difficulty", {
               state: {
                 studentName,
                 gameCode,
                 sessionId: session.id,
                 currentRound: session.current_round || 1,
-                currentQuestionId: session.current_question_id,
-                currentDifficulty: session.current_difficulty,
+                questionCount: session.question_count || session.questionCount,
+                currentQuestionId: session.current_question_id || undefined,
+                currentDifficulty: session.current_difficulty || undefined,
                 questionsByDifficulty,
-                timePerQuestion,
+                timePerQuestion: session.time_per_question,
               }
             });
           }
@@ -149,18 +150,16 @@ function Lobby() {
         console.log("Lobby updated session status:", updatedSession.status);
         console.log("Lobby updated current question:", updatedSession.current_question_id);
 
-        // Auto-navigate when quiz starts
-        if (updatedSession.status === "active" && updatedSession.current_question_id) {
+        // Auto-navigate when quiz starts or moves to choosing_difficulty
+        if (
+          (updatedSession.status === "active" && updatedSession.current_question_id) ||
+          updatedSession.status === "choosing_difficulty"
+        ) {
           const saved = localStorage.getItem(`quizplay_session_${gameCode}`);
           const savedSession = saved ? JSON.parse(saved) : null;
           const questionsByDifficulty = savedSession?.questionsByDifficulty || savedSession?.questions_by_difficulty || updatedSession.questions_by_difficulty;
 
-          console.log("Lobby navigating to difficulty page");
-          console.log("Lobby gameCode:", gameCode);
-          console.log("Lobby loaded session:", updatedSession);
-          console.log("Lobby session status:", updatedSession.status);
-          console.log("Lobby current question:", updatedSession.current_question_id);
-          console.log("Lobby navigating to difficulty");
+          console.log("Lobby navigating to difficulty page", updatedSession.status);
           
           navigate("/student/difficulty", {
             state: {
@@ -168,9 +167,11 @@ function Lobby() {
               gameCode,
               sessionId: updatedSession.id,
               currentRound: updatedSession.current_round || 1,
-              currentQuestionId: updatedSession.current_question_id,
-              currentDifficulty: updatedSession.current_difficulty,
-              questionsByDifficulty
+              questionCount: updatedSession.question_count || updatedSession.questionCount,
+              currentQuestionId: updatedSession.current_question_id || undefined,
+              currentDifficulty: updatedSession.current_difficulty || undefined,
+              questionsByDifficulty,
+              timePerQuestion: updatedSession.time_per_question,
             }
           });
         }
@@ -182,28 +183,32 @@ function Lobby() {
       try {
         const { data: session, error: pollError } = await supabase
           .from("sessions")
-          .select("id, game_code, status, current_question_id, current_difficulty, current_round")
+          .select("*")
           .eq("game_code", gameCode)
           .single();
 
         if (!pollError && session) {
-          console.log("Lobby polling session:", session);
-          if (session.status === "active" && session.current_question_id) {
+          console.log("Lobby polling session:", session.status);
+          if (
+            (session.status === "active" && session.current_question_id) ||
+            session.status === "choosing_difficulty"
+          ) {
             const saved = localStorage.getItem(`quizplay_session_${gameCode}`);
             const savedSession = saved ? JSON.parse(saved) : null;
             const questionsByDifficulty = savedSession?.questionsByDifficulty || savedSession?.questions_by_difficulty;
 
-            console.log("Lobby polling: navigating to difficulty page");
+            console.log("Lobby polling: navigating to difficulty page", session.status);
             navigate("/student/difficulty", {
               state: {
                 studentName,
                 gameCode,
                 sessionId: session.id,
                 currentRound: session.current_round || 1,
-                currentQuestionId: session.current_question_id,
-                currentDifficulty: session.current_difficulty,
+                questionCount: session.question_count || session.questionCount,
+                currentQuestionId: session.current_question_id || undefined,
+                currentDifficulty: session.current_difficulty || undefined,
                 questionsByDifficulty,
-                timePerQuestion,
+                timePerQuestion: session.time_per_question,
               }
             });
           }

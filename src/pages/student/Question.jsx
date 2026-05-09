@@ -82,6 +82,21 @@ function Question() {
           return;
         }
 
+        // choosing_difficulty: only allowed if student arrived with a real questionId from Difficulty.jsx
+        if (session.status === "choosing_difficulty" && !currentQuestionId) {
+          navigate("/student/difficulty", {
+            state: {
+              studentName,
+              gameCode,
+              sessionId: session.id,
+              currentRound: session.current_round,
+              questionCount: session.question_count,
+              timePerQuestion: session.time_per_question,
+            }
+          });
+          return;
+        }
+
         // Active question UI is driven by sessionData + sync effect so timer stays tied to DB question/ends_at.
 
       } catch (err) {
@@ -127,6 +142,21 @@ function Question() {
           navigate("/student/final-results", {
             state: { studentName, gameCode, sessionId: full.id },
           });
+        } else if (full.status === "waiting") {
+          navigate("/student/lobby", {
+            state: { studentName, gameCode },
+          });
+        } else if (full.status === "choosing_difficulty" && !currentQuestionId) {
+          navigate("/student/difficulty", {
+            state: {
+              studentName,
+              gameCode,
+              sessionId: full.id,
+              currentRound: full.current_round,
+              questionCount: full.question_count,
+              timePerQuestion: full.time_per_question,
+            },
+          });
         }
       })
       .subscribe();
@@ -147,29 +177,37 @@ function Question() {
   }, [hasAnswered]);
 
   useEffect(() => {
-    if (sessionData?.status !== "active" || !sessionData?.current_question_id) {
+    const isActive = sessionData?.status === "active" && sessionData?.current_question_id;
+    const isChoosing = sessionData?.status === "choosing_difficulty" && currentQuestionId;
+    if (!isActive && !isChoosing) {
       return;
     }
     setHasAnswered(false);
     setSelectedAnswer(null);
     setIsSubmitting(false);
     setError("");
-  }, [sessionData?.current_question_id]);
+  }, [sessionData?.current_question_id, sessionData?.status, currentQuestionId]);
 
   useEffect(() => {
-    if (!sessionData?.current_question_id) return;
+    const targetQuestionId = currentQuestionId || sessionData?.current_question_id;
+    if (!targetQuestionId) return;
     setHasAnswered(false);
     setSelectedAnswer(null);
     setIsSubmitting(false);
-  }, [sessionData?.current_question_id]);
+  }, [currentQuestionId, sessionData?.current_question_id]);
 
   useEffect(() => {
-    if (sessionData?.status !== "active" || !sessionData?.current_question_id) {
+    // Allow question loading when:
+    // - status is "active" and session has a current_question_id, OR
+    // - status is "choosing_difficulty" and student arrived with a route-state questionId
+    const isActive = sessionData?.status === "active" && sessionData?.current_question_id;
+    const isChoosing = sessionData?.status === "choosing_difficulty" && currentQuestionId;
+    if (!isActive && !isChoosing) {
       return;
     }
 
     const difficulty = currentDifficulty || sessionData.current_difficulty || "easy";
-    const questionId = currentQuestionId || sessionData.current_question_id;
+    const targetQuestionId = currentQuestionId || sessionData.current_question_id;
 
     const bankFromSession =
       sessionData.questions_by_difficulty || sessionData.questionsByDifficulty;
@@ -196,9 +234,9 @@ function Question() {
     const bank = questionsByDifficulty?.[difficulty] || [];
     const foundQuestion = bank.find(
       (q) =>
-        q.id === questionId ||
-        q.question_id === questionId ||
-        q.qid === questionId
+        q.id === targetQuestionId ||
+        q.question_id === targetQuestionId ||
+        q.qid === targetQuestionId
     );
 
     if (foundQuestion) {
@@ -213,6 +251,8 @@ function Question() {
     sessionData?.current_question_id,
     sessionData?.current_difficulty,
     sessionData?.questions_by_difficulty,
+    currentQuestionId,
+    currentDifficulty,
     gameCode,
   ]);
 

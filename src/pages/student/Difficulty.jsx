@@ -321,18 +321,69 @@ function Difficulty() {
     );
   }
 
-  const handleDifficultySelect = (difficulty, points) => {
+  const handleDifficultySelect = async (difficulty, points) => {
     const bank = questionsByDifficulty[difficulty] || [];
     
     // Find first unanswered question
     const unansweredQuestion = bank.find(q => 
-      !answeredIds.includes(q.id) && 
-      !answeredIds.includes(q.question_id) && 
+      !answeredIds.includes(q.id) &&
+      !answeredIds.includes(q.question_id) &&
       !answeredIds.includes(q.qid)
     );
 
     if (unansweredQuestion) {
       const questionId = unansweredQuestion.id || unansweredQuestion.question_id || unansweredQuestion.qid;
+
+      console.log("[DifficultyStartQuestion]", {
+        sessionId,
+        difficulty,
+        questionId,
+        round: state?.currentRound,
+        hasSessionData,
+        sessionStatus: session?.status
+      });
+
+      // First-write-wins: only updates if session is still in choosing_difficulty.
+      // Subsequent students hitting this will find status already "active" — update is a no-op.
+      if (questionId && sessionId) {
+        try {
+          const { data, error } = await supabase
+            .from("sessions")
+            .update({
+              status: "active",
+              current_question_id: String(questionId),
+              current_difficulty: difficulty,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", sessionId)
+            .eq("status", "choosing_difficulty")
+            .select("*")
+            .single();
+
+          console.log("[DifficultyUpdateResult]", {
+            data,
+            error,
+            sessionId,
+            questionId,
+            difficulty,
+            affectedRows: data ? 1 : 0
+          });
+
+          if (error) {
+            console.error("[DifficultyUpdateError]", error);
+          }
+        } catch (err) {
+          console.error("[DifficultyUpdateException]", err);
+        }
+      } else {
+        console.log("[DifficultySkipUpdate]", {
+          hasQuestionId: !!questionId,
+          hasSessionId: !!sessionId,
+          questionId,
+          sessionId
+        });
+      }
+
       navigate("/student/question", {
         state: {
           ...state,
