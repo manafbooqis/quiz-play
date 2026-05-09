@@ -324,15 +324,25 @@ function Difficulty() {
   const handleDifficultySelect = async (difficulty, points) => {
     const bank = questionsByDifficulty[difficulty] || [];
     
-    // Find first unanswered question
-    const unansweredQuestion = bank.find(q => 
-      !answeredIds.includes(q.id) &&
-      !answeredIds.includes(q.question_id) &&
-      !answeredIds.includes(q.qid)
-    );
+    // Use round-based question selection to match instructor preview
+    const resolvedCurrentRound =
+      Number(state?.currentRound) ||
+      Number(session?.current_round) ||
+      1;
+    const questionIndex = Math.max(0, resolvedCurrentRound - 1);
+    const selectedQuestion = questionsByDifficulty[difficulty]?.[questionIndex];
 
-    if (unansweredQuestion) {
-      const questionId = unansweredQuestion.id || unansweredQuestion.question_id || unansweredQuestion.qid;
+    if (selectedQuestion) {
+      const questionId = selectedQuestion?.id || selectedQuestion?.question_id || selectedQuestion?.qid;
+
+      console.log("[StudentDifficultyState]", {
+        routeCurrentRound: state?.currentRound,
+        sessionCurrentRound: session?.current_round,
+        difficulty,
+        questionId,
+        sessionId,
+        sessionStatus: session?.status
+      });
 
       console.log("[DifficultyStartQuestion]", {
         sessionId,
