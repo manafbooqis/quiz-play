@@ -63,9 +63,60 @@ function RoundResults() {
   const [waitingStudents, setWaitingStudents] = useState([]);
   const [allReady, setAllReady] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const [seenCount, setSeenCount] = useState(0);
+  const [targetTime, setTargetTime] = useState(null);
   const countdownStartedRef = useRef(false);
   const countdownNavigationDoneRef = useRef(false);
   const previousRoundRef = useRef(currentRound);
+
+  // Mark when current student reaches RoundResults
+  useEffect(() => {
+    if (!gameCode || !studentName || !sessionId || !currentRound) return;
+
+    const markStudentSeen = async () => {
+      try {
+        // Update existing response with round_results_seen_at
+        const updateQuery = supabase
+          .from("responses")
+          .update({
+            round_results_seen_at: new Date().toISOString()
+          })
+          .eq("session_id", sessionId)
+          .eq("round_number", Number(currentRound))
+          .eq("player_id", studentName);
+
+        // Add question_id filter if available
+        if (state?.currentQuestionId) {
+          updateQuery.eq("question_id", String(state.currentQuestionId));
+        }
+
+        const { data, error } = await updateQuery
+          .select("id, session_id, player_id, round_number, question_id, round_results_seen_at");
+
+        if (error) {
+          console.error("[RoundResultsSeenMark] Failed to mark student seen:", error);
+        } else if (!data || data.length === 0) {
+          console.warn("[RoundResultsSeenMark] No response row found to update", {
+            playerId: studentName,
+            currentRound,
+            currentQuestionId: state?.currentQuestionId
+          });
+        } else {
+          console.log("[RoundResultsSeenMark]", {
+            playerId: studentName,
+            currentRound,
+            currentQuestionId: state?.currentQuestionId,
+            markedAt: new Date().toISOString(),
+            updatedRows: data.length
+          });
+        }
+      } catch (err) {
+        console.error("[RoundResultsSeenMark] Exception:", err);
+      }
+    };
+
+    markStudentSeen();
+  }, [gameCode, studentName, sessionId, currentRound]);
 
   // Polling logic for all-students sync
   useEffect(() => {
@@ -91,9 +142,10 @@ function RoundResults() {
 
         if (responsesError) throw responsesError;
 
-        // Determine which students have answered
+        // Determine which students have answered vs seen RoundResults
         const answered = [];
         const waiting = [];
+        const seen = [];
 
         players.forEach(player => {
           const hasResponse = responses.some(response => 
@@ -101,8 +153,18 @@ function RoundResults() {
             response.player_id === player.id
           );
           
+          const hasSeenResults = responses.some(response => 
+            response.player_id === player.student_name && 
+            response.round_results_seen_at !== null
+          );
+          
           if (hasResponse) {
             answered.push({
+              studentName: player.student_name,
+              total_score: player.total_score || 0
+            });
+          } else if (hasSeenResults) {
+            seen.push({
               studentName: player.student_name,
               total_score: player.total_score || 0
             });
@@ -116,7 +178,40 @@ function RoundResults() {
 
         setAnsweredStudents(answered);
         setWaitingStudents(waiting);
-        setAllReady(players.length > 0 && waiting.length === 0);
+        setSeenCount(seen.length);
+
+        // Calculate target time when all students are seen
+        const seenResponses = responses.filter(r => r.round_results_seen_at !== null);
+        const seenPlayers = new Set(seenResponses.map(r => String(r.player_id)));
+        
+        let latestSeenTime = null;
+        if (seenResponses.length > 0) {
+          latestSeenTime = seenResponses.reduce((latest, r) => {
+            const t = new Date(r.round_results_seen_at).getTime();
+            return Math.max(latest, t);
+          }, 0);
+        }
+
+        if (players.length > 0 && seenPlayers.size >= players.length && latestSeenTime) {
+          const nextTargetTime = latestSeenTime + 8000; // 8 seconds in milliseconds
+          setTargetTime(nextTargetTime);
+        }
+
+        // Keep old logic for compatibility
+        const newAllReady = players.length > 0 && answered.length >= players.length && waiting.length === 0;
+        console.log("[RoundResultsSeenCheck]", {
+          playersCount: players.length,
+          answeredCount: answered.length,
+          seenCount: seen.length,
+          seenPlayersCount: seenPlayers.size,
+          waitingCount: waiting.length,
+          allReady: newAllReady,
+          currentRound,
+          currentQuestionId: state?.currentQuestionId,
+          latestSeenTime,
+          targetTime
+        });
+        setAllReady(newAllReady);
 
         console.log("[RoundResults] sync", {
           currentRound,
@@ -133,34 +228,26 @@ function RoundResults() {
     return () => clearInterval(pollInterval);
   }, [gameCode, studentName, sessionId, currentRound]);
 
-  // Start countdown when allReady becomes true
+  // Update countdown based on target time
   useEffect(() => {
-    if (!allReady || countdownStartedRef.current) return;
+    if (!targetTime) return;
     
-    countdownStartedRef.current = true;
-    setCountdown(8);
-  }, [allReady]);
+    const updateInterval = setInterval(() => {
+      const now = new Date().getTime();
+      const remaining = Math.max(0, Math.ceil((targetTime - now) / 1000));
+      setCountdown(remaining);
+      
+      if (now >= targetTime) {
+        clearInterval(updateInterval);
+      }
+    }, 100);
 
-  // Countdown timer - only decrement countdown
+    return () => clearInterval(updateInterval);
+  }, [targetTime]);
+
+  // Navigation after target time reached
   useEffect(() => {
-    if (countdown === 0) return;
-    
-    const countdownInterval = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(countdownInterval);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(countdownInterval);
-  }, [countdown]);
-
-  // Navigation after countdown reaches 0
-  useEffect(() => {
-    if (countdown === 0 && allReady && !countdownNavigationDoneRef.current) {
+    if (targetTime && new Date().getTime() >= targetTime && !countdownNavigationDoneRef.current) {
       countdownNavigationDoneRef.current = true;
       
       if (Number(currentRound) >= Number(questionCount)) {
