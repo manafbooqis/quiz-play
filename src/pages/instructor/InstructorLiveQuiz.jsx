@@ -690,7 +690,7 @@ function InstructorLiveQuiz() {
       const timer = setTimeout(() => {
         console.log("[AutoNextRoundFired]", { currentRound: sessionData?.current_round });
         nextRound();
-      }, 3000);
+      }, 1000);
 
       return () => clearTimeout(timer);
     }
