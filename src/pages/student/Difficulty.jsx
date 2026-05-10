@@ -348,6 +348,29 @@ function Difficulty() {
         sessionId,
         difficulty,
         questionId,
+        round: state?.currentRound
+      });
+
+      // First-write-wins: only updates if session is still in choosing_difficulty.
+      // Subsequent students hitting this will find status already "active" — update is a no-op.
+      if (questionId && sessionId) {
+        await supabase
+          .from("sessions")
+          .update({
+            status: "active",
+            current_question_id: String(questionId),
+            current_difficulty: difficulty,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", sessionId)
+          .eq("status", "choosing_difficulty");
+      }
+
+
+      console.log("[DifficultyStartQuestion]", {
+        sessionId,
+        difficulty,
+        questionId,
         round: state?.currentRound,
         hasSessionData,
         sessionStatus: session?.status

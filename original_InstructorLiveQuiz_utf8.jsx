@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+﻿import { useEffect, useState, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 
@@ -86,45 +86,29 @@ function InstructorLiveQuiz() {
   };
 
   const getCorrectAnswer = (q) => {
-    if (!q) return "No correct answer found";
-    
-    let correct = null;
-    if (q.correct_answer !== undefined && q.correct_answer !== null && q.correct_answer !== "") correct = q.correct_answer;
-    else if (q.correctAnswer !== undefined && q.correctAnswer !== null && q.correctAnswer !== "") correct = q.correctAnswer;
-    else if (q.correct_option !== undefined && q.correct_option !== null && q.correct_option !== "") correct = q.correct_option;
-    else if (q.answer !== undefined && q.answer !== null && q.answer !== "") correct = q.answer;
-
-    if (correct === null) {
-      return "No correct answer found";
-    }
-
+    if (!q) return "";
+    const correct = q.correct_answer || q.correctAnswer || q.correct_option || q.answer || "";
     const options = getOptions(q);
     
-    if (typeof correct === 'number' || (!isNaN(parseInt(correct)) && String(parseInt(correct)) === String(correct))) {
-      const index = parseInt(correct);
-      if (index >= 0 && index < options.length && options[index]) {
-        return options[index];
-      }
+    if (typeof correct === 'number') {
+      const optionLetter = ['A', 'B', 'C', 'D'][correct];
+      const optionText = options[correct];
+      return optionLetter + (optionText ? `) ${optionText}` : '');
     }
-    
     if (typeof correct === 'string') {
-      const upperCorrect = correct.trim().toUpperCase();
+      const upperCorrect = correct.toUpperCase();
       if (['A', 'B', 'C', 'D'].includes(upperCorrect)) {
         const index = ['A', 'B', 'C', 'D'].indexOf(upperCorrect);
-        if (index >= 0 && index < options.length && options[index]) {
-          return options[index];
-        }
+        const optionText = options[index];
+        return upperCorrect + (optionText ? `) ${optionText}` : '');
       }
-      return correct;
+      return upperCorrect;
     }
-    
-    return String(correct);
+    return correct;
   };
 
   // Prevent repeated navigation to results
   const hasNavigatedToResultsRef = useRef(false);
-  const hasEndedCurrentQuestionRef = useRef(false);
-  const autoNextRoundRef = useRef(false);
 
   // Calculate total questions
   const totalQuestions = useMemo(() => {
@@ -244,7 +228,7 @@ function InstructorLiveQuiz() {
     };
   }, [sessionId, navigate]);
 
-  // Same per-question window as students: current_question_ends_at − now (full time each question).
+  // Same per-question window as students: current_question_ends_at ظêْ now (full time each question).
   useEffect(() => {
     if (
       sessionData?.status !== "active" ||
@@ -269,7 +253,7 @@ function InstructorLiveQuiz() {
     sessionData?.current_question_id,
   ]);
 
-  // Polling-based completion check — runs every 2 seconds
+  // Polling-based completion check ظ¤ runs every 2 seconds
   useEffect(() => {
     if (!sessionId || !sessionData) return;
 
@@ -550,7 +534,7 @@ function InstructorLiveQuiz() {
         const { error: updateError } = await supabase
           .from("sessions")
           .update({
-            status: "choosing_difficulty",
+            status: "waiting",
             current_round: nextRoundNumber,
             current_question_id: null,
             current_difficulty: null,
@@ -566,11 +550,6 @@ function InstructorLiveQuiz() {
 
       } catch (err) {
         console.error("Error moving to next round:", err);
-        console.error("Error moving to next round — message:", err?.message);
-        console.error("Error moving to next round — details:", err?.details);
-        console.error("Error moving to next round — hint:", err?.hint);
-        console.error("Error moving to next round — code:", err?.code);
-        console.error("Error moving to next round — full:", JSON.stringify(err, null, 2));
         setError("Failed to move to next round");
       }
     }
@@ -643,73 +622,18 @@ function InstructorLiveQuiz() {
       };
     }).sort((a, b) => b.totalScore - a.totalScore);
     
+    // Debug log
+    console.log("[InstructorRankings]", {
+      currentRound,
+      totalStudents: students.length,
+      responses: responses.length,
+      answeredCount,
+      ranking
+    });
+    
     setLiveRanking(ranking);
 
   }, [sessionData, students, responses]);
-
-  // Reset the end round ref when a new question starts
-  useEffect(() => {
-    hasEndedCurrentQuestionRef.current = false;
-  }, [sessionData?.current_question_id]);
-
-  // Auto end round when everyone has answered
-  useEffect(() => {
-    if (
-      sessionData?.status === "active" &&
-      sessionData?.current_question_id &&
-      totalStudents > 0 &&
-      answeredCount >= totalStudents &&
-      !hasEndedCurrentQuestionRef.current
-    ) {
-      console.log("[EndRoundTriggered]", {
-        answeredCount,
-        totalStudents,
-        currentQuestionId: sessionData.current_question_id,
-      });
-
-      hasEndedCurrentQuestionRef.current = true;
-      endRound();
-    }
-  }, [
-    answeredCount,
-    totalStudents,
-    sessionData?.status,
-    sessionData?.current_question_id,
-  ]);
-
-  // Automatic progression to next question
-  useEffect(() => {
-    if (
-      sessionData?.status === "round_results" &&
-      Number(sessionData?.current_round || 1) < Number(sessionData?.question_count || sessionData?.questionCount || 1) &&
-      !autoNextRoundRef.current
-    ) {
-      console.log("[AutoNextRoundScheduled]", { currentRound: sessionData?.current_round });
-      autoNextRoundRef.current = true;
-
-      const timer = setTimeout(() => {
-        console.log("[AutoNextRoundFired]", { currentRound: sessionData?.current_round });
-        nextRound();
-      }, 1000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [
-    sessionData?.status,
-    sessionData?.current_round,
-    sessionData?.question_count,
-    sessionData?.questionCount,
-  ]);
-
-  // Reset the automatic progression ref when entering choosing_difficulty or a new active question
-  useEffect(() => {
-    if (
-      sessionData?.status === "choosing_difficulty" ||
-      (sessionData?.status === "active" && sessionData?.current_question_id)
-    ) {
-      autoNextRoundRef.current = false;
-    }
-  }, [sessionData?.status, sessionData?.current_question_id]);
 
   // Simple polling for instructor data refresh
   useEffect(() => {
@@ -743,28 +667,35 @@ function InstructorLiveQuiz() {
         if (freshSession) setSessionData(freshSession);
 
       } catch (err) {
-        // Silently handle polling errors
+        console.error("Polling error:", err);
       }
     }, 1000);
 
     return () => clearInterval(interval);
   }, [sessionId]);
 
-  // Update preview question when session data changes
+  // Update preview question when difficulty changes
   useEffect(() => {
-    const questionIndex = Math.max(0, Number(currentRound || 1) - 1);
-    const bank =
-      sessionData?.questions_by_difficulty ||
-      sessionData?.questionsByDifficulty ||
-      {};
+    if (!sessionData?.questions_by_difficulty || !currentRound) return;
+
+    const questionIndex = currentRound - 1;
+    const bank = sessionData?.questions_by_difficulty || {};
     const previewList = bank[selectedMonitorDifficulty] || [];
-    setPreviewQuestion(previewList[questionIndex] || null);
-  }, [
-    selectedMonitorDifficulty,
-    currentRound,
-    sessionData?.questions_by_difficulty,
-    sessionData?.questionsByDifficulty
-  ]);
+    const previewQuestion = previewList[questionIndex] || null;
+    
+    // Debug log
+    console.log("[InstructorPreview]", {
+      hasBank: !!sessionData?.questions_by_difficulty,
+      selectedMonitorDifficulty,
+      currentRound,
+      questionIndex,
+      previewListLength: previewList.length,
+      previewQuestion
+    });
+    
+    setPreviewQuestion(previewQuestion);
+
+  }, [selectedMonitorDifficulty, currentRound, sessionData]);
 
   if (loading) {
     return (
@@ -782,6 +713,12 @@ function InstructorLiveQuiz() {
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold">Live Quiz Control</h1>
+            <p className="text-slate-500 mt-2">
+              Game Code: <span className="font-semibold">{gameCode}</span> ظت 
+              Round: <span className="font-semibold">{currentRound}</span> ظت 
+              Answered: <span className="font-semibold">{answeredCount} / {totalStudents}</span> ظت 
+              Status: <span className="font-semibold capitalize">{sessionData?.status || 'waiting'}</span>
+            </p>
           </div>
           <button
             onClick={() => navigate("/instructor/session-official")}
@@ -830,20 +767,20 @@ function InstructorLiveQuiz() {
               </div>
             </div>
 
-            {/* Current Question Preview */}
+            {/* Current Round Question Preview */}
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">Current Question Preview</h2>
+                <h2 className="text-xl font-bold">Current Round Question Preview</h2>
                 <div className="flex items-center gap-3">
                   <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold text-sm">
-                    Question {currentRound}
+                    Round {currentRound}
                   </span>
                   <span className="px-3 py-1 rounded-full bg-cyan-100 text-cyan-900 font-semibold text-sm">
                     Answered: {answeredCount} / {totalStudents}
                   </span>
                 </div>
               </div>
-
+              
               {/* Difficulty Tabs */}
               <div className="flex gap-2 mb-4">
                 {["easy", "medium", "hard"].map((difficulty) => (
@@ -891,7 +828,13 @@ function InstructorLiveQuiz() {
                 </div>
               ) : (
                 <div className="text-center py-8 text-slate-500">
-                  <p>No active question yet</p>
+                  <p>No question found for this difficulty/round.</p>
+                  <div className="mt-4 text-sm text-slate-400">
+                    <p>Debug info:</p>
+                    <p>Selected difficulty: {selectedMonitorDifficulty}</p>
+                    <p>Current round: {currentRound}</p>
+                    <p>Question index: {currentRound - 1}</p>
+                  </div>
                 </div>
               )}
             </div>
