@@ -271,7 +271,9 @@ function InstructorScoreDistribution() {
                   gameCode, 
                   students, 
                   responses, 
-                  questionsByDifficulty 
+                  questionsByDifficulty,
+                  questionCount: sessionQuestionCount,
+                  session: sessionScoringConfig,
                 },
               })
             }

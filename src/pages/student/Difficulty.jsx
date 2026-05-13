@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
+import { getDifficultyPoints } from "../../utils/leaderboard";
 
 function Difficulty() {
   const navigate = useNavigate();
@@ -322,8 +323,6 @@ function Difficulty() {
   }
 
   const handleDifficultySelect = async (difficulty, points) => {
-    const bank = questionsByDifficulty[difficulty] || [];
-    
     // Use round-based question selection to match instructor preview
     const resolvedCurrentRound =
       Number(state?.currentRound) ||
@@ -422,6 +421,7 @@ function Difficulty() {
           ...state,
           currentDifficulty: difficulty,
           currentQuestionId: questionId,
+          difficultyPoints: points,
           pointsPerQuestion: points,
           questionCount: Number(resolvedQuestionCountRef.current) || 1,
           timePerQuestion: timePerQuestion,
@@ -447,7 +447,7 @@ function Difficulty() {
     { 
       label: "Easy", 
       diff: "easy", 
-      points: 100, 
+      points: getDifficultyPoints("easy"), 
       badge: "bg-gradient-to-r from-emerald-400 to-cyan-400",
       borderColor: "border-emerald-400/60 hover:border-emerald-400/90",
       glowColor: "hover:shadow-emerald-400/40",
@@ -457,7 +457,7 @@ function Difficulty() {
     { 
       label: "Medium", 
       diff: "medium", 
-      points: 200, 
+      points: getDifficultyPoints("medium"), 
       badge: "bg-gradient-to-r from-amber-400 to-yellow-400",
       borderColor: "border-amber-400/60 hover:border-amber-400/90",
       glowColor: "hover:shadow-amber-400/40",
@@ -467,7 +467,7 @@ function Difficulty() {
     { 
       label: "Hard", 
       diff: "hard", 
-      points: 300, 
+      points: getDifficultyPoints("hard"), 
       badge: "bg-gradient-to-r from-red-400 to-pink-400",
       borderColor: "border-red-400/60 hover:border-red-400/90",
       glowColor: "hover:shadow-red-400/40",

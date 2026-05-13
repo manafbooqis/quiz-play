@@ -3,40 +3,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { calculateLeaderboard } from "../../utils/leaderboard";
 
-function getTextValue(value) {
-  if (typeof value === "string" && value.trim()) {
-    return value.trim();
-  }
-  if (typeof value === "number") {
-    return String(value);
-  }
-  return "";
-}
-
-function getStudentName(student, index) {
-  if (!student) {
-    return `Student ${index + 1}`;
-  }
-  if (typeof student === "string") {
-    return student;
-  }
-  if (typeof student !== "object") {
-    return `Student ${index + 1}`;
-  }
-  const candidates = [
-    student.student_name,
-    student.name,
-    student.full_name,
-    student.nickname,
-    student.display_name,
-  ];
-  for (const candidate of candidates) {
-    const text = getTextValue(candidate);
-    if (text) return text;
-  }
-  return `Student ${index + 1}`;
-}
-
 function InstructorLiveQuiz() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -350,40 +316,6 @@ function InstructorLiveQuiz() {
     sessionData?.status === "active" &&
     Boolean(sessionData?.current_question_id) &&
     Boolean(sessionData?.current_difficulty);
-
-  // Calculate student scores
-  const studentScores = useMemo(() => {
-    const scores = {};
-    students.forEach(student => {
-      const studentId = student.id || student.student_name;
-      scores[studentId] = {
-        name: getStudentName(student, 0),
-        totalScore: 0,
-        roundScore: 0,
-        answered: false,
-        rank: 0
-      };
-    });
-
-    responses.forEach(response => {
-      const studentId = response.player_id;
-      if (scores[studentId]) {
-        scores[studentId].totalScore += response.points_awarded;
-        if (response.round_number === sessionData?.current_round) {
-          scores[studentId].roundScore += response.points_awarded;
-          scores[studentId].answered = true;
-        }
-      }
-    });
-
-    // Calculate ranks
-    const sorted = Object.values(scores).sort((a, b) => b.totalScore - a.totalScore);
-    sorted.forEach((student, index) => {
-      student.rank = index + 1;
-    });
-
-    return sorted;
-  }, [students, responses, sessionData?.current_round]);
 
   // Start round with selected difficulty
   const startRound = async () => {
@@ -775,7 +707,6 @@ function InstructorLiveQuiz() {
   void instructorTimeLeft;
   void totalQuestions;
   void isRoundActive;
-  void studentScores;
   void startRound;
 
   return (

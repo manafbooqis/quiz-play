@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
+import { getDifficultyPoints } from "../../utils/leaderboard";
 
 function Question() {
   const navigate = useNavigate();
@@ -12,8 +13,6 @@ function Question() {
   const currentRound = state?.currentRound ?? 1;
   const currentQuestionId = state?.currentQuestionId ?? null;
   const currentDifficulty = state?.currentDifficulty ?? null;
-  // pointsPerQuestion is set by Difficulty.jsx based on selected difficulty
-  const pointsPerQuestion = Number(state?.pointsPerQuestion ?? 100);
   const playerId = String(studentName ?? "").trim();
   
   const [sessionData, setSessionData] = useState(null);
@@ -596,8 +595,13 @@ function Question() {
         0;
 
       const isCorrect = Number(answerToSubmit) === Number(correctAnswer);
-      // Use difficulty-based points from Difficulty.jsx, fallback to 100
-      const pointsAwarded = isCorrect ? pointsPerQuestion : 0;
+      const questionDifficulty =
+        currentQuestion.difficulty ||
+        currentQuestion.level ||
+        currentDifficulty ||
+        sessionData?.current_difficulty;
+      const difficultyPoints = getDifficultyPoints(questionDifficulty);
+      const pointsAwarded = isCorrect ? difficultyPoints : 0;
 
       const targetQuestionId = currentQuestion.id || currentQuestionId || sessionData?.current_question_id;
       const targetSessionId = targetSessionIdPre;
@@ -643,25 +647,6 @@ function Question() {
       if (upsertError) throw upsertError;
 
       setHasAnswered(true);
-
-      // Update total_score safely: recalculate from all responses to avoid race conditions
-      const { data: allMyResponses } = await supabase
-        .from("responses")
-        .select("points_awarded")
-        .eq("session_id", targetSessionId)
-        .eq("player_id", playerId);
-
-      if (allMyResponses) {
-        const newTotalScore = allMyResponses.reduce(
-          (sum, r) => sum + Number(r.points_awarded || 0),
-          0
-        );
-        await supabase
-          .from("session_players")
-          .update({ total_score: newTotalScore })
-          .eq("session_id", targetSessionId)
-          .eq("student_name", playerId);
-      }
 
       // Add to local storage
       const localKey = `quizplay_answered_questions_${gameCode}_${playerId}`;

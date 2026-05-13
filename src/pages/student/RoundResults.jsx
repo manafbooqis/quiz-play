@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
+import { calculateLeaderboard } from "../../utils/leaderboard";
 
 function getTextValue(value) {
   if (typeof value === "string" && value.trim()) {
@@ -239,6 +240,23 @@ function RoundResults() {
 
         if (responsesError) throw responsesError;
 
+        const { data: allResponses, error: allResponsesError } = await supabase
+          .from("responses")
+          .select("*")
+          .eq("session_id", sessionId);
+
+        if (allResponsesError) throw allResponsesError;
+
+        const leaderboard = calculateLeaderboard(
+          players,
+          allResponses || [],
+          Number(sessionData?.question_count || questionCount || 0),
+          sessionData || {}
+        );
+        const scoreByName = new Map(
+          leaderboard.map((player) => [player.name, player.score])
+        );
+
         // Determine which students have answered vs seen RoundResults
         const answered = [];
         const waiting = [];
@@ -258,17 +276,17 @@ function RoundResults() {
           if (hasResponse) {
             answered.push({
               studentName: player.student_name,
-              total_score: player.total_score || 0
+              score: scoreByName.get(player.student_name) || 0
             });
           } else if (hasSeenResults) {
             seen.push({
               studentName: player.student_name,
-              total_score: player.total_score || 0
+              score: scoreByName.get(player.student_name) || 0
             });
           } else {
             waiting.push({
               studentName: player.student_name,
-              total_score: player.total_score || 0
+              score: scoreByName.get(player.student_name) || 0
             });
           }
         });
@@ -321,7 +339,16 @@ function RoundResults() {
     }, 1000); // Poll every 1 second
 
     return () => clearInterval(pollInterval);
-  }, [gameCode, studentName, sessionId, currentRound, state?.currentQuestionId, targetTime]);
+  }, [
+    gameCode,
+    studentName,
+    sessionId,
+    currentRound,
+    state?.currentQuestionId,
+    targetTime,
+    sessionData,
+    questionCount,
+  ]);
 
   // Update countdown based on target time
   useEffect(() => {
@@ -756,7 +783,7 @@ function RoundResults() {
                     </p>
                     <div className="max-h-48 overflow-y-auto space-y-2">
                       {[...answeredStudents, ...waitingStudents]
-                        .sort((a, b) => b.total_score - a.total_score)
+                        .sort((a, b) => b.score - a.score)
                         .filter(student => answeredStudents.some(as => as.studentName === student.studentName))
                         .map(student => (
                           <div key={student.studentName} className="flex justify-between p-3 rounded-xl bg-emerald-900/20 border border-emerald-800/50 backdrop-blur-sm">
@@ -764,7 +791,7 @@ function RoundResults() {
                               {student.studentName}
                               {student.studentName === studentName && " (You)"}
                             </span>
-                            <span className="text-emerald-400 font-bold">{student.total_score} pts</span>
+                            <span className="text-emerald-400 font-bold">{student.score} pts</span>
                           </div>
                         ))}
                     </div>
@@ -781,14 +808,14 @@ function RoundResults() {
                     </p>
                     <div className="max-h-48 overflow-y-auto space-y-2">
                       {waitingStudents
-                        .sort((a, b) => b.total_score - a.total_score)
+                        .sort((a, b) => b.score - a.score)
                         .map(student => (
                           <div key={student.studentName} className="flex justify-between p-3 rounded-xl bg-amber-900/20 border border-amber-800/50 backdrop-blur-sm">
                             <span className={student.studentName === studentName ? "text-cyan-400 font-semibold" : "text-amber-300"}>
                               {student.studentName}
                               {student.studentName === studentName && " (You)"}
                             </span>
-                            <span className="text-amber-400 font-bold">{student.total_score} pts</span>
+                            <span className="text-amber-400 font-bold">{student.score} pts</span>
                           </div>
                         ))}
                     </div>
