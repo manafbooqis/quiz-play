@@ -516,9 +516,13 @@ function InstructorLiveQuiz() {
         .from("sessions")
         .update({
           status: "finished",
-          quiz_finished_at: new Date().toISOString()
+          quiz_finished_at: new Date().toISOString(),
+          show_round_results: false,
+          current_question_ends_at: new Date().toISOString(),
         })
-        .eq("id", sessionId);
+        .eq("id", sessionId)
+        .select("*")
+        .single();
 
       if (updateError) throw updateError;
       

@@ -385,6 +385,31 @@ Risk:
 
 - This is currently the highest-priority scoring correctness issue.
 
+### 3.14 Student compact layout and instructor final-state sync update
+
+Files changed:
+
+- `src/pages/student/Question.jsx`
+- `src/pages/student/WaitingForOthers.jsx`
+- `src/pages/student/Lobby.jsx`
+- `src/pages/instructor/InstructorLiveQuiz.jsx`
+
+What changed:
+
+- `Question.jsx` spacing was compacted by reducing the main panel padding, header gap, timer card padding, question-card padding, answer-grid gap, and answer-button padding.
+- `Question.jsx` still uses a responsive answer grid: one column on small screens and two columns on medium/large screens.
+- `WaitingForOthers.jsx` spacing was compacted by reducing outer padding, icon size, card padding, grid gaps, progress spacing, and the tip panel spacing.
+- `Lobby.jsx` spacing was compacted further in a later lobby-only pass by reducing the outer vertical padding, hero margins/type size, main card padding, header gap, game-code card padding, waiting-panel height, player-grid gap, player-chip height, and Back to Home button height. On medium and larger screens, the waiting panel and players list now sit in a two-column layout to reduce vertical scrolling.
+- `Lobby.jsx`, `Question.jsx`, and `WaitingForOthers.jsx` now treat `session.status === "finished"` or `session.current_phase === "final_results"` as final and navigate students to Final Results with `replace: true`.
+- `RoundResults.jsx` already had shared final-state detection, so no additional layout or flow change was needed there.
+- `InstructorLiveQuiz.jsx` End Quiz now writes the shared session row to `status: "finished"`, clears `show_round_results`, and sets `current_question_ends_at` to the finish time so students listening to the session row leave their current page.
+
+Remaining risk:
+
+- `current_phase` is still checked defensively by student pages, but the documented schema primarily uses `sessions.status`.
+- Refresh recovery still depends on route state/localStorage for some student identity details.
+- Hook dependency warnings remain in `Question.jsx` and `InstructorLiveQuiz.jsx`; they were not changed in this compactness/final-sync pass.
+
 ## 4. Critical Bugs
 
 1. Mixed difficulty scoring is still conceptually wrong in `src/utils/leaderboard.js`.
@@ -403,10 +428,10 @@ Risk:
    - `supabase-rls-policies.sql` only allows anyone to view sessions with status `active` or `waiting`.
    - Students need read access during `choosing_difficulty`, `round_results`, and `finished`.
 
-5. Legacy/original files are included in lint.
-   - `original_InstructorLiveQuiz.jsx` has a parsing error.
-   - `original_InstructorLiveQuiz_utf8.jsx` has many unused variables.
-   - These should not be part of production lint/build source checks.
+5. Legacy/original instructor backup files were removed after confirming they were unused.
+   - `original_InstructorLiveQuiz.jsx` and `original_InstructorLiveQuiz_utf8.jsx` were only referenced by this audit report.
+   - They were deleted instead of ignored so ESLint no longer scans stale backup code.
+   - Remaining lint issues are in active files, especially Node globals for server/config files and unused variables/hook dependency warnings elsewhere.
 
 ## 5. Scoring and Leaderboard Review
 
@@ -498,11 +523,13 @@ Observations:
 
 - Uses Supabase status and localStorage session cache.
 - Subscribes/polls session status.
+- Layout compactness was improved without changing colors, style identity, content, routing, or Supabase behavior.
 
 Risks:
 
 - ESLint reports conditional hook calls. This is a real React bug risk.
 - It navigates to Difficulty for `active` and `choosing_difficulty`, which may be correct, but careful handling is needed if a question is already active.
+- Remaining UI/UX risk: large player counts can still require scrolling because the page intentionally shows joined players.
 
 ### Difficulty
 
@@ -532,6 +559,8 @@ Observations:
 - Inserts/upserts responses.
 - Calculates `points_awarded`.
 - Updates `session_players.total_score`.
+- Layout was compacted so the question card and answer choices fit better on laptop screens.
+- Redirects to Final Results when the shared session reaches `finished` or `final_results`.
 
 Risks:
 
@@ -563,6 +592,7 @@ Observations:
 
 - Loads session, student count, and current round response count.
 - Redirects to Round Results or Final Results on session status changes.
+- Layout was compacted so the waiting status, progress, round, game code, and tip panels fit better on laptop screens.
 
 Risks:
 
@@ -636,6 +666,7 @@ Observations:
 - Controls live quiz, session status, round endings, next round, final results.
 - Uses realtime responses and polling.
 - Live rankings now use shared helper.
+- End Quiz writes the shared session status to `finished`, allowing student session listeners to navigate to Final Results.
 
 Risks:
 
@@ -765,6 +796,7 @@ Issues:
 - Round Results still shows rankings based on per-round `points_awarded`, while final pages use shared helper. This can look inconsistent if not labeled clearly.
 - Loading/error states are inconsistent across pages.
 - Refresh recovery is partial.
+- Question, WaitingForOthers, and Lobby were compacted to reduce laptop-screen scrolling while keeping the same visual style. Very large player counts can still require scrolling, but the Lobby now uses denser spacing and a two-column md+ layout for the main waiting/player content.
 
 ## 13. Code Quality Issues
 
@@ -778,8 +810,8 @@ High-level issues:
 - Many unused variables/functions.
 - React hook dependency warnings in key flow files.
 - Conditional hooks in `Lobby.jsx`.
-- Legacy/original files are included in the project root and lint scope.
-- Encoding issues exist in `original_InstructorLiveQuiz.jsx` and some UI strings.
+- Legacy/original instructor backup files were removed from the project root after confirming they were unused.
+- Encoding issues may still exist in some UI strings.
 
 Recommended structure:
 
@@ -835,7 +867,12 @@ Output summary:
 
 Status: Failed.
 
-Total: 64 problems, 48 errors, 16 warnings.
+Post-removal total: 45 problems, 33 errors, 12 warnings.
+
+Recent update:
+
+- Removed `original_InstructorLiveQuiz.jsx` and `original_InstructorLiveQuiz_utf8.jsx` after confirming they were unused.
+- The legacy backup parsing/unused-variable/hook-dependency failures no longer appear in `npm run lint`.
 
 Grouped errors/warnings:
 
@@ -846,13 +883,12 @@ Grouped errors/warnings:
   - Likely cause: ESLint config treats `api/**/*.js` as browser code instead of Node/server code; some unused code is real cleanup work.
 
 - `original_InstructorLiveQuiz.jsx`
-  - Parsing error: unexpected character.
-  - Likely pre-existing legacy/backup file; should be excluded from lint or removed.
+  - Removed after confirming it was unused.
+  - This eliminates the parsing error from lint.
 
 - `original_InstructorLiveQuiz_utf8.jsx`
-  - Multiple unused variables/functions.
-  - Hook dependency warnings.
-  - Likely pre-existing legacy/backup file; should be excluded or removed.
+  - Removed after confirming it was unused.
+  - This eliminates its unused-variable and hook-dependency lint failures.
 
 - `src/lib/supabase.js`
   - Unused destructured `id` in `createSession`.
@@ -876,11 +912,6 @@ Grouped errors/warnings:
 
 - `src/pages/student/Difficulty.jsx`
   - Hook dependency warning.
-  - Unused `bank`.
-
-- `src/pages/student/Lobby.jsx`
-  - Unused state/variable errors.
-  - Critical React hook rule errors for conditional `useEffect`.
 
 - `src/pages/student/Question.jsx`
   - Hook dependency warnings.
@@ -921,6 +952,8 @@ Priority 5: Clarify authority over session transitions.
 
 - Students should not finalize global sessions unless explicitly intended.
 - Prefer instructor/server state updates.
+- Recent update: instructor End Quiz now finalizes via shared `sessions.status = "finished"` so student pages can react consistently.
+- Next step: move any remaining student-owned finalization in `RoundResults.jsx` to instructor/server-owned logic.
 
 Priority 6: Reduce localStorage dependence.
 
@@ -983,8 +1016,8 @@ Priority 6: Reduce localStorage dependence.
 ## 18. Quick Wins
 
 1. Fix `calculateLeaderboard` to sum `points_awarded` for correct responses.
-2. Exclude `original_InstructorLiveQuiz.jsx` and `original_InstructorLiveQuiz_utf8.jsx` from lint.
-3. Add ESLint Node globals for `api/**/*.js` and `vite.config.js`.
+2. Removed unused legacy files `original_InstructorLiveQuiz.jsx` and `original_InstructorLiveQuiz_utf8.jsx`.
+3. Next recommended fix: add ESLint Node globals for `api/**/*.js` and `vite.config.js`.
 4. Fix conditional hooks in `Lobby.jsx`.
 5. Add migration for `responses.round_results_seen_at`.
 6. Add migration for `responses.difficulty` and `responses.points_possible`.
@@ -997,4 +1030,3 @@ Priority 6: Reduce localStorage dependence.
     - Phase: `sessions.status`
     - Question count: `sessions.question_count`
     - Timer: `sessions.current_question_ends_at`
-

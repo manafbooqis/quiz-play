@@ -3,6 +3,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { getDifficultyPoints } from "../../utils/leaderboard";
 
+function isFinalSessionStatus(session) {
+  return session?.status === "finished" || session?.current_phase === "final_results";
+}
+
 function Question() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -67,9 +71,10 @@ function Question() {
           return;
         }
 
-        if (session.status === "finished") {
+        if (isFinalSessionStatus(session)) {
           navigate("/student/final-results", {
-            state: { studentName, gameCode, sessionId: session.id }
+            state: { studentName, gameCode: session.game_code || gameCode, sessionId: session.id },
+            replace: true,
           });
           return;
         }
@@ -128,7 +133,12 @@ function Question() {
 
         setSessionData(full);
 
-        if (full.status === "round_results") {
+        if (isFinalSessionStatus(full)) {
+          navigate("/student/final-results", {
+            state: { studentName, gameCode: full.game_code || gameCode, sessionId: full.id },
+            replace: true,
+          });
+        } else if (full.status === "round_results") {
           navigate("/student/round-results", {
             state: {
               studentName,
@@ -136,10 +146,6 @@ function Question() {
               sessionId: full.id,
               currentRound: full.current_round,
             },
-          });
-        } else if (full.status === "finished") {
-          navigate("/student/final-results", {
-            state: { studentName, gameCode, sessionId: full.id },
           });
         } else if (full.status === "waiting") {
           navigate("/student/lobby", {
@@ -861,11 +867,11 @@ function Question() {
       
       {/* Main Content - Wide Desktop Panel */}
       <div className="relative min-h-screen flex items-center justify-center px-6 z-30">
-        <div className="w-[90vw] max-w-6xl bg-slate-800/70 backdrop-blur-xl rounded-3xl shadow-3xl border-2 border-slate-600/50 p-4 md:p-8">
+        <div className="w-[90vw] max-w-6xl bg-slate-800/70 backdrop-blur-xl rounded-3xl shadow-3xl border-2 border-slate-600/50 p-3 md:p-5">
           {/* Enhanced Header with Timer */}
-          <div className="flex flex-col items-center justify-center gap-4 md:gap-8 mb-6 md:mb-12">
+          <div className="flex flex-col items-center justify-center gap-3 md:gap-4 mb-4 md:mb-5">
             {/* Premium Title */}
-            <h1 className="game-font text-4xl md:text-6xl font-bold relative text-center">
+            <h1 className="game-font text-3xl md:text-5xl font-bold relative text-center">
               {/* Strong neon glow background */}
               <span className="absolute inset-0 blur-3xl bg-gradient-to-r from-cyan-400/60 via-pink-400/50 to-cyan-400/60 animate-pulse" style={{ animationDuration: '3s' }} />
               <span className="absolute inset-0 blur-xl bg-gradient-to-r from-cyan-400/40 via-pink-400/30 to-cyan-400/40 animate-pulse" style={{ animationDelay: '1.5s', animationDuration: '3s' }} />
@@ -875,27 +881,27 @@ function Question() {
             </h1>
 
             {/* Subtitle */}
-            <p className="text-slate-300 text-lg md:text-xl text-center">
+            <p className="text-slate-300 text-base md:text-lg text-center">
               Question {currentRound} • Difficulty:{" "}
               <span className="text-white capitalize font-semibold">{sessionData?.current_difficulty || currentDifficulty || "unknown"}</span>
             </p>
 
             {/* Centered Timer Card */}
-            <div className="relative bg-slate-900/65 backdrop-blur-2xl border-2 border-cyan-400/55 rounded-2xl px-4 py-3 md:px-8 md:py-5 hover:border-cyan-400/75 transition-all duration-300 shadow-cyan-400/25 shadow-2xl">
+            <div className="relative bg-slate-900/65 backdrop-blur-2xl border-2 border-cyan-400/55 rounded-2xl px-4 py-2 md:px-6 md:py-3 hover:border-cyan-400/75 transition-all duration-300 shadow-cyan-400/25 shadow-2xl">
               {/* Enhanced glow effect */}
               <div className="absolute inset-0 bg-cyan-400/22 rounded-3xl animate-pulse" style={{ animationDuration: '3s' }} />
               <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/18 to-transparent rounded-3xl" />
               <div className="absolute inset-0 bg-gradient-radial from-cyan-400/6 via-transparent to-transparent" style={{ background: 'radial-gradient(circle at center, rgba(6, 182, 212, 0.06) 0%, transparent 60%)' }} />
               <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/3 to-transparent opacity-20" />
               <p className="text-cyan-300 text-xs font-bold tracking-wider uppercase relative z-10 mb-1 md:mb-2">Time Remaining</p>
-              <p className="game-font text-2xl md:text-4xl font-bold bg-gradient-to-r from-cyan-300 via-blue-400 to-cyan-300 bg-clip-text text-transparent relative z-10 animate-pulse" style={{ animationDuration: '2s' }}>
+              <p className="game-font text-2xl md:text-3xl font-bold bg-gradient-to-r from-cyan-300 via-blue-400 to-cyan-300 bg-clip-text text-transparent relative z-10 animate-pulse" style={{ animationDuration: '2s' }}>
                 {formatTime(timeLeft)}
               </p>
             </div>
           </div>
 
         {/* Question Card with Clean Multicolor Edge Glow */}
-          <div className="relative w-full bg-slate-900/80 backdrop-blur-xl rounded-3xl p-4 md:p-8 mb-6 md:mb-8 border-2 border-transparent shadow-2xl overflow-hidden">
+          <div className="relative w-full bg-slate-900/80 backdrop-blur-xl rounded-3xl p-4 md:p-5 mb-4 md:mb-5 border-2 border-transparent shadow-2xl overflow-hidden">
             {/* Multicolor edge glow effect */}
             <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-cyan-400/20 via-blue-400/20 to-pink-400/20 animate-pulse" style={{ animationDuration: '4s' }} />
             <div className="absolute inset-0 rounded-3xl bg-gradient-to-t from-amber-400/15 via-transparent to-transparent animate-pulse" style={{ animationDelay: '2s', animationDuration: '4s' }} />
@@ -904,7 +910,7 @@ function Question() {
             
             {/* Question content */}
             <div className="relative z-10">
-              <p className="game-font text-2xl md:text-3xl font-bold text-white mb-4 md:mb-4 leading-relaxed">
+              <p className="game-font text-xl md:text-2xl font-bold text-white mb-2 leading-relaxed">
                 {currentQuestion.question || currentQuestion.q || currentQuestion.question_text}
               </p>
               <p className="text-slate-300 text-base">Choose one answer.</p>
@@ -912,7 +918,7 @@ function Question() {
           </div>
 
         {/* Answer Cards with A/B/C/D Color Themes */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 mb-8 w-full">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-4 w-full">
             {options.map((option, index) => {
               // Color themes for each answer option
               const answerThemes = {
@@ -958,7 +964,7 @@ function Question() {
                     handleSubmit(index);
                   }}
                   disabled={hasAnswered || isSubmitting}
-                  className={`relative w-full text-left rounded-2xl p-4 md:p-6 transition-all duration-300 transform hover:scale-[1.02] border-2 backdrop-blur-md overflow-hidden group ${
+                  className={`relative w-full text-left rounded-2xl p-3 md:p-4 transition-all duration-300 transform hover:scale-[1.02] border-2 backdrop-blur-md overflow-hidden group ${
                     hasAnswered || isSubmitting 
                       ? 'cursor-not-allowed bg-slate-900/50 border-slate-600/40 opacity-60' 
                       : `bg-gradient-to-br ${theme.bg} ${theme.border} hover:bg-slate-900/30 ${theme.glow} hover:shadow-2xl`
@@ -975,7 +981,7 @@ function Question() {
                       <span className={`text-2xl font-bold ${theme.letter} ${isSelected ? 'animate-pulse' : ''}`}>
                         {String.fromCharCode(65 + index)}
                       </span>
-                      <span className="text-white font-medium text-base md:text-lg leading-relaxed flex-1">
+                      <span className="text-white font-medium text-sm md:text-base leading-relaxed flex-1">
                         {option}
                       </span>
                     </div>
@@ -992,7 +998,7 @@ function Question() {
 
           {/* Answer submitted message */}
           {hasAnswered && (
-            <div className="relative mt-6 p-6 rounded-2xl border-2 border-cyan-400/50 bg-cyan-900/20 backdrop-blur-md text-center">
+            <div className="relative mt-3 p-4 rounded-2xl border-2 border-cyan-400/50 bg-cyan-900/20 backdrop-blur-md text-center">
               <div className="absolute inset-0 bg-cyan-400/10 rounded-2xl animate-pulse" style={{ animationDuration: '2s' }} />
               <p className="text-cyan-200 text-lg font-semibold relative z-10">
                 Answer submitted! Waiting for other students...

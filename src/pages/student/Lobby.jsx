@@ -43,41 +43,25 @@ function getStudentName(student, index) {
   return `Student ${index + 1}`;
 }
 
+function isFinalSessionStatus(session) {
+  return session?.status === "finished" || session?.current_phase === "final_results";
+}
+
 function Lobby() {
   const navigate = useNavigate();
   const { state } = useLocation();
-  const [sessionData, setSessionData] = useState(null);
+  const studentName = state?.studentName ?? "";
+  const gameCode = state?.gameCode ?? "";
+  const [, setSessionData] = useState(null);
   const [livePlayers, setLivePlayers] = useState(null);
 
   // Clear any existing round timers when entering lobby
   useEffect(() => {
-    const studentName = state?.studentName;
-    const gameCode = state?.gameCode;
-    
     if (studentName && gameCode) {
       const timerKey = `quizplay_round_timer_${gameCode}_${studentName}`;
       localStorage.removeItem(timerKey);
     }
-  }, [state?.studentName, state?.gameCode]);
-
-  if (!state?.studentName || !state?.gameCode) {
-    return (
-      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-6">
-        <div className="w-full max-w-md bg-slate-800 border border-slate-600 rounded-2xl shadow-xl p-8 text-center">
-          <h1 className="game-font text-3xl text-yellow-300 mb-4">Oops!</h1>
-          <p className="text-slate-300 mb-6">You need to join a game first.</p>
-          <button
-            onClick={() => navigate("/student/join")}
-            className="game-font bg-cyan-500 hover:bg-cyan-400 text-slate-900 py-3 px-6 rounded-xl transition"
-          >
-            Go to Join Page
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const { studentName, gameCode } = state;
+  }, [studentName, gameCode]);
 
   // Setup real-time session monitoring
   useEffect(() => {
@@ -101,6 +85,18 @@ function Lobby() {
           setSessionData(session);
           console.log("Lobby session status:", session.status);
           console.log("Lobby current question:", session.current_question_id);
+
+          if (isFinalSessionStatus(session)) {
+            navigate("/student/final-results", {
+              state: {
+                studentName,
+                gameCode: session.game_code || gameCode,
+                sessionId: session.id,
+              },
+              replace: true,
+            });
+            return;
+          }
 
           // If session is active or choosing_difficulty, navigate to difficulty page
           if (session.status === "active" || session.status === "choosing_difficulty") {
@@ -150,6 +146,18 @@ function Lobby() {
         console.log("Lobby updated session status:", updatedSession.status);
         console.log("Lobby updated current question:", updatedSession.current_question_id);
 
+        if (isFinalSessionStatus(updatedSession)) {
+          navigate("/student/final-results", {
+            state: {
+              studentName,
+              gameCode: updatedSession.game_code || gameCode,
+              sessionId: updatedSession.id,
+            },
+            replace: true,
+          });
+          return;
+        }
+
         // Auto-navigate when quiz starts or moves to choosing_difficulty
         if (
           (updatedSession.status === "active" && updatedSession.current_question_id) ||
@@ -189,6 +197,18 @@ function Lobby() {
 
         if (!pollError && session) {
           console.log("Lobby polling session:", session.status);
+          if (isFinalSessionStatus(session)) {
+            navigate("/student/final-results", {
+              state: {
+                studentName,
+                gameCode: session.game_code || gameCode,
+                sessionId: session.id,
+              },
+              replace: true,
+            });
+            return;
+          }
+
           if (
             (session.status === "active" && session.current_question_id) ||
             session.status === "choosing_difficulty"
@@ -259,6 +279,23 @@ function Lobby() {
     };
   }, [gameCode]);
 
+  if (!studentName || !gameCode) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-6">
+        <div className="w-full max-w-md bg-slate-800 border border-slate-600 rounded-2xl shadow-xl p-8 text-center">
+          <h1 className="game-font text-3xl text-yellow-300 mb-4">Oops!</h1>
+          <p className="text-slate-300 mb-6">You need to join a game first.</p>
+          <button
+            onClick={() => navigate("/student/join")}
+            className="game-font bg-cyan-500 hover:bg-cyan-400 text-slate-900 py-3 px-6 rounded-xl transition"
+          >
+            Go to Join Page
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Read instructor config (questionCount + timePerQuestion + players)
   const raw = localStorage.getItem(`quizplay_session_${gameCode}`);
   const config = raw ? JSON.parse(raw) : null;
@@ -277,10 +314,6 @@ function Lobby() {
   const displayPlayers = normalizePlayers(livePlayers ?? config?.players ?? []);
   
   // Only show real players — never use fake fallback names
-  const players = config?.players
-      ? [...new Set([...normalizePlayers(config.players), studentName])]
-      : [studentName];
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white flex items-center justify-center px-6 relative">
       {/* Rich Racing Background matching Home.jsx quality */}
@@ -520,12 +553,12 @@ function Lobby() {
       <div className="fixed inset-0 bg-gradient-radial from-transparent via-slate-900/20 to-slate-900/40 pointer-events-none z-20" style={{ background: 'radial-gradient(circle at center, transparent 0%, rgba(15, 23, 42, 0.2) 50%, rgba(15, 23, 42, 0.4) 100%)' }} />
       
       {/* Main Content */}
-      <div className="relative min-h-screen flex items-center justify-center px-6 z-30">
+      <div className="relative min-h-screen flex items-center justify-center px-4 py-3 md:px-6 md:py-4 z-30">
 
-        <div className="w-full max-w-6xl text-center">
+        <div className="w-full max-w-5xl text-center">
           {/* Enhanced Premium Hero Title with reduced size */}
-          <div className="mb-8">
-            <h1 className="game-font text-4xl md:text-6xl font-bold mb-4 relative">
+          <div className="mb-3 md:mb-4">
+            <h1 className="game-font text-3xl md:text-4xl font-bold mb-1.5 md:mb-2 relative">
               {/* Stronger neon glow background */}
               <span className="absolute inset-0 blur-3xl bg-gradient-to-r from-yellow-300/60 via-cyan-300/50 to-pink-300/60 animate-pulse" style={{ animationDuration: '3s' }} />
               <span className="absolute inset-0 blur-xl bg-gradient-to-r from-yellow-300/40 via-cyan-300/30 to-pink-300/40 animate-pulse" style={{ animationDelay: '1.5s', animationDuration: '3s' }} />
@@ -539,57 +572,58 @@ function Lobby() {
                 Waiting Room
               </span>
             </h1>
-            <p className="text-slate-300 text-lg md:text-xl font-light relative">
+            <p className="text-slate-300 text-sm md:text-base font-light relative">
               <span className="absolute inset-0 bg-gradient-to-r from-cyan-400/10 to-pink-400/10 blur-sm animate-pulse" style={{ animationDuration: '4s' }} />
-              <span className="relative">Hi <span className="text-white font-semibold text-lg">{studentName}</span> • Ready to start</span>
+              <span className="relative">Hi <span className="text-white font-semibold text-base md:text-lg">{studentName}</span> • Ready to start</span>
             </p>
           </div>
 
           {/* Premium Waiting Room Card */}
-          <div className="relative bg-slate-800/70 backdrop-blur-xl rounded-3xl p-10 shadow-3xl border-2 border-cyan-400/50 hover:border-cyan-400/90 transition-all duration-500 hover:scale-105 hover:shadow-cyan-400/40 hover:shadow-4xl overflow-hidden">
+          <div className="relative bg-slate-800/70 backdrop-blur-xl rounded-3xl p-4 md:p-5 shadow-3xl border-2 border-cyan-400/50 hover:border-cyan-400/90 transition-all duration-500 hover:scale-[1.02] hover:shadow-cyan-400/40 hover:shadow-4xl overflow-hidden">
             {/* Enhanced animated background glow */}
             <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/15 via-transparent to-blue-500/15 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
             <div className="absolute inset-0 bg-cyan-400/8 animate-pulse" />
             <div className="absolute inset-0 bg-gradient-to-t from-cyan-400/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
             <div className="relative z-10">
               {/* Enhanced Header Section */}
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-8 mb-10">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-4 mb-4">
                 <div className="text-left">
-                  <div className="mb-4">
-                    <p className="text-cyan-300 text-lg font-semibold mb-2">Quiz Details</p>
-                    <p className="text-slate-300 text-lg">
+                  <div>
+                    <p className="text-cyan-300 text-sm md:text-base font-semibold mb-0.5">Quiz Details</p>
+                    <p className="text-slate-300 text-sm md:text-base">
                       Questions: <span className="text-white font-bold">{totalQuestions}</span> • 
                       Time: <span className="text-white font-bold">{timePerQuestion}s</span>
                     </p>
                   </div>
                 </div>
 
-                <div className="relative bg-slate-900/70 backdrop-blur-xl rounded-3xl px-8 py-6 text-center border-2 border-cyan-400/40 shadow-2xl hover:border-cyan-400/60 transition-all duration-300">
+                <div className="relative bg-slate-900/70 backdrop-blur-xl rounded-3xl px-5 py-3 md:px-6 md:py-3.5 text-center border-2 border-cyan-400/40 shadow-2xl hover:border-cyan-400/60 transition-all duration-300">
                   {/* Enhanced glow effect */}
                   <div className="absolute inset-0 bg-cyan-400/20 rounded-3xl animate-pulse" />
                   <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/10 to-transparent rounded-3xl" />
-                  <p className="text-cyan-300 text-sm font-semibold relative z-10 mb-2">GAME CODE</p>
-                  <p className="game-font text-5xl font-bold bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-400 bg-clip-text text-transparent relative z-10">{gameCode}</p>
+                  <p className="text-cyan-300 text-xs font-semibold relative z-10 mb-0.5">GAME CODE</p>
+                  <p className="game-font text-3xl md:text-4xl font-bold bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-400 bg-clip-text text-transparent relative z-10">{gameCode}</p>
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-4 md:gap-5 items-start">
               {/* Enhanced Waiting Status Panel */}
-              <div className="relative bg-slate-900/60 backdrop-blur-xl rounded-3xl p-10 mb-10 border-2 border-cyan-400/30">
+              <div className="relative bg-slate-900/60 backdrop-blur-xl rounded-3xl p-4 md:p-5 border-2 border-cyan-400/30">
                 {/* Glow effect */}
                 <div className="absolute inset-0 bg-cyan-400/10 rounded-3xl animate-pulse" style={{ animationDuration: '3s' }} />
                 <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/5 to-transparent rounded-3xl" />
                 
                 <div className="relative z-10">
-                  <div className="flex items-center justify-center mb-8">
-                    <div className="w-4 h-4 bg-cyan-400 rounded-full animate-pulse mr-3" />
-                    <p className="text-slate-300 text-xl font-medium">
+                  <div className="flex items-center justify-center mb-3">
+                    <div className="w-2.5 h-2.5 md:w-3 md:h-3 bg-cyan-400 rounded-full animate-pulse mr-2.5" />
+                    <p className="text-slate-300 text-sm md:text-base font-medium">
                       Waiting for the instructor to start the quiz...
                     </p>
-                    <div className="w-4 h-4 bg-cyan-400 rounded-full animate-pulse ml-3" style={{ animationDelay: '0.5s' }} />
+                    <div className="w-2.5 h-2.5 md:w-3 md:h-3 bg-cyan-400 rounded-full animate-pulse ml-2.5" style={{ animationDelay: '0.5s' }} />
                   </div>
                   
                   {/* Enhanced progress bar */}
-                  <div className="relative h-4 w-full bg-slate-700/50 rounded-full overflow-hidden mb-8">
+                  <div className="relative h-2.5 md:h-3 w-full bg-slate-700/50 rounded-full overflow-hidden mb-4">
                     <div className="absolute inset-0 bg-cyan-400/20 rounded-full animate-pulse" />
                     <div className="h-full w-1/2 bg-gradient-to-r from-cyan-400 via-cyan-500 to-blue-500 rounded-full animate-pulse relative overflow-hidden">
                       {/* Animated shine */}
@@ -598,30 +632,31 @@ function Lobby() {
                   </div>
                   
                   {/* Enhanced loading dots */}
-                  <div className="flex justify-center space-x-3">
-                    <div className="w-3 h-3 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
-                    <div className="w-3 h-3 bg-pink-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                    <div className="w-3 h-3 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                  <div className="flex justify-center space-x-2">
+                    <div className="w-2.5 h-2.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }} />
+                    <div className="w-2.5 h-2.5 bg-pink-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                    <div className="w-2.5 h-2.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
                   </div>
                 </div>
               </div>
 
+              <div>
               {/* Enhanced Players Section */}
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="game-font text-4xl font-bold bg-gradient-to-r from-pink-300 via-purple-400 to-cyan-300 bg-clip-text text-transparent">Players</h2>
-                <span className="text-cyan-300 text-lg font-semibold bg-cyan-400/20 px-4 py-2 rounded-full border border-cyan-400/40">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="game-font text-2xl md:text-3xl font-bold bg-gradient-to-r from-pink-300 via-purple-400 to-cyan-300 bg-clip-text text-transparent">Players</h2>
+                <span className="text-cyan-300 text-sm md:text-base font-semibold bg-cyan-400/20 px-3 py-1 rounded-full border border-cyan-400/40">
                   {displayPlayers.length} joined
                 </span>
               </div>
 
-              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 mb-10">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
                 {displayPlayers.map((p, idx) => {
                   const playerName = getStudentName(p, idx);
                   const isCurrentUser = playerName === studentName;
                   return (
                     <div
                       key={`${playerName}-${idx}`}
-                      className={`relative bg-slate-900/60 backdrop-blur-sm rounded-2xl px-6 py-4 border-2 transition-all duration-300 hover:scale-105 ${
+                      className={`relative bg-slate-900/60 backdrop-blur-sm rounded-2xl px-3 py-2.5 border-2 transition-all duration-300 hover:scale-105 ${
                         isCurrentUser 
                           ? 'border-cyan-400/60 shadow-cyan-400/40 shadow-2xl' 
                           : 'border-slate-700/50 hover:border-cyan-400/40 hover:shadow-cyan-400/20'
@@ -633,19 +668,19 @@ function Lobby() {
                       )}
                       
                       <div className="relative z-10 flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-2 min-w-0">
                           {/* Racing icon */}
-                          <span className="text-2xl">
+                          <span className="text-lg md:text-xl shrink-0">
                             {isCurrentUser ? '🏎️' : '🏁'}
                           </span>
-                          <span className={`text-lg font-bold ${
+                          <span className={`text-sm md:text-base font-bold truncate ${
                             isCurrentUser ? 'text-cyan-300' : 'text-white'
                           }`}>
                             {playerName}
                           </span>
                         </div>
                         {isCurrentUser && (
-                          <span className="text-xs bg-gradient-to-r from-cyan-400/40 to-blue-400/40 text-cyan-200 px-3 py-1 rounded-full font-semibold border border-cyan-400/60">
+                          <span className="text-[10px] md:text-xs bg-gradient-to-r from-cyan-400/40 to-blue-400/40 text-cyan-200 px-2 py-0.5 rounded-full font-semibold border border-cyan-400/60 shrink-0">
                             YOU
                           </span>
                         )}
@@ -654,19 +689,21 @@ function Lobby() {
                   );
                 })}
               </div>
+              </div>
+              </div>
 
         {/* Waiting for instructor to start the quiz */}
 
               {/* Enhanced Back to Home Button */}
               <button
                 onClick={() => navigate("/")}
-                className="relative w-full bg-gradient-to-r from-slate-800/80 to-slate-700/80 hover:from-slate-700/80 hover:to-slate-600/80 border-2 border-cyan-400/50 hover:border-cyan-400/80 py-5 rounded-2xl transition-all duration-300 hover:scale-105 hover:shadow-cyan-400/60 hover:shadow-3xl font-bold text-cyan-300 overflow-hidden group text-lg"
+                className="relative w-full mt-4 bg-gradient-to-r from-slate-800/80 to-slate-700/80 hover:from-slate-700/80 hover:to-slate-600/80 border-2 border-cyan-400/50 hover:border-cyan-400/80 py-3 rounded-2xl transition-all duration-300 hover:scale-[1.02] hover:shadow-cyan-400/60 hover:shadow-3xl font-bold text-cyan-300 overflow-hidden group text-sm md:text-base"
               >
                 {/* Enhanced hover shine effect */}
                 <span className="absolute inset-0 bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent transform -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
                 
                 <span className="relative z-10 flex items-center justify-center">
-                  <svg className="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 mr-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                   </svg>
                   Back to Home
