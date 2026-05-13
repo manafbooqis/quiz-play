@@ -1,25 +1,41 @@
 import { useEffect, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
+import {
+  calculateLeaderboard,
+  getScoreDistributionBuckets,
+} from "../../utils/leaderboard";
 
-function getStudentName(student, index) {
-  if (!student) return `Student ${index + 1}`;
-  if (typeof student === "string") return student;
-  
-  // Prioritize student_name first, then other name fields
-  const candidates = [
-    student.student_name,
-    student.name,
-    student.full_name,
-    student.nickname,
-    student.display_name,
-  ];
-  
-  for (const c of candidates) {
-    if (typeof c === "string" && c.trim()) return c.trim();
+function getQuestionId(question) {
+  return question?.id || question?.question_id || question?.qid || "";
+}
+
+function getQuestionText(question, questionId) {
+  return (
+    question?.question ||
+    question?.q ||
+    question?.question_text ||
+    question?.topic ||
+    `Question ID: ${questionId}`
+  );
+}
+
+function getCorrectAnswerText(question) {
+  if (!question) return "Correct answer unavailable";
+
+  const correctAnswer =
+    question.correctAnswer ??
+    question.correct_answer ??
+    question.correct_option ??
+    question.answer;
+
+  const options = question.options || question.choices || [];
+  if (typeof correctAnswer === "number" || /^\d+$/.test(String(correctAnswer))) {
+    const optionText = options[Number(correctAnswer)];
+    if (optionText) return optionText;
   }
-  
-  return `Student ${index + 1}`;
+
+  return correctAnswer ?? "Correct answer unavailable";
 }
 
 function InstructorScoreDistribution() {
@@ -34,6 +50,9 @@ function InstructorScoreDistribution() {
   const [students, setStudents] = useState([]);
   const [responses, setResponses] = useState([]);
   const [questionsByDifficulty, setQuestionsByDifficulty] = useState({});
+  const [sessionQuestionCount, setSessionQuestionCount] = useState(0);
+  const [sessionScoringConfig, setSessionScoringConfig] = useState({});
+  const [mostMissedResult, setMostMissedResult] = useState(null);
 
   // Always fetch fresh data from database
   useEffect(() => {
@@ -48,7 +67,7 @@ function InstructorScoreDistribution() {
         if (!currentSessionId && currentGameCode) {
           const { data: sessionData } = await supabase
             .from("sessions")
-            .select("id, game_code, questions_by_difficulty")
+            .select("*")
             .eq("game_code", currentGameCode)
             .single();
           
@@ -57,12 +76,14 @@ function InstructorScoreDistribution() {
             setResolvedSessionId(sessionData.id);
             setGameCode(sessionData.game_code || "");
             setQuestionsByDifficulty(sessionData.questions_by_difficulty || {});
+            setSessionQuestionCount(Number(sessionData.question_count) || 0);
+            setSessionScoringConfig(sessionData || {});
           }
         } else if (currentSessionId) {
           // If we have sessionId, fetch session details
           const { data: sessionData } = await supabase
             .from("sessions")
-            .select("id, game_code, questions_by_difficulty")
+            .select("*")
             .eq("id", currentSessionId)
             .single();
           
@@ -71,6 +92,8 @@ function InstructorScoreDistribution() {
             setResolvedSessionId(sessionData.id);
             setGameCode(sessionData.game_code || "");
             setQuestionsByDifficulty(sessionData.questions_by_difficulty || {});
+            setSessionQuestionCount(Number(sessionData.question_count) || 0);
+            setSessionScoringConfig(sessionData || {});
           }
         }
 
@@ -112,56 +135,14 @@ function InstructorScoreDistribution() {
     load();
   }, [sessionId, initialGameCode]);
 
-  // Calculate per-student scores
-  const studentScores = useMemo(() => {
-    return students.map((student, index) => {
-      // Get student name with proper fallback
-      const studentName = student.student_name || student.name || "";
-      const studentId = student.id;
-      const name = studentName || "Unknown Student";
-      
-      // Match responses by player_id using all possible matching scenarios
-      const studentResponses = responses.filter((r) => {
-        const playerId = r.player_id;
-        return (
-          playerId === studentName ||
-          playerId === String(studentName) ||
-          playerId === String(studentName).trim() ||
-          playerId === studentId ||
-          playerId === String(studentId) ||
-          playerId === String(studentId).trim()
-        );
-      });
-      
-      // Calculate score from responses points_awarded
-      const calculatedScore = studentResponses.reduce(
-        (acc, r) => acc + Number(r.points_awarded || 0),
-        0
-      );
-      
-      // Use total_score from session_players if it's valid and greater than 0,
-      // otherwise use calculated score
-      const finalScore = 
-        (student.total_score && student.total_score > 0)
-          ? student.total_score 
-          : calculatedScore;
-      
-      const correct = studentResponses.filter((r) => r.is_correct === true).length;
-      const total = studentResponses.length;
-      
-      return { 
-        id: studentId || studentName, 
-        name, 
-        score: finalScore, 
-        correct, 
-        total 
-      };
-    });
-  }, [students, responses]);
-
   const ranked = useMemo(
-    () => [...studentScores].sort((a, b) => b.score - a.score),
-    [studentScores]
+    () => calculateLeaderboard(
+      students,
+      responses,
+      sessionQuestionCount,
+      sessionScoringConfig
+    ),
+    [students, responses, sessionQuestionCount, sessionScoringConfig]
   );
 
   const scores = ranked.map((s) => s.score);
@@ -172,43 +153,91 @@ function InstructorScoreDistribution() {
   const highestScore = scores.length > 0 ? Math.max(...scores) : 0;
   const lowestScore = scores.length > 0 ? Math.min(...scores) : 0;
 
-  // Build score-distribution buckets (0-20, 21-40, 41-60, 61-80, 81-100+)
+  const maxPossibleScore = ranked[0]?.maxPossibleScore || highestScore || 0;
+
+  // Build score-distribution buckets using the actual maximum possible score.
   const buckets = useMemo(() => {
-    const MAX = highestScore > 0 ? highestScore : 100;
-    const bucketCount = 5;
-    const bucketSize = Math.ceil(MAX / bucketCount) || 20;
-    const labels = [];
-    const counts = [];
-    for (let i = 0; i < bucketCount; i++) {
-      const low = i * bucketSize;
-      const high = (i + 1) * bucketSize - 1;
-      labels.push(`${low}–${high}`);
-      counts.push(scores.filter((s) => s >= low && s <= high).length);
-    }
-    // Put any scores above the top bucket into the last one
-    const topLow = (bucketCount - 1) * bucketSize;
-    scores.forEach((s) => {
-      if (s > topLow + bucketSize - 1) counts[bucketCount - 1]++;
-    });
-    return { labels, counts };
-  }, [scores, highestScore]);
+    return getScoreDistributionBuckets(scores, maxPossibleScore);
+  }, [scores, maxPossibleScore]);
 
   const maxBucketCount = Math.max(...buckets.counts, 1);
 
-  // Export CSV
-  const handleExport = () => {
-    const rows = [
-      ["Rank", "Name", "Score", "Correct Answers", "Total Responses"],
-      ...ranked.map((s, i) => [i + 1, s.name, s.score, s.correct, s.total]),
-    ];
-    const csv = rows.map((r) => r.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `score-distribution-${gameCode || sessionId}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleShowMostMissedQuestion = () => {
+    const responsesWithQuestion = responses.filter((response) => response.question_id);
+
+    if (responsesWithQuestion.length === 0) {
+      setMostMissedResult({
+        message: "No question-level answer data is available yet.",
+      });
+      return;
+    }
+
+    const questions = Object.values(questionsByDifficulty || {})
+      .flat()
+      .filter(Boolean);
+    const questionById = questions.reduce((acc, question) => {
+      const id = getQuestionId(question);
+      if (id) acc[String(id)] = question;
+      return acc;
+    }, {});
+
+    const grouped = responsesWithQuestion.reduce((acc, response) => {
+      const questionId = String(response.question_id);
+      const question = questionById[questionId];
+      const selectedAnswer = Number(response.selected_answer);
+      const correctAnswer = Number(
+        question?.correctAnswer ??
+          question?.correct_answer ??
+          question?.correct_option
+      );
+      const canCompareAnswers =
+        question &&
+        Number.isFinite(selectedAnswer) &&
+        Number.isFinite(correctAnswer);
+      const isCorrect =
+        typeof response.is_correct === "boolean"
+          ? response.is_correct
+          : canCompareAnswers
+          ? selectedAnswer === correctAnswer
+          : null;
+
+      if (!acc[questionId]) {
+        acc[questionId] = {
+          questionId,
+          total: 0,
+          incorrect: 0,
+          question,
+        };
+      }
+
+      acc[questionId].total += 1;
+      if (isCorrect === false) acc[questionId].incorrect += 1;
+      return acc;
+    }, {});
+
+    const mostMissed = Object.values(grouped)
+      .filter((item) => item.total > 0)
+      .sort((a, b) => {
+        if (b.incorrect !== a.incorrect) return b.incorrect - a.incorrect;
+        const bRate = b.incorrect / b.total;
+        const aRate = a.incorrect / a.total;
+        return bRate - aRate;
+      })[0];
+
+    if (!mostMissed || mostMissed.incorrect === 0) {
+      setMostMissedResult({
+        message: "No missed questions found yet.",
+      });
+      return;
+    }
+
+    setMostMissedResult({
+      questionText: getQuestionText(mostMissed.question, mostMissed.questionId),
+      correctAnswer: getCorrectAnswerText(mostMissed.question),
+      incorrect: mostMissed.incorrect,
+      total: mostMissed.total,
+      incorrectRate: Math.round((mostMissed.incorrect / mostMissed.total) * 100),
+    });
   };
 
   if (loading) {
@@ -229,10 +258,10 @@ function InstructorScoreDistribution() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={handleExport}
+            onClick={handleShowMostMissedQuestion}
             className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-sm shadow-sm transition"
           >
-            Export Results
+            Most Incorrect Question
           </button>
           <button
             onClick={() =>
@@ -288,6 +317,57 @@ function InstructorScoreDistribution() {
               </div>
             ))}
           </div>
+
+          {mostMissedResult && (
+            <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200">
+              <div className="flex flex-col gap-6">
+                <div>
+                  <p className="text-xs font-bold text-cyan-600 uppercase tracking-widest mb-2">
+                    Most Missed Question
+                  </p>
+                  {mostMissedResult.message ? (
+                    <p className="text-slate-600 font-medium">
+                      {mostMissedResult.message}
+                    </p>
+                  ) : (
+                    <h2 className="text-2xl font-bold text-slate-800 leading-snug">
+                      {mostMissedResult.questionText}
+                    </h2>
+                  )}
+                </div>
+
+                {!mostMissedResult.message && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
+                        Correct Answer
+                      </p>
+                      <p className="text-slate-800 font-semibold">
+                        {mostMissedResult.correctAnswer}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-rose-50 border border-rose-100 p-4">
+                      <p className="text-xs font-bold text-rose-400 uppercase tracking-widest mb-2">
+                        Incorrect Answers
+                      </p>
+                      <p className="text-rose-700 font-bold text-2xl">
+                        {mostMissedResult.incorrect} / {mostMissedResult.total}
+                      </p>
+                      <p className="text-xs text-rose-500 mt-1">students</p>
+                    </div>
+                    <div className="rounded-2xl bg-amber-50 border border-amber-100 p-4">
+                      <p className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-2">
+                        Incorrect Rate
+                      </p>
+                      <p className="text-amber-700 font-bold text-2xl">
+                        {mostMissedResult.incorrectRate}%
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Bar Chart */}
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200">

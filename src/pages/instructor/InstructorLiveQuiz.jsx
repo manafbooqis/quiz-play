@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
+import { calculateLeaderboard } from "../../utils/leaderboard";
 
 function getTextValue(value) {
   if (typeof value === "string" && value.trim()) {
@@ -627,21 +628,16 @@ function InstructorLiveQuiz() {
     setAnsweredCount(answeredStudents.size);
     setTotalStudents(students.length);
 
-    // Calculate live ranking
-    const ranking = students.map(student => {
-      let totalScore = student.total_score || 0;
-      if (!totalScore) {
-        // Calculate from responses if missing
-        const studentResponses = responses.filter(r => 
-          r.player_id === student.student_name || r.player_id === student.id
-        );
-        totalScore = studentResponses.reduce((sum, r) => sum + (r.points_awarded || 0), 0);
-      }
-      return {
-        studentName: student.student_name,
-        totalScore
-      };
-    }).sort((a, b) => b.totalScore - a.totalScore);
+    // Calculate live ranking from the same shared final-score rule.
+    const ranking = calculateLeaderboard(
+      students,
+      responses,
+      Number(sessionData?.question_count || sessionData?.questionCount || 0),
+      sessionData || {}
+    ).map((student) => ({
+      studentName: student.name,
+      totalScore: student.score,
+    }));
     
     setLiveRanking(ranking);
 
@@ -742,7 +738,7 @@ function InstructorLiveQuiz() {
         if (freshResponses) setResponses(freshResponses);
         if (freshSession) setSessionData(freshSession);
 
-      } catch (err) {
+      } catch {
         // Silently handle polling errors
       }
     }, 1000);
@@ -774,7 +770,14 @@ function InstructorLiveQuiz() {
     );
   }
 
-  
+  void currentQuestion;
+  void roundResults;
+  void instructorTimeLeft;
+  void totalQuestions;
+  void isRoundActive;
+  void studentScores;
+  void startRound;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900">
       <div className="max-w-7xl mx-auto px-6 py-8">

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 
@@ -36,6 +36,10 @@ function getStudentName(student, index) {
   return `Student ${index + 1}`;
 }
 
+function isFinalSessionStatus(session) {
+  return session?.status === "finished" || session?.current_phase === "final_results";
+}
+
 function RoundResults() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -57,17 +61,110 @@ function RoundResults() {
   const [roundResults, setRoundResults] = useState([]);
   const [myResult, setMyResult] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [answeredCount, setAnsweredCount] = useState(0);
   const [totalStudents, setTotalStudents] = useState(0);
   const [answeredStudents, setAnsweredStudents] = useState([]);
   const [waitingStudents, setWaitingStudents] = useState([]);
   const [allReady, setAllReady] = useState(false);
   const [countdown, setCountdown] = useState(0);
-  const [seenCount, setSeenCount] = useState(0);
   const [targetTime, setTargetTime] = useState(null);
   const countdownStartedRef = useRef(false);
   const countdownNavigationDoneRef = useRef(false);
   const previousRoundRef = useRef(currentRound);
+  const finalNavigationDoneRef = useRef(false);
+
+  const goToFinalResults = useCallback((session) => {
+    if (finalNavigationDoneRef.current) return;
+    finalNavigationDoneRef.current = true;
+
+    navigate("/student/final-results", {
+      state: {
+        studentName,
+        gameCode: session?.game_code || gameCode,
+        sessionId: session?.id || sessionId,
+      },
+      replace: true,
+    });
+  }, [gameCode, navigate, sessionId, studentName]);
+
+  const markSessionFinished = useCallback(async () => {
+    const targetSessionId = sessionData?.id || sessionId;
+    if (!targetSessionId || finalNavigationDoneRef.current) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("sessions")
+        .update({
+          status: "finished",
+          quiz_finished_at: new Date().toISOString(),
+        })
+        .eq("id", targetSessionId)
+        .select("*")
+        .single();
+
+      if (error) throw error;
+      setSessionData(data);
+      goToFinalResults(data);
+    } catch (err) {
+      console.error("Error marking session finished:", err);
+    }
+  }, [goToFinalResults, sessionData?.id, sessionId]);
+
+  useEffect(() => {
+    if (!gameCode && !sessionId) return undefined;
+
+    let isMounted = true;
+
+    async function loadAndWatchSession() {
+      const query = supabase.from("sessions").select("*");
+      const { data: session, error } = sessionId
+        ? await query.eq("id", sessionId).maybeSingle()
+        : await query.eq("game_code", gameCode).maybeSingle();
+
+      if (!isMounted) return;
+      if (error) {
+        console.error("Error loading shared session status:", error);
+        return;
+      }
+
+      if (session) {
+        setSessionData(session);
+        if (isFinalSessionStatus(session)) goToFinalResults(session);
+      }
+    }
+
+    loadAndWatchSession();
+
+    const channelName = sessionId
+      ? `round-results-session-${sessionId}`
+      : `round-results-game-${gameCode}`;
+    const filter = sessionId ? `id=eq.${sessionId}` : `game_code=eq.${gameCode}`;
+
+    const subscription = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "sessions",
+          filter,
+        },
+        (payload) => {
+          const updatedSession = payload.new;
+          if (!updatedSession) return;
+          setSessionData((prev) => ({ ...prev, ...updatedSession }));
+          if (isFinalSessionStatus(updatedSession)) {
+            goToFinalResults(updatedSession);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(subscription);
+    };
+  }, [gameCode, goToFinalResults, sessionId]);
 
   // Mark when current student reaches RoundResults
   useEffect(() => {
@@ -116,7 +213,7 @@ function RoundResults() {
     };
 
     markStudentSeen();
-  }, [gameCode, studentName, sessionId, currentRound]);
+  }, [gameCode, studentName, sessionId, currentRound, state?.currentQuestionId]);
 
   // Polling logic for all-students sync
   useEffect(() => {
@@ -178,8 +275,6 @@ function RoundResults() {
 
         setAnsweredStudents(answered);
         setWaitingStudents(waiting);
-        setSeenCount(seen.length);
-
         // Calculate target time when all students are seen
         const seenResponses = responses.filter(r => r.round_results_seen_at !== null);
         const seenPlayers = new Set(seenResponses.map(r => String(r.player_id)));
@@ -226,7 +321,7 @@ function RoundResults() {
     }, 1000); // Poll every 1 second
 
     return () => clearInterval(pollInterval);
-  }, [gameCode, studentName, sessionId, currentRound]);
+  }, [gameCode, studentName, sessionId, currentRound, state?.currentQuestionId, targetTime]);
 
   // Update countdown based on target time
   useEffect(() => {
@@ -250,10 +345,9 @@ function RoundResults() {
     if (targetTime && new Date().getTime() >= targetTime && !countdownNavigationDoneRef.current) {
       countdownNavigationDoneRef.current = true;
       
-      if (Number(currentRound) >= Number(questionCount)) {
-        navigate("/student/final-results", {
-          state: { studentName, gameCode, sessionId, questionCount }
-        });
+      const maxRounds = Number(sessionData?.question_count || questionCount || 1);
+      if (Number(currentRound) >= maxRounds) {
+        markSessionFinished();
       } else {
         const sentTimePerQuestion = Number(state?.timePerQuestion) ||
                                    Number(state?.time_per_question) ||
@@ -275,7 +369,21 @@ function RoundResults() {
         });
       }
     }
-  }, [countdown, allReady, currentRound, questionCount, navigate, studentName, gameCode, sessionId, state]);
+  }, [
+    countdown,
+    allReady,
+    currentRound,
+    questionCount,
+    navigate,
+    studentName,
+    gameCode,
+    sessionId,
+    state,
+    targetTime,
+    markSessionFinished,
+    sessionData?.question_count,
+    sessionData?.time_per_question,
+  ]);
 
   // Reset refs when currentRound changes
   useEffect(() => {
@@ -305,11 +413,10 @@ function RoundResults() {
         if (sessionError) throw sessionError;
         setSessionData(session);
 
-        // Get my answered count
-        const localKey = `quizplay_answered_questions_${gameCode}_${studentName}`;
-        const stored = localStorage.getItem(localKey);
-        const answered = stored ? JSON.parse(stored) : [];
-        setAnsweredCount(answered.length);
+        if (isFinalSessionStatus(session)) {
+          goToFinalResults(session);
+          return;
+        }
 
         // Load current round responses for ranking
         const { data: responses, error: responsesError } = await supabase
@@ -358,7 +465,7 @@ function RoundResults() {
     }
 
     loadData();
-  }, [gameCode, studentName, sessionId, currentRound]);
+  }, [gameCode, studentName, sessionId, currentRound, navigate, goToFinalResults]);
 
   if (loading) {
     return (
@@ -367,8 +474,6 @@ function RoundResults() {
       </div>
     );
   }
-
-  const myRank = myResult ? roundResults.findIndex(r => r.player_id === myResult.player_id) + 1 : 0;
 
   return (
     <>

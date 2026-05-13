@@ -1,37 +1,58 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
+import { calculateLeaderboard } from "../../utils/leaderboard";
 
 function FinalResults() {
   const navigate = useNavigate();
   const { state } = useLocation();
 
   const studentName = state?.studentName ?? "";
-  const gameCode = state?.gameCode ?? "";
+  const initialGameCode = state?.gameCode ?? "";
   const sessionId = state?.sessionId ?? "";
-  const questionCount = state?.questionCount ?? state?.maxQuestions ?? 0;
 
+  const [gameCode, setGameCode] = useState(initialGameCode);
   const [players, setPlayers] = useState([]);
   const [responses, setResponses] = useState([]);
+  const [sessionQuestionCount, setSessionQuestionCount] = useState(0);
+  const [sessionScoringConfig, setSessionScoringConfig] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!sessionId && !gameCode) {
+    if (!sessionId && !initialGameCode) {
       setLoading(false);
       return;
     }
 
     async function loadResults() {
       try {
-        // Resolve session UUID from gameCode if sessionId not available
-        let resolvedSessionId = sessionId;
-        if (!resolvedSessionId && gameCode) {
+        let resolvedSessionId = "";
+        let resolvedQuestionCount = 0;
+
+        if (initialGameCode) {
           const { data: sessionRow } = await supabase
             .from("sessions")
-            .select("id")
-            .eq("game_code", gameCode)
+            .select("*")
+            .eq("game_code", initialGameCode)
             .maybeSingle();
+
           resolvedSessionId = sessionRow?.id ?? "";
+          resolvedQuestionCount = Number(sessionRow?.question_count) || 0;
+          setSessionScoringConfig(sessionRow || {});
+          setGameCode(initialGameCode);
+        }
+
+        if (!resolvedSessionId && sessionId) {
+          const { data: sessionRow } = await supabase
+            .from("sessions")
+            .select("*")
+            .eq("id", sessionId)
+            .maybeSingle();
+
+          resolvedSessionId = sessionRow?.id ?? "";
+          resolvedQuestionCount = Number(sessionRow?.question_count) || 0;
+          setSessionScoringConfig(sessionRow || {});
+          setGameCode(sessionRow?.game_code || "");
         }
 
         if (!resolvedSessionId) {
@@ -53,6 +74,7 @@ function FinalResults() {
 
         setPlayers(playersData ?? []);
         setResponses(responsesData ?? []);
+        setSessionQuestionCount(resolvedQuestionCount);
       } catch (err) {
         console.error("Error loading final results:", err);
       } finally {
@@ -61,9 +83,9 @@ function FinalResults() {
     }
 
     loadResults();
-  }, [sessionId, gameCode]);
+  }, [sessionId, initialGameCode]);
 
-  if (!studentName || !gameCode) {
+  if (!sessionId && !gameCode) {
     return (
       <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center px-6">
         <button
@@ -84,32 +106,26 @@ function FinalResults() {
     );
   }
 
-  // Calculate per-player scores from real responses
-  const scoreMap = {};
-  responses.forEach((r) => {
-    const pid = r.player_id;
-    if (!scoreMap[pid]) scoreMap[pid] = { score: 0, correct: 0, total: 0 };
-    scoreMap[pid].score += Number(r.points_awarded || 0);
-    scoreMap[pid].total += 1;
-    if (r.is_correct) scoreMap[pid].correct += 1;
-  });
-
-  // Build leaderboard from real players only
-  const leaderboard = players
-    .map((p) => {
-      const name = p.student_name || p.name || p.full_name || "Unknown";
-      const data = scoreMap[p.id] || scoreMap[name] || scoreMap[p.student_name] || { score: p.total_score || 0, correct: 0, total: 0 };
-      return { name, score: data.score, correct: data.correct, total: data.total };
-    })
-    .sort((a, b) => b.score - a.score);
+  const leaderboard = calculateLeaderboard(
+    players,
+    responses,
+    sessionQuestionCount,
+    sessionScoringConfig
+  );
 
   // This student's data
-  const myData = scoreMap[studentName] || { score: 0, correct: 0, total: 0 };
+  const myData = leaderboard.find((player) => player.name === studentName) || {
+    score: 0,
+    correct: 0,
+    total: sessionQuestionCount,
+    accuracy: 0,
+    rank: 0,
+  };
   const totalPoints = myData.score;
   const correctCount = myData.correct;
-  const totalAnswered = myData.total || questionCount;
+  const totalAnswered = myData.total;
 
-  const rank = leaderboard.findIndex((x) => x.name === studentName) + 1;
+  const rank = myData.rank;
 
   // Build answersStatus from real responses for this student
   const myResponses = responses
@@ -316,7 +332,7 @@ function FinalResults() {
                   {/* Player Name and Score Header */}
                   <div className="text-center mb-6">
                     <h2 className="game-font text-3xl md:text-4xl font-bold text-white mb-2">
-                      {studentName}
+                      {studentName || "Final Results"}
                     </h2>
                     <div className="relative inline-block">
                       <div className="absolute inset-0 bg-emerald-400/20 rounded-xl animate-pulse" style={{ animationDuration: '2s' }} />
@@ -364,7 +380,7 @@ function FinalResults() {
                       <div className="relative z-10 text-center">
                         <p className="text-amber-200 font-semibold mb-2">Accuracy</p>
                         <p className="text-2xl md:text-3xl font-bold text-amber-300">
-                          {totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0}%
+                          {myData.accuracy}%
                         </p>
                       </div>
                     </div>
@@ -376,7 +392,7 @@ function FinalResults() {
                     <div className="relative z-10">
                       <h3 className="text-purple-200 font-semibold mb-3 text-center">Question Summary</h3>
                       <div className="flex flex-wrap gap-2 justify-center">
-                        {Array.from({ length: Math.max(answersStatus.length, questionCount || 0) }).map((_, i) => {
+                        {Array.from({ length: Math.max(answersStatus.length, totalAnswered || 0) }).map((_, i) => {
                           const ok = answersStatus[i] === true;
                           const wrong = answersStatus[i] === false;
 
@@ -432,7 +448,7 @@ function FinalResults() {
                         const isCurrentUser = p.name === studentName;
                         return (
                           <div
-                            key={`${p.name}-${idx}`}
+                            key={`${p.name}-${p.rank}`}
                             className={[
                               "relative px-4 py-3 rounded-2xl flex items-center justify-between transition-all duration-300",
                               isCurrentUser 

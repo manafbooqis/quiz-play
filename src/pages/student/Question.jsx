@@ -261,7 +261,6 @@ function Question() {
     Number(sessionData?.current_round) ||
     Number(state?.currentRound) ||
     Number(state?.roundNumber) ||
-    answeredIds.length + 1 ||
     1;
 
   
@@ -542,8 +541,15 @@ function Question() {
         const reachedLimit = answered.length >= maxQuestions;
 
         if (reachedLimit) {
-          navigate("/student/final-results", {
-            state: { ...state, studentName, gameCode, sessionId: targetSessionId, currentRound: safeCurrentRound, questionCount: maxQuestions }
+          navigate("/student/round-results", {
+            state: {
+              ...state,
+              studentName,
+              gameCode,
+              sessionId: targetSessionId,
+              currentRound: safeCurrentRound,
+              questionCount: maxQuestions,
+            },
           });
         } else {
           navigate("/student/difficulty", {
@@ -551,7 +557,7 @@ function Question() {
           });
         }
       }
-    } catch (err) {
+    } catch {
       // No existing response is fine
     }
   };
@@ -671,25 +677,32 @@ function Question() {
       localStorage.removeItem(timerKey);
 
       const reachedLimit = answered.length >= maxQuestions;
+      const resolvedQuestionsByDifficulty =
+        state?.questionsByDifficulty ||
+        state?.questions_by_difficulty ||
+        sessionData?.questions_by_difficulty ||
+        {};
 
       if (reachedLimit) {
-        navigate("/student/final-results", {
+        navigate("/student/round-results", {
           state: {
             ...state,
             studentName,
             gameCode,
             sessionId: targetSessionId,
             currentRound: sessionData?.current_round,
-            questionCount: maxQuestions
+            questionCount: maxQuestions,
+            currentQuestionId: targetQuestionId,
+            currentDifficulty,
+            timePerQuestion: roundTimerDuration || 30,
+            pointsAwarded,
+            isCorrect,
+            selectedAnswer: answerToSubmit,
+            currentQuestion,
+            questionsByDifficulty: resolvedQuestionsByDifficulty,
           }
         });
       } else {
-        const resolvedQuestionsByDifficulty =
-          state?.questionsByDifficulty ||
-          state?.questions_by_difficulty ||
-          sessionData?.questions_by_difficulty ||
-          {};
-
         navigate("/student/round-results", {
           state: {
             ...state,

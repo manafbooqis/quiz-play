@@ -34,6 +34,18 @@ function WaitingForOthers() {
         if (sessionError) throw sessionError;
         setSessionData(session);
 
+        if (session.status === "finished" || session.current_phase === "final_results") {
+          navigate("/student/final-results", {
+            state: {
+              studentName,
+              gameCode: session.game_code || gameCode,
+              sessionId: session.id,
+            },
+            replace: true,
+          });
+          return;
+        }
+
         // Load students count
         const { data: players, error: playersError } = await supabase
           .from("session_players")
@@ -133,7 +145,15 @@ function WaitingForOthers() {
 
       return () => clearInterval(interval);
     }
-  }, [sessionData?.current_question_ends_at, sessionData?.status, navigate]);
+  }, [
+    sessionData?.current_question_ends_at,
+    sessionData?.status,
+    sessionData?.id,
+    sessionData?.current_round,
+    navigate,
+    studentName,
+    gameCode,
+  ]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
