@@ -927,7 +927,7 @@ function Question() {
             </h1>
 
             {/* Subtitle */}
-            <p className="text-slate-300 text-base md:text-lg text-center">
+            <p className="text-slate-300 text-lg md:text-xl text-center">
               Question {currentRound} • Difficulty:{" "}
               <span className="text-white capitalize font-semibold">{sessionData?.current_difficulty || currentDifficulty || "unknown"}</span>
             </p>
