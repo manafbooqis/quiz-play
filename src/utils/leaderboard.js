@@ -19,6 +19,10 @@ function getPlayerKeys(player) {
     .filter(Boolean);
 }
 
+function getCanonicalPlayerId(player) {
+  return normalizeKey(player?.id) || normalizeKey(player?.student_name) || getPlayerName(player);
+}
+
 function getResponseTime(response) {
   return new Date(response?.answered_at || response?.created_at || 0).getTime();
 }
@@ -280,27 +284,31 @@ export function calculateLeaderboard(
     scoringConfig,
     responses
   );
-  const playersByName = new Map();
   const knownPlayerKeys = new Set();
+  const claimedResponseKeys = new Set();
 
   players.forEach((player) => {
-    const name = getPlayerName(player);
-    if (!playersByName.has(name)) playersByName.set(name, player);
     getPlayerKeys(player).forEach((key) => knownPlayerKeys.add(key));
   });
 
-  Object.keys(responseGroups).forEach((playerId) => {
-    if (!knownPlayerKeys.has(playerId) && !playersByName.has(playerId)) {
-      playersByName.set(playerId, { student_name: playerId });
-    }
-  });
-
-  return Array.from(playersByName.values())
+  const leaderboardRows = players
     .map((player) => {
       const name = getPlayerName(player);
-      const matchedGroups = getPlayerKeys(player)
-        .map((key) => responseGroups[key])
-        .filter(Boolean);
+      const playerId = getCanonicalPlayerId(player);
+      const playerKeys = getPlayerKeys(player);
+      const idKey = normalizeKey(player?.id);
+      const matchedKeys = [];
+
+      if (idKey && responseGroups[idKey]) {
+        matchedKeys.push(idKey);
+      } else {
+        const legacyNameKeys = playerKeys.filter((key) => key !== idKey);
+        const legacyKey = legacyNameKeys.find((key) => responseGroups[key] && !claimedResponseKeys.has(key));
+        if (legacyKey) matchedKeys.push(legacyKey);
+      }
+
+      matchedKeys.forEach((key) => claimedResponseKeys.add(key));
+      const matchedGroups = matchedKeys.map((key) => responseGroups[key]).filter(Boolean);
       const playerResponses = matchedGroups.flatMap((group) => group.responses);
       const correctAnswers = playerResponses.filter(
         (response) => response.is_correct === true
@@ -322,7 +330,7 @@ export function calculateLeaderboard(
           : 0;
 
       return {
-        id: player.id || player.student_name || name,
+        id: playerId,
         name,
         correct: correctAnswers,
         correctAnswers,
@@ -334,7 +342,43 @@ export function calculateLeaderboard(
         completedAt,
         joinedAt,
       };
-    })
+    });
+
+  Object.keys(responseGroups).forEach((playerId) => {
+    if (!knownPlayerKeys.has(playerId) && !claimedResponseKeys.has(playerId)) {
+      const group = responseGroups[playerId];
+      const playerResponses = group.responses;
+      const correctAnswers = playerResponses.filter(
+        (response) => response.is_correct === true
+      ).length;
+      const score = playerResponses
+        .filter((response) => response.is_correct === true)
+        .reduce(
+          (sum, response) => sum + Number(response.points_awarded || 0),
+          0
+        );
+      const accuracy =
+        totalQuestions > 0
+          ? Math.round((correctAnswers / totalQuestions) * 100)
+          : 0;
+
+      leaderboardRows.push({
+        id: playerId,
+        name: playerId,
+        correct: correctAnswers,
+        correctAnswers,
+        total: totalQuestions,
+        totalQuestions,
+        score: Math.round(score),
+        maxPossibleScore,
+        accuracy,
+        completedAt: group.completedAt,
+        joinedAt: 0,
+      });
+    }
+  });
+
+  return leaderboardRows
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       const aCompletedAt = a.completedAt || Number.MAX_SAFE_INTEGER;

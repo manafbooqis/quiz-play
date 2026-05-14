@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { inflateRawSync } from "node:zlib";
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -37,12 +38,12 @@ function safeParseJson(value) {
   if (!value) return null;
   try {
     return JSON.parse(value);
-  } catch (error) {
+  } catch {
     const match = value.match(/\{[\s\S]*\}/);
     if (match) {
       try {
         return JSON.parse(match[0]);
-      } catch (innerError) {
+      } catch {
         return null;
       }
     }
@@ -146,7 +147,7 @@ function validateQuestion(question, difficulty) {
   return errors;
 }
 
-function validateAndFilterQuestions(questions, requiredCount) {
+function validateAndFilterQuestions(questions) {
   const validQuestions = { easy: [], medium: [], hard: [] };
   const invalidQuestions = [];
   
@@ -183,7 +184,7 @@ function normalizeBankToPerDifficulty(questions, perDifficultyCount) {
 function normalizeMimeType(fileName, mimeType) {
   const raw = (mimeType || "").trim().toLowerCase();
   if (raw && raw !== "application/octet-stream") {
-    return mimeType;
+    return raw;
   }
   const lower = (fileName || "").toLowerCase();
   if (lower.endsWith(".pdf")) return "application/pdf";
@@ -194,16 +195,9 @@ function normalizeMimeType(fileName, mimeType) {
   if (lower.endsWith(".txt") || lower.endsWith(".md") || lower.endsWith(".csv")) return "text/plain";
   if (lower.endsWith(".json")) return "application/json";
   if (lower.endsWith(".html") || lower.endsWith(".htm")) return "text/html";
+  if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
   return mimeType || "application/octet-stream";
-}
-
-function isTextBasedMime(mimeType) {
-  const m = (mimeType || "").toLowerCase();
-  return (
-    m.startsWith("text/") ||
-    m === "application/json" ||
-    m === "application/javascript"
-  );
 }
 
 function decodeBase64ToUtf8(base64) {
@@ -215,21 +209,136 @@ function decodeBase64ToUtf8(base64) {
   }
 }
 
+function cleanBase64Payload(base64) {
+  return base64.includes(",") ? base64.split(",")[1] : base64;
+}
+
+function isDocxMime(mimeType) {
+  return mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+}
+
+function isPptxMime(mimeType) {
+  return mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+}
+
+function decodeXmlEntities(value) {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([\da-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));
+}
+
+function extractTextTags(xml) {
+  const textParts = [];
+  const tagPattern = /<(?:[a-zA-Z0-9]+:)?t\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9]+:)?t>/g;
+  let match;
+
+  while ((match = tagPattern.exec(xml)) !== null) {
+    const text = decodeXmlEntities(match[1].replace(/<[^>]+>/g, "")).trim();
+    if (text) {
+      textParts.push(text);
+    }
+  }
+
+  return textParts.join(" ");
+}
+
+function readZipEntries(buffer) {
+  const entries = new Map();
+  const eocdSignature = 0x06054b50;
+  const centralDirectorySignature = 0x02014b50;
+  const localFileSignature = 0x04034b50;
+  const minEocdOffset = Math.max(0, buffer.length - 65557);
+  let eocdOffset = -1;
+
+  for (let offset = buffer.length - 22; offset >= minEocdOffset; offset -= 1) {
+    if (buffer.readUInt32LE(offset) === eocdSignature) {
+      eocdOffset = offset;
+      break;
+    }
+  }
+
+  if (eocdOffset === -1) {
+    throw new Error("Invalid Office document archive.");
+  }
+
+  const centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16);
+  const centralDirectorySize = buffer.readUInt32LE(eocdOffset + 12);
+  const centralDirectoryEnd = centralDirectoryOffset + centralDirectorySize;
+  let offset = centralDirectoryOffset;
+
+  while (offset < centralDirectoryEnd) {
+    if (buffer.readUInt32LE(offset) !== centralDirectorySignature) {
+      break;
+    }
+
+    const compressionMethod = buffer.readUInt16LE(offset + 10);
+    const compressedSize = buffer.readUInt32LE(offset + 20);
+    const fileNameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    const localHeaderOffset = buffer.readUInt32LE(offset + 42);
+    const fileName = buffer.toString("utf8", offset + 46, offset + 46 + fileNameLength);
+
+    if (buffer.readUInt32LE(localHeaderOffset) === localFileSignature) {
+      const localNameLength = buffer.readUInt16LE(localHeaderOffset + 26);
+      const localExtraLength = buffer.readUInt16LE(localHeaderOffset + 28);
+      const dataOffset = localHeaderOffset + 30 + localNameLength + localExtraLength;
+      const compressedData = buffer.subarray(dataOffset, dataOffset + compressedSize);
+
+      if (compressionMethod === 0) {
+        entries.set(fileName, compressedData);
+      } else if (compressionMethod === 8) {
+        entries.set(fileName, inflateRawSync(compressedData));
+      }
+    }
+
+    offset += 46 + fileNameLength + extraLength + commentLength;
+  }
+
+  return entries;
+}
+
+function extractDocxText(buffer) {
+  const entries = readZipEntries(buffer);
+  const documentParts = [...entries.entries()]
+    .filter(([name]) => /^word\/(?:document|header\d+|footer\d+|footnotes|endnotes)\.xml$/.test(name))
+    .map(([, content]) => extractTextTags(content.toString("utf8")))
+    .filter(Boolean);
+
+  return documentParts.join("\n\n").trim();
+}
+
+function extractPptxText(buffer) {
+  const entries = readZipEntries(buffer);
+  const slideParts = [...entries.entries()]
+    .filter(([name]) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+    .sort(([a], [b]) => {
+      const aNumber = Number(a.match(/slide(\d+)\.xml$/)?.[1] || 0);
+      const bNumber = Number(b.match(/slide(\d+)\.xml$/)?.[1] || 0);
+      return aNumber - bNumber;
+    })
+    .map(([, content]) => extractTextTags(content.toString("utf8")))
+    .filter(Boolean);
+
+  return slideParts.join("\n\n").trim();
+}
+
 async function extractFileText({ fileBase64, fileMimeType, fileName }) {
   if (!fileBase64) {
     throw new Error("No file content provided.");
   }
 
   const mime = normalizeMimeType(fileName, fileMimeType);
+  const cleanBase64 = cleanBase64Payload(fileBase64);
   
   // Handle PDF files
   if (mime === "application/pdf") {
     try {
-      // Clean base64 if it has data URI prefix
-      const cleanBase64 = fileBase64.includes(',') 
-        ? fileBase64.split(',')[1] 
-        : fileBase64;
-      
       const { createRequire } = await import("module");
       const require = createRequire(import.meta.url);
       const pdfParseModule = require("pdf-parse");
@@ -262,6 +371,28 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
       throw new Error("Failed to extract text from PDF. Please ensure it's a valid text-based PDF.");
     }
   }
+
+  if (isDocxMime(mime) || isPptxMime(mime)) {
+    try {
+      const buffer = Buffer.from(cleanBase64, "base64");
+      const text = isDocxMime(mime) ? extractDocxText(buffer) : extractPptxText(buffer);
+
+      console.log("[Office Extraction] Raw text length:", text.length);
+      console.log("[Office Extraction] Text preview:", text.substring(0, 200) + "...");
+
+      if (!text) {
+        throw new Error("No readable text found in this Word/PowerPoint file. Please upload a text-based file or PDF.");
+      }
+
+      return text;
+    } catch (error) {
+      console.error("[Office Extraction Error]", error?.message || error);
+      if (error.message && error.message.includes("No readable text found")) {
+        throw error;
+      }
+      throw new Error("Failed to extract text from this Word/PowerPoint file. Please ensure it is a valid DOCX or PPTX file.");
+    }
+  }
   
   // Handle text-based files
   if (mime.startsWith("text/") || 
@@ -269,7 +400,7 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
       mime === "text/csv" || 
       mime === "text/markdown" || 
       mime === "application/json") {
-    const text = decodeBase64ToUtf8(fileBase64);
+    const text = decodeBase64ToUtf8(cleanBase64);
     
     if (!text.trim()) {
       throw new Error("Could not read text from this file. Please upload a text-based file with content.");
@@ -279,43 +410,7 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
   }
   
   // Unsupported file types
-  throw new Error("Unsupported file type. Please upload a PDF or text-based file (TXT, CSV, JSON, MD).");
-}
-
-function buildGeminiParts({ prompt, fileBase64, fileMimeType, fileName, legacyFileContent }) {
-  const mime = normalizeMimeType(fileName, fileMimeType);
-  const parts = [];
-
-  if (fileBase64 && fileBase64.length > 0) {
-    if (isTextBasedMime(mime)) {
-      const text = decodeBase64ToUtf8(fileBase64);
-      const slice = text.substring(0, 12000);
-      parts.push({
-        text: `${prompt}\n\nHere is the file content to use (UTF-8 text):\n---\n${slice}\n---`,
-      });
-      return parts;
-    }
-
-    parts.push({
-      inline_data: {
-        mime_type: mime,
-        data: fileBase64,
-      },
-    });
-    parts.push({ text: prompt });
-    return parts;
-  }
-
-  if (legacyFileContent && String(legacyFileContent).trim()) {
-    const slice = String(legacyFileContent).substring(0, 12000);
-    parts.push({
-      text: `${prompt}\n\nHere is the file content:\n---\n${slice}\n---`,
-    });
-    return parts;
-  }
-
-  parts.push({ text: prompt });
-  return parts;
+  throw new Error("Unsupported file type. Please upload PDF, TXT, CSV, JSON, MD, DOCX, or PPTX.");
 }
 
 export default async function handler(req, res) {
@@ -337,10 +432,8 @@ export default async function handler(req, res) {
     gameCode,
     fileName,
     questionCount,
-    fileContent,
     fileBase64,
     fileMimeType,
-    sessionId: bodySessionId,
   } = req.body || {};
 
   if (!gameCode || !fileName || !questionCount) {

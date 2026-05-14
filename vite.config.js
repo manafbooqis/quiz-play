@@ -23,7 +23,7 @@ const apiPlugin = (env) => ({
         req.on("end", async () => {
           try {
             req.body = body ? JSON.parse(body) : {};
-          } catch (err) {
+          } catch {
             res.statusCode = 400;
             res.setHeader("Content-Type", "application/json");
             res.end(JSON.stringify({ error: "Invalid JSON body" }));

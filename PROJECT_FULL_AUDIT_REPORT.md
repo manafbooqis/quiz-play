@@ -1,712 +1,312 @@
 # Project Full Audit Report
 
-Audit date: 2026-05-13  
+Audit date: 2026-05-14  
 Project: `quiz-play`  
-Scope: React/Vite frontend, student flow, instructor flow, Supabase usage, AI API route, scoring, leaderboard, routing, localStorage, security, build/lint, and recent implementation history.
+Scope: React/Vite frontend, student flow, instructor flow, scoring, leaderboard, Score Distribution, AI question generation, Supabase schema/RLS, routing, localStorage, security, build/lint, UI/UX, and old files.
 
 ## 1. Executive Summary
 
-`quiz-play` is a React + Vite quiz application with student and instructor flows backed mainly by Supabase. The app builds successfully, but lint currently fails across multiple files because of unused variables, Node globals not configured for server files, one malformed legacy file, and React hook rule violations.
+The current `quiz-play` codebase reflects most of the recent fixes. The scoring model is now centralized around Easy = `10`, Medium = `25`, Hard = `50` in `src/utils/leaderboard.js`, and final scores are calculated by summing `responses.points_awarded` for correct responses in `calculateLeaderboard(...)`. Student final results, instructor live rankings, student round status, and instructor Score Distribution now use the shared leaderboard helper.
 
-The most important functional area is quiz state synchronization. Recent changes moved scoring and final-result navigation closer to shared Supabase state, which is the right direction. However, there are still material risks:
+Player identity is significantly safer than before. New student joins store `session_players.id` as `playerId`/`sessionPlayerId`, answer submission writes that stable ID to `responses.player_id`, leaderboard matching prefers player ID, and "You" highlighting uses player ID where available. `src/pages/student/JoinGame.jsx` also blocks duplicate display names within the same session using trimmed, case-insensitive comparison and shows the clear message: `This name is already used in this game. Please choose another name.`
 
-- Final scoring is still not fully correct for mixed difficulty scoring. If easy/medium/hard questions are worth different points, the final score should be `sum(points_awarded for correct responses)`, not `correctAnswers * pointsPerQuestion`.
-- `src/utils/leaderboard.js` currently infers a single `pointsPerQuestion` from correct `responses.points_awarded`. That may work only for sessions where every question has the same point value.
-- `RoundResults.jsx` and some instructor live ranking/status panels still display `total_score` or `points_awarded` in places, which can be acceptable for per-round display but risky if interpreted as final ranking.
-- Some student pages still use `localStorage` and route state for progress/timers. These are useful as UX helpers but should not be authoritative for final navigation or scoring.
-- Supabase RLS policies appear incomplete for the actual student flow. Student reads/writes may require policies not shown in the migrations, and some policies only allow viewing sessions in `active` or `waiting`, which can break refreshes during `round_results` or `finished`.
+Instructor End Quiz now writes `sessions.status = "finished"` in `src/pages/instructor/InstructorLiveQuiz.jsx`. Student pages have final-status routing in Lobby, Difficulty, Question, WaitingForOthers, and RoundResults. The important recent bug where students on `Difficulty.jsx` did not immediately move to Final Results has been fixed with a session-row watcher plus polling fallback.
 
-## 2. Project Overview
+AI question generation now supports PDF, TXT, CSV, JSON, MD, DOCX, and PPTX in `api/generate-questions.js`. DOCX/PPTX support extracts plain text from Office Open XML files without adding a new dependency.
 
-Main stack:
+The remaining highest risks are:
 
-- React `19.2.0`
-- Vite `7.3.1`
-- React Router `7.13.1`
-- Supabase JS `2.104.1`
-- Tailwind CSS via `@tailwindcss/vite`
-- Vercel-style serverless route in `api/generate-questions.js`
-- Legacy Firebase function in `functions/index.js`
+- `npm run lint` still fails with 25 problems: 16 errors and 9 warnings.
+- `src/pages/student/RoundResults.jsx` can still mark the whole session `finished` from a student client through `markSessionFinished(...)`.
+- Supabase migrations and `supabase-rls-policies.sql` do not fully match the tables/columns and identity model used by current code.
+- `WaitingForOthers.jsx` redirects to Final Results but does not preserve `playerId`/`sessionPlayerId`, unlike the other updated student pages.
+- Existing old sessions with name-based `responses.player_id` remain best-effort only when duplicate display names existed.
+- UI text contains widespread mojibake/encoding artifacts.
+- The production build passes, but the JS bundle remains larger than 500 kB after minification.
 
-Routes are defined in `src/App.jsx`:
+## 2. Detailed Change History / What Was Already Implemented
 
-- Student:
-  - `/student/join` -> `JoinGame.jsx`
-  - `/student/lobby` -> `Lobby.jsx`
-  - `/student/difficulty` -> `Difficulty.jsx`
-  - `/student/question` -> `Question.jsx`
-  - `/student/result` -> `Result.jsx`
-  - `/student/waiting-for-others` -> `WaitingForOthers.jsx`
-  - `/student/round-results` -> `RoundResults.jsx`
-  - `/student/final-results` -> `FinalResults.jsx`
-- Instructor:
-  - `/instructor/login`
-  - `/instructor/register`
-  - `/instructor/dashboard-official`
-  - `/instructor/session-official`
-  - `/instructor/questions-preview`
-  - `/instructor/create-session`
-  - `/instructor/live-quiz`
-  - `/instructor/final-results`
-  - `/instructor/score-distribution`
-
-Supabase client:
-
-- `src/lib/supabase.js` requires `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
-- Helper functions include `getSessionById`, `getSessionsByOwner`, `createSession`, `getSessionPlayers`, and `insertSessionPlayer`.
-- `updateSessionQuestions` currently logs that questions are stored in another table and returns no-op data. This should be reviewed because much of the app actually stores question banks on `sessions.questions_by_difficulty`.
-
-## 3. Detailed Change History / What Was Already Implemented
-
-### 3.1 Final Results leaderboard scoring fix
-
-Files changed:
-
-- `src/pages/student/FinalResults.jsx`
-- `src/utils/leaderboard.js`
-
-What changed:
-
-- Final Results stopped calculating each player's score locally in the component using ad hoc `scoreMap` logic.
-- A shared helper, `calculateLeaderboard`, was introduced in `src/utils/leaderboard.js`.
-- Final Results now calls `calculateLeaderboard(players, responses, sessionQuestionCount, sessionScoringConfig)`.
-
-Why:
-
-- Different students previously saw different scores/rankings because current-user local state, route state, or stale stored score fields could influence the displayed result.
-
-Appears correct:
-
-- The move to one shared helper is correct architecturally.
-- The helper uses shared `responses` and `sessions.question_count`, which is the right source for consistent ordering.
-
-Remaining risk:
-
-- The latest helper still does not fully support mixed difficulty scoring. It infers a single `pointsPerQuestion` from correct `responses.points_awarded`, then calculates `correctAnswers * pointsPerQuestion`. If students answer a mix of easy/medium/hard questions, the correct final score should be `sum(points_awarded for correct responses)`.
-
-### 3.2 Removing localStorage / route-state scoring from student FinalResults
-
-Files changed:
-
-- `src/pages/student/FinalResults.jsx`
-
-What changed:
-
-- Final Results now resolves the session from Supabase by `gameCode` or `sessionId`.
-- It fetches `session_players` and `responses` from Supabase.
-- It no longer uses route-state score values for leaderboard scoring.
-
-Why:
-
-- Route state and localStorage are per-browser and caused inconsistent leaderboard views.
-
-Appears correct:
-
-- Yes, for consistency. Final score display should be based on shared Supabase data.
-
-Remaining risk:
-
-- `answersStatus` in Final Results still filters responses by `r.player_id === studentName`, so the visual question summary may fail if `player_id` is stored as a UUID rather than `student_name`.
-
-### 3.3 Making the current user only highlighted with "You"
-
-Files changed:
-
-- `src/pages/student/FinalResults.jsx`
-
-What changed:
-
-- The current user is found from the leaderboard row and highlighted in the list.
-- The `"You"` badge does not change ordering or score.
-
-Why:
-
-- Previously current-user-specific logic could make the active viewer see a different score/order.
-
-Appears correct:
-
-- Yes. Highlighting should be a presentational concern only.
-
-Remaining risk:
-
-- Current-user matching is still based on `player.name === studentName`. If duplicate names exist, the wrong row may be highlighted.
-
-### 3.4 Shared final-results transition using Supabase session status
-
-Files changed:
-
-- `src/pages/student/RoundResults.jsx`
-- `src/pages/student/Question.jsx`
-- `src/pages/student/WaitingForOthers.jsx`
-
-What changed:
-
-- `RoundResults.jsx` now treats `session.status === "finished"` or `session.current_phase === "final_results"` as final.
-- `RoundResults.jsx` subscribes to the shared Supabase session row and redirects all students when final state appears.
-- `Question.jsx` was changed so a student reaching their local answer limit goes to Round Results instead of jumping directly to Final Results.
-
-Why:
-
-- Some students moved to Final Results while others stayed on Round Results because each browser made local navigation decisions.
-
-Appears correct:
-
-- Directionally correct: final navigation must follow shared session state.
-
-Remaining risk:
-
-- The schema migration only declares `status` values `waiting`, `active`, `round_results`, and `finished`. There is no migration for `current_phase`, so checking `current_phase` is harmless but not currently backed by schema.
-- Any client can potentially call `markSessionFinished` from `RoundResults.jsx` if RLS allows session updates. This should ideally be instructor/server-owned or protected by policy.
-
-### 3.5 RoundResults redirecting to FinalResults based on shared session status
-
-Files changed:
-
-- `src/pages/student/RoundResults.jsx`
-
-What changed:
-
-- Added `isFinalSessionStatus(session)`.
-- Added `goToFinalResults`.
-- Added a Supabase realtime subscription for the session row.
-- Added immediate redirect if the loaded session is already finished.
-
-Why:
-
-- Refreshing or landing on Round Results after the quiz is complete should not trap the student.
-
-Appears correct:
-
-- Yes as a defensive redirect.
-
-Remaining risk:
-
-- `goToFinalResults` depends on route-state `studentName`. Refreshing `/student/round-results` without state can still lose user identity unless there is a persistent student identity strategy.
-
-### 3.6 WaitingForOthers safe redirect after session finished
-
-Files changed:
-
-- `src/pages/student/WaitingForOthers.jsx`
-
-What changed:
-
-- On initial session load, if status is `finished` or phase is `final_results`, it navigates to Final Results.
-- Existing realtime status handling already also navigates when updated status is `finished`.
-
-Why:
-
-- A student waiting for others should not stay on that page after completion.
-
-Appears correct:
-
-- Yes.
-
-Remaining risk:
-
-- The page still uses route `sessionId` for response subscriptions. If route state is missing, subscriptions may not work as intended.
-
-### 3.7 Adding shared leaderboard helper
-
-File added:
+Confirmed implemented:
 
 - `src/utils/leaderboard.js`
-
-What changed:
-
-- Added:
-  - `getTotalQuestions`
-  - `getPointsPerQuestion`
-  - `getMaxPossibleScore`
-  - `getScoreDistributionBuckets`
-  - `calculateLeaderboard`
-
-Why:
-
-- Student and instructor views needed the same scoring and sorting logic.
-
-Appears correct:
-
-- Good architectural move.
-
-Remaining risk:
-
-- The helper still models score as `correctAnswers * one pointsPerQuestion`. That is not correct for difficulty-based sessions where each correct response can have different point values.
-- It should likely calculate `score` as `playerResponses.filter(is_correct).reduce((sum, r) => sum + Number(r.points_awarded || inferredQuestionPoints), 0)`.
-
-### 3.8 Updating Student FinalResults to use shared helper
-
-File changed:
-
-- `src/pages/student/FinalResults.jsx`
-
-What changed:
-
-- It imports `calculateLeaderboard`.
-- It passes fetched session data as scoring config.
-
-Why:
-
-- To keep student final results consistent with instructor views.
-
-Appears correct:
-
-- Mostly correct, except for the single-points-per-question limitation.
-
-Remaining risk:
-
-- If no correct response exists, `getPointsPerQuestion` returns `0`, so all scores can show `0` even if configured session/question points exist only in question metadata.
-
-### 3.9 Updating InstructorScoreDistribution to use shared helper
-
-File changed:
-
-- `src/pages/instructor/InstructorScoreDistribution.jsx`
-
-What changed:
-
-- Uses `calculateLeaderboard`.
-- Removed reliance on `points_awarded` and `session_players.total_score` for ranking scores.
-- Added "Most Incorrect Question" feature in place of old CSV export.
-- Fetches full session data for scoring config.
-
-Why:
-
-- Instructor score distribution previously displayed stale/incorrect scores such as 4/5 = 1000.
-
-Appears correct:
-
-- Correct direction.
-
-Remaining risk:
-
-- If the helper remains single-point based, mixed difficulty scoring is still wrong.
-- The large diff suggests line endings or encoding changed in this file; review before committing to avoid noisy history.
-
-### 3.10 Updating InstructorLiveQuiz rankings to use shared helper
-
-File changed:
-
-- `src/pages/instructor/InstructorLiveQuiz.jsx`
-
-What changed:
-
-- Live rankings now call `calculateLeaderboard`.
-- It maps helper output into `{ studentName, totalScore }` to preserve UI.
-
-Why:
-
-- Live rankings used `session_players.total_score` and `responses.points_awarded` ad hoc.
-
-Appears correct:
-
-- Better consistency with final rankings.
-
-Remaining risk:
-
-- The file still contains old `studentScores` logic that uses `points_awarded`, but it is currently unused.
-- Lint warnings remain for hook dependencies.
-
-### 3.11 Updating score distribution buckets
-
-File changed:
-
-- `src/pages/instructor/InstructorScoreDistribution.jsx`
-- `src/utils/leaderboard.js`
-
-What changed:
-
-- Buckets no longer hardcode the 0-1000 scale.
-- `getScoreDistributionBuckets` generates buckets from `maxPossibleScore`.
-
-Why:
-
-- Custom points can create max scores like 1500.
-
-Appears correct:
-
-- Directionally correct.
-
-Remaining risk:
-
-- If `maxPossibleScore` is wrong because `pointsPerQuestion` inference is wrong, buckets will also be wrong.
-
-### 3.12 Updating scoring from fixed 1000 scale to custom points per question
-
-File changed:
-
-- `src/utils/leaderboard.js`
-- Consumers in `FinalResults.jsx`, `InstructorScoreDistribution.jsx`, and `InstructorLiveQuiz.jsx`
-
-What changed:
-
-- Removed fixed `1000 / totalQuestions`.
-- Added `getPointsPerQuestion` to use session config fields if present.
-- Falls back to inferring points from correct `responses.points_awarded`.
-
-Why:
-
-- A 5-question quiz with 300 points each should max at 1500, not 1000.
-
-Appears correct:
-
-- Correct only when every question has the same point value.
-
-Remaining risk:
-
-- For difficulty-based points, final score should be `sum(points for each correctly answered question)`, not `correctAnswers * pointsPerQuestion`.
-- The current implementation can overcount or undercount mixed-difficulty sessions.
-
-### 3.13 Remaining issue: difficulty-based points
-
-Files involved:
+  - Defines `DIFFICULTY_POINTS` as `easy: 10`, `medium: 25`, `hard: 50`.
+  - Exports `getDifficultyPoints(...)`.
+  - `calculateLeaderboard(...)` groups responses by `response.player_id`.
+  - Matches by `session_players.id` first and only falls back to name keys for old data.
+  - Sums score from correct `points_awarded` values.
+  - Keeps deterministic tie-breaking by score, completion time, join time, and name.
+  - Provides `getMaxPossibleScore(...)` and `getScoreDistributionBuckets(...)` for Score Distribution.
+
+- `src/pages/student/JoinGame.jsx`
+  - Creates or reuses a `session_players` row.
+  - Stores `session_players.id` as `playerId` and `sessionPlayerId` in route state and localStorage.
+  - Keeps `studentName` for display.
+  - Allows same-browser rejoin when a stored player ID matches an existing player.
+  - Blocks new duplicate display names in the same session after trim/lowercase normalization.
 
 - `src/pages/student/Difficulty.jsx`
+  - Uses `getDifficultyPoints(...)` for displayed difficulty values.
+  - Timeout response path prefers stable `session_players.id`.
+  - Watches the shared `sessions` row for `status === "finished"` or `current_phase === "final_results"`.
+  - Redirects immediately to `/student/final-results` with `replace: true` and preserves `sessionId`, `gameCode`, `studentName`, `playerId`, and `sessionPlayerId`.
+  - Previous `handleDifficultyTimeout` hook dependency warning is fixed.
+
 - `src/pages/student/Question.jsx`
+  - Uses `getDifficultyPoints(...)`.
+  - Writes `responses.points_awarded`.
+  - Uses stable `session_players.id` for new `responses.player_id` when available.
+  - Checks legacy player-name response IDs for backward compatibility.
+  - Listens for final session status and routes to Final Results.
+
+- `src/pages/student/Lobby.jsx`
+  - Previous React Hooks conditional-order issue is fixed.
+  - Uses final-status routing to Final Results.
+  - Carries `playerId`/`sessionPlayerId` forward.
+  - Current-player display/highlight prefers player ID.
+  - Compact lobby layout is present.
+
+- `src/pages/student/RoundResults.jsx`
+  - Uses `calculateLeaderboard(...)` for student status scoring.
+  - Uses `playerId` for current-student matching, with name fallback.
+  - Redirects to Final Results on final session status.
+  - Marks `responses.round_results_seen_at` using player ID/name fallback.
+
+- `src/pages/student/FinalResults.jsx`
+  - Uses `calculateLeaderboard(...)`.
+  - Looks up current student by `playerId` first, `studentName` second.
+  - Highlights "You" by player ID when available.
+  - Reads responses by player ID first and falls back to name-based rows for old data.
+
+- `src/pages/student/WaitingForOthers.jsx`
+  - Has compact layout.
+  - Redirects to Round Results on `round_results`.
+  - Redirects to Final Results on `finished` or `current_phase === "final_results"`.
+
+- `src/pages/instructor/InstructorLiveQuiz.jsx`
+  - Uses `calculateLeaderboard(...)`.
+  - End Quiz sets `sessions.status = "finished"`, `quiz_finished_at`, `show_round_results: false`, and `current_question_ends_at`.
+  - Instructor navigates to `/instructor/final-results`.
+
+- `src/pages/instructor/InstructorFinalResults.jsx`
+  - Previous `gameCode` hook dependency warning is fixed.
+  - Questions Analysis and Score Distribution navigation remain present.
+
+- `src/pages/instructor/InstructorScoreDistribution.jsx`
+  - Uses `calculateLeaderboard(...)`.
+  - Uses `getScoreDistributionBuckets(...)`.
+  - Includes `handleShowMostMissedQuestion(...)`.
+  - Back to Questions Analysis button navigates to `/instructor/final-results` with state.
+
+- `src/pages/instructor/SessionOfficial.jsx`
+  - Previous unused `getStudentJoinedTime` issue is fixed.
+  - Previous `fallbackSession` hook dependency warning is fixed.
+
+- `api/generate-questions.js`
+  - Keeps existing PDF/text extraction.
+  - Adds DOCX/PPTX plain-text extraction from Office Open XML files.
+  - Unsupported type message now lists all supported formats.
+  - No-readable Office files return: `No readable text found in this Word/PowerPoint file. Please upload a text-based file or PDF.`
+  - Previous unused variables such as `fileContent` and `bodySessionId` are fixed.
+
+- `eslint.config.js`
+  - Treats `functions/**/*.js`, `api/**/*.js`, and `vite.config.js` as Node files.
+  - Previous `process` and `Buffer` undefined errors for Node/server files no longer appear.
+
+- `supabase/migrations/20260514190000_add_unique_response_constraint.sql`
+  - Adds `responses_unique_player_question`.
+  - Constraint: `UNIQUE (session_id, question_id, player_id)`.
+  - Duplicate responses were checked with a grouped query before migration creation, and no duplicates were found.
+
+- Removed legacy files:
+  - `original_InstructorLiveQuiz.jsx` is not present.
+  - `original_InstructorLiveQuiz_utf8.jsx` is not present.
+
+## 3. Critical Bugs
+
+1. `src/pages/student/RoundResults.jsx` still lets a student client finish the whole session.
+   - Function: `markSessionFinished(...)`.
+   - It updates `sessions.status` to `finished`.
+   - Risk: any student reaching that path can finalize global session state if RLS allows it.
+
+2. Supabase RLS still appears incompatible with the current stable-player-ID identity model.
+   - `supabase/migrations/20240426060000_add_quiz_flow.sql` has a response insert policy that checks `session_players.student_name = responses.player_id`.
+   - New code writes `responses.player_id = session_players.id`.
+   - If this policy is active as written, new stable-ID response inserts may be blocked unless production policies differ.
+
+3. Current migrations do not define all columns/tables used by the app.
+   - Used but not fully represented: `session_players`, `sessions.questions_by_difficulty`, `sessions.question_count`, `sessions.time_per_question`, `sessions.current_phase`, `responses.round_results_seen_at`, `responses.difficulty`, and `responses.points_possible`.
+
+4. `WaitingForOthers.jsx` loses player identity during final redirects.
+   - It passes `studentName`, `gameCode`, and `sessionId`, but not `playerId`/`sessionPlayerId`.
+   - Final Results can still load data, but current-student "You" matching may fall back to display name from that route.
+
+5. Old name-based response data remains ambiguous.
+   - The app supports old rows where `responses.player_id` equals `studentName`.
+   - If an old session had duplicate names, exact ownership cannot be reconstructed from the response rows.
+
+## 4. Scoring and Leaderboard Review
+
+Primary file: `src/utils/leaderboard.js`
+
+Current scoring rule:
+
+```js
+score = correctResponses.reduce(
+  (sum, response) => sum + Number(response.points_awarded || 0),
+  0
+)
+```
+
+Current strengths:
+
+- Shared helper is used across the major scoring surfaces:
+  - `src/pages/student/FinalResults.jsx`
+  - `src/pages/student/RoundResults.jsx`
+  - `src/pages/instructor/InstructorLiveQuiz.jsx`
+  - `src/pages/instructor/InstructorScoreDistribution.jsx`
+- Scores now reflect difficulty because they sum stored awarded points.
+- Player matching prefers `session_players.id`.
+- Name fallback preserves old sessions where responses stored display names.
+- Duplicate display names no longer merge new sessions when player IDs are present.
+
+Remaining risks:
+
+- `getMaxPossibleScore(...)` can only infer possible score when question metadata or response possible-point data is available.
+- Normal responses do not store `points_possible`, so Score Distribution may fall back to inferred or hard-point scaling.
+- `src/pages/instructor/InstructorLiveQuiz.jsx` maps leaderboard rows to `{ studentName, totalScore }`; later answered-status logic checks `student.id`, which is likely undefined in that mapped structure.
+
+## 5. Difficulty-Based Scoring Review
+
+Confirmed difficulty values:
+
+- Easy = `10`
+- Medium = `25`
+- Hard = `50`
+
+Files:
+
 - `src/utils/leaderboard.js`
+- `src/pages/student/Difficulty.jsx`
+- `src/pages/student/Question.jsx`
 
 Current behavior:
 
-- `Difficulty.jsx` assigns:
-  - Easy = 100
-  - Medium = 200
-  - Hard = 300
-- `Question.jsx` writes `points_awarded = pointsPerQuestion` only when the response is correct.
-- `leaderboard.js` infers one points value from correct rows and multiplies it by `correctAnswers`.
+- Difficulty cards in `Difficulty.jsx` read values from `getDifficultyPoints(...)`.
+- `Question.jsx` awards the selected/current difficulty value only when correct.
+- Final leaderboard score sums `points_awarded` for correct responses.
 
-Correct behavior:
+Remaining issues:
 
-- Final score should be:
-  - `sum(Number(response.points_awarded || 0) for correct responses)`
-- Accuracy should remain:
-  - `Math.round((correctAnswers / totalQuestions) * 100)`
+- `responses.difficulty` is not written for normal answer submissions.
+- `responses.points_possible` is not written for normal answer submissions.
+- Timeout rows write `points_awarded: 0` but do not preserve the possible point value.
+- Analytics must infer possible score from session question banks or response history.
 
-Risk:
+## 6. Student Flow Review
 
-- This is currently the highest-priority scoring correctness issue.
+`src/pages/student/JoinGame.jsx`
 
-### 3.14 Student compact layout and instructor final-state sync update
+- Looks up a session by game code.
+- Reads existing players.
+- Allows stored-player rejoin for the same browser/name/game.
+- Blocks duplicate display names for new joins.
+- Stores session/player details in localStorage under `quizplay_session_${gameCode}` and `quizplay_player_${gameCode}_${studentName}`.
+- Risk: duplicate-name enforcement is client-side only; a database constraint or RPC would be stronger.
 
-Files changed:
+`src/pages/student/Lobby.jsx`
 
-- `src/pages/student/Question.jsx`
-- `src/pages/student/WaitingForOthers.jsx`
-- `src/pages/student/Lobby.jsx`
-- `src/pages/instructor/InstructorLiveQuiz.jsx`
+- Loads lobby state from Supabase/localStorage.
+- Redirects to Difficulty when the quiz starts.
+- Redirects to Final Results when the session is final.
+- Preserves `playerId`/`sessionPlayerId`.
+- Previous hook error is fixed.
+- Risk: timer cleanup still uses a student-name-based key in one place: `quizplay_round_timer_${gameCode}_${studentName}`.
 
-What changed:
+`src/pages/student/Difficulty.jsx`
 
-- `Question.jsx` spacing was compacted by reducing the main panel padding, header gap, timer card padding, question-card padding, answer-grid gap, and answer-button padding.
-- `Question.jsx` still uses a responsive answer grid: one column on small screens and two columns on medium/large screens.
-- `WaitingForOthers.jsx` spacing was compacted by reducing outer padding, icon size, card padding, grid gaps, progress spacing, and the tip panel spacing.
-- `Lobby.jsx` spacing was compacted further in a later lobby-only pass by reducing the outer vertical padding, hero margins/type size, main card padding, header gap, game-code card padding, waiting-panel height, player-grid gap, player-chip height, and Back to Home button height. On medium and larger screens, the waiting panel and players list now sit in a two-column layout to reduce vertical scrolling.
-- `Lobby.jsx`, `Question.jsx`, and `WaitingForOthers.jsx` now treat `session.status === "finished"` or `session.current_phase === "final_results"` as final and navigate students to Final Results with `replace: true`.
-- `RoundResults.jsx` already had shared final-state detection, so no additional layout or flow change was needed there.
-- `InstructorLiveQuiz.jsx` End Quiz now writes the shared session row to `status: "finished"`, clears `show_round_results`, and sets `current_question_ends_at` to the finish time so students listening to the session row leave their current page.
+- Uses shared difficulty values.
+- Creates timeout responses when no difficulty is selected.
+- Detects instructor End Quiz immediately.
+- Risk: student clients still update global session state to `active` when selecting difficulty.
+- Risk: duplicated session update block exists in `handleDifficultySelect(...)`, though behavior appears guarded by `.eq("status", "choosing_difficulty")`.
 
-Remaining risk:
+`src/pages/student/Question.jsx`
 
-- `current_phase` is still checked defensively by student pages, but the documented schema primarily uses `sessions.status`.
-- Refresh recovery still depends on route state/localStorage for some student identity details.
-- Hook dependency warnings remain in `Question.jsx` and `InstructorLiveQuiz.jsx`; they were not changed in this compactness/final-sync pass.
+- Handles session loading, answer submission, timeout, already-answered checks, and final routing.
+- New responses use stable player ID.
+- Route state/localStorage remain central to recovery.
+- Active lint warnings remain for hook dependencies.
 
-## 4. Critical Bugs
+`src/pages/student/WaitingForOthers.jsx`
 
-1. Mixed difficulty scoring is still conceptually wrong in `src/utils/leaderboard.js`.
-   - Current helper calculates `correctAnswers * pointsPerQuestion`.
-   - If a player answers 1 easy and 1 hard correctly, score should be `100 + 300 = 400`, not `2 * inferredPointValue`.
+- Shows answered count and timer.
+- Redirects to Round Results or Final Results.
+- Risk: final and round-results navigation does not preserve `playerId`/`sessionPlayerId`.
 
-2. Student flow still depends heavily on route state and localStorage.
-   - `Difficulty.jsx`, `Question.jsx`, `Lobby.jsx`, `RoundResults.jsx`, and `SessionOfficial.jsx` store or read session/question state from localStorage.
-   - This is acceptable for cache/UX only, not as source of truth.
+`src/pages/student/RoundResults.jsx`
 
-3. `src/pages/student/Lobby.jsx` has React hook rule violations.
-   - ESLint reports conditional `useEffect` calls at lines 83 and 228.
-   - This can cause runtime bugs that are hard to reproduce.
+- Shows per-round result, round leaderboard, answered/waiting lists, and countdown.
+- Uses shared leaderboard for total status score.
+- Risk: student-owned finalization through `markSessionFinished(...)`.
+- Risk: uses `responses.round_results_seen_at`, which is not present in current migrations.
 
-4. Supabase RLS policies may block necessary reads after status changes.
-   - `supabase-rls-policies.sql` only allows anyone to view sessions with status `active` or `waiting`.
-   - Students need read access during `choosing_difficulty`, `round_results`, and `finished`.
+`src/pages/student/FinalResults.jsx`
 
-5. Legacy/original instructor backup files were removed after confirming they were unused.
-   - `original_InstructorLiveQuiz.jsx` and `original_InstructorLiveQuiz_utf8.jsx` were only referenced by this audit report.
-   - They were deleted instead of ignored so ESLint no longer scans stale backup code.
-   - Remaining lint issues are in active files, especially Node globals for server/config files and unused variables/hook dependency warnings elsewhere.
+- Loads results by `sessionId` or `gameCode`.
+- Uses shared leaderboard and stable player identity.
+- Falls back to name-based response matching for old sessions.
+- Risk: direct refresh without stored player ID can degrade "You" highlighting to display-name matching.
 
-## 5. Scoring and Leaderboard Review
+`src/pages/student/Result.jsx` and `src/pages/student/Leaderboard.jsx`
 
-Primary shared scoring file:
+- Still present and `/student/result` remains routed.
+- They appear older than the current Round Results/Final Results flow.
+- Review before removal because routes still exist.
 
-- `src/utils/leaderboard.js`
+## 7. Instructor Flow Review
 
-Current helper strengths:
+`src/pages/instructor/DashboardOfficial.jsx`
 
-- Normalizes player names/IDs.
-- Merges response groups by player keys.
-- Uses `responses.is_correct` for correctness.
-- Uses `sessions.question_count`, with fallback to distinct `responses.question_id`.
-- Sorts by score descending, completion time, join time, then name.
+- Large page handling auth/session creation/uploads/question banks/navigation.
+- Current largest lint source with 13 unused-variable errors.
+- Uses localStorage heavily.
 
-Current helper risks:
+`src/pages/instructor/SessionOfficial.jsx`
 
-- Uses one inferred `pointsPerQuestion`.
-- Does not sum per-response `points_awarded` for correct answers.
-- Does not know question-level point values if no correct answer exists.
-- Duplicate student names can collapse in `playersByName`.
+- Session preparation page.
+- Recent lint issues are fixed.
+- Still depends on route state and localStorage fallback for session/question-bank recovery.
 
-Recommended final scoring model:
+`src/pages/instructor/questions-preview.jsx`
 
-```js
-correctResponses = playerResponses.filter((r) => r.is_correct === true)
-score = correctResponses.reduce((sum, r) => sum + Number(r.points_awarded || 0), 0)
-correctAnswers = correctResponses.length
-accuracy = Math.round((correctAnswers / totalQuestions) * 100)
-```
+- Question-bank preview/edit page.
+- No active lint errors from the latest full lint run.
 
-If `points_awarded` is unavailable, fallback should be explicit and documented:
+`src/pages/instructor/InstructorLiveQuiz.jsx`
 
-- Session-level `points_per_question`, if schema is added.
-- Question-level `points`, if stored.
-- Difficulty-derived point map, if `response.difficulty` or question difficulty can be resolved reliably.
-
-## 6. Difficulty-Based Scoring Review
-
-Difficulty points are currently assigned in `src/pages/student/Difficulty.jsx`:
-
-- Easy: `100`
-- Medium: `200`
-- Hard: `300`
-
-Submission occurs in `src/pages/student/Question.jsx`:
-
-- `pointsPerQuestion` comes from route state.
-- `pointsAwarded = isCorrect ? pointsPerQuestion : 0`.
-- Response row includes `points_awarded`.
-
-Major issue:
-
-- Final scoring should not multiply correct answer count by a single inferred points value if students can choose different difficulties per round.
-
-Practical fix:
-
-- Keep `responses.points_awarded` as the source for final score totals, but only sum it for rows with `is_correct === true`.
-- Do not use `session_players.total_score`; it is stale/cache data.
-- Preserve `correctAnswers` from `is_correct`.
-- Preserve `accuracy` from `correctAnswers / totalQuestions`.
-
-Schema improvement:
-
-- Add `difficulty` and/or `points_possible` to `responses` so analytics can reliably explain scoring later.
-
-## 7. Student Flow Review
-
-### JoinGame
-
-File: `src/pages/student/JoinGame.jsx`
-
-Observations:
-
-- Looks up session by game code.
-- Writes session config to `localStorage`.
-- Navigates to Lobby with session state.
-
-Risks:
-
-- localStorage can become stale across sessions.
-- Joining logic should ensure duplicate names are handled.
-
-### Lobby
-
-File: `src/pages/student/Lobby.jsx`
-
-Observations:
-
-- Uses Supabase status and localStorage session cache.
-- Subscribes/polls session status.
-- Layout compactness was improved without changing colors, style identity, content, routing, or Supabase behavior.
-
-Risks:
-
-- ESLint reports conditional hook calls. This is a real React bug risk.
-- It navigates to Difficulty for `active` and `choosing_difficulty`, which may be correct, but careful handling is needed if a question is already active.
-- Remaining UI/UX risk: large player counts can still require scrolling because the page intentionally shows joined players.
-
-### Difficulty
-
-File: `src/pages/student/Difficulty.jsx`
-
-Observations:
-
-- Lets students choose easy/medium/hard.
-- Has fixed difficulty points.
-- Starts/continues shared round timer using localStorage.
-- Updates session status to `active` with first-write-wins.
-
-Risks:
-
-- It contains duplicated session update code.
-- It declares an unused `bank` variable.
-- Difficulty selection is partly client-driven. Any student can attempt to set session `status: active` if RLS permits.
-
-### Question
-
-File: `src/pages/student/Question.jsx`
-
-Observations:
-
-- Loads session and current question from Supabase.
-- Subscribes to session updates.
-- Inserts/upserts responses.
-- Calculates `points_awarded`.
-- Updates `session_players.total_score`.
-- Layout was compacted so the question card and answer choices fit better on laptop screens.
-- Redirects to Final Results when the shared session reaches `finished` or `final_results`.
-
-Risks:
-
-- `session_players.total_score` is stale/cache data and should not drive final scoring.
-- `pointsPerQuestion` is route-state-based.
-- Several hook dependency warnings remain.
-
-### RoundResults
-
-File: `src/pages/student/RoundResults.jsx`
-
-Observations:
-
-- Marks `round_results_seen_at`.
-- Polls players/responses for readiness.
-- Redirects to Final Results if shared session is final.
-
-Risks:
-
-- Uses `total_score` in student status display.
-- Sorts round results by `points_awarded`.
-- Student client can update session to `finished`.
-
-### WaitingForOthers
-
-File: `src/pages/student/WaitingForOthers.jsx`
-
-Observations:
-
-- Loads session, student count, and current round response count.
-- Redirects to Round Results or Final Results on session status changes.
-- Layout was compacted so the waiting status, progress, round, game code, and tip panels fit better on laptop screens.
-
-Risks:
-
-- Response subscription filter uses route `sessionId`; missing route state can break realtime answer count.
-
-### FinalResults
-
-File: `src/pages/student/FinalResults.jsx`
-
-Observations:
-
-- Fetches session, players, and responses.
+- Owns live quiz control, phase changes, timers, rankings, End Quiz, and final navigation.
 - Uses shared leaderboard helper.
+- End Quiz sync with student final redirects is implemented.
+- Remaining hook warnings are active.
+- Risk: multiple realtime/polling effects plus auto-finish logic make this page fragile.
 
-Risks:
+`src/pages/instructor/InstructorFinalResults.jsx`
 
-- Question summary still matches `player_id === studentName` only.
-- Missing route state on refresh can lose `studentName`; final page can load session data but cannot identify the current user.
+- Questions Analysis view.
+- Score Distribution navigation is present.
+- Recent `gameCode` hook dependency warning is fixed.
 
-## 8. Instructor Flow Review
+`src/pages/instructor/InstructorScoreDistribution.jsx`
 
-### DashboardOfficial
+- Score distribution and most-incorrect-question analytics.
+- Back button to Questions Analysis is implemented.
+- Risk: question analytics depend on response `question_id` matching question-bank IDs.
 
-File: `src/pages/instructor/DashboardOfficial.jsx`
+## 8. Supabase and Data Review
 
-Observations:
+Current migrations define:
 
-- Handles auth/session creation, AI question generation, saved banks, manual questions, and navigation.
-- Very large file with many responsibilities.
-
-Risks:
-
-- Many unused variables and dead functions.
-- localStorage is used heavily.
-- Error handling is verbose but not centralized.
-
-### SessionOfficial
-
-File: `src/pages/instructor/SessionOfficial.jsx`
-
-Observations:
-
-- Prepares session and starts live quiz.
-- Writes session config to localStorage.
-- Updates sessions with `status: active`, question info, and `current_round`.
-
-Risks:
-
-- Unused helper `getStudentJoinedTime`.
-- localStorage fallback can conflict with fresh session state.
-
-### questions-preview
-
-File: `src/pages/instructor/questions-preview.jsx`
-
-Observations:
-
-- Edits generated/manual questions.
-- Saves question banks in session/localStorage.
-
-Risks:
-
-- localStorage priority is documented, but still a state consistency risk.
-
-### InstructorLiveQuiz
-
-File: `src/pages/instructor/InstructorLiveQuiz.jsx`
-
-Observations:
-
-- Controls live quiz, session status, round endings, next round, final results.
-- Uses realtime responses and polling.
-- Live rankings now use shared helper.
-- End Quiz writes the shared session status to `finished`, allowing student session listeners to navigate to Final Results.
-
-Risks:
-
-- File has many unused variables/functions.
-- Hook dependency warnings remain.
-- Old `studentScores` still uses `points_awarded` but is unused.
-- Automatic progression and student-driven `RoundResults` finalization overlap.
-
-### InstructorFinalResults
-
-File: `src/pages/instructor/InstructorFinalResults.jsx`
-
-Observations:
-
-- Shows question analytics, response distribution, correct answer percentage, average time.
-
-Risks:
-
-- Uses question ID matching; if ID formats diverge, analytics can be empty.
-- Has hook dependency warning for `gameCode`.
-
-### InstructorScoreDistribution
-
-File: `src/pages/instructor/InstructorScoreDistribution.jsx`
-
-Observations:
-
-- Shows summary cards, dynamic score distribution chart, student rankings, and most missed question.
-- Uses shared helper for ranking.
-
-Risks:
-
-- Bucket correctness depends on helper max score correctness.
-- The "Most Missed Question" card uses `is_correct`, which is good, but answer text resolution can fail if question bank does not include the question ID.
-
-## 9. Supabase and Data Review
-
-Known schema from migrations:
-
-- `sessions.status`: `waiting`, `active`, `round_results`, `finished`
+- `sessions.status`
 - `sessions.current_question_id`
 - `sessions.current_question_index`
 - `sessions.current_difficulty`
@@ -723,310 +323,330 @@ Known schema from migrations:
 - `responses.is_correct`
 - `responses.points_awarded`
 - `responses.answered_at`
+- `responses.created_at`
 - `responses.time_taken_seconds`
+- `responses_unique_player_question`
 
-Data model gaps:
+Used by code but not fully represented in the current migrations:
 
-- No migration for `sessions.questions_by_difficulty`, though code uses it heavily.
-- No migration for `sessions.question_count`, though code uses it heavily.
-- No migration for `sessions.time_per_question`, though code uses it heavily.
-- No migration for `session_players`, though code uses it heavily.
-- No migration for `responses.round_results_seen_at`, though `RoundResults.jsx` updates it.
-- No migration for session-level `points_per_question`.
-- No `responses.difficulty` or `responses.points_possible`.
+- `session_players`
+- `sessions.questions_by_difficulty`
+- `sessions.question_count`
+- `sessions.time_per_question`
+- `sessions.current_phase`
+- `responses.round_results_seen_at`
+- `responses.difficulty`
+- `responses.points_possible`
 
-Recommended data additions:
+Duplicate response status:
 
-- Add `responses.difficulty`.
-- Add `responses.points_possible`.
-- Add unique constraint on `(session_id, question_id, player_id)` if not already present.
-- Add full documented migration for `sessions.question_count`, `sessions.time_per_question`, `sessions.questions_by_difficulty`, `session_players`, and `responses.round_results_seen_at`.
+- Checked query:
+  `SELECT session_id, question_id, player_id, COUNT(*) FROM responses GROUP BY session_id, question_id, player_id HAVING COUNT(*) > 1;`
+- Reported result: no duplicate rows found.
+- Migration added: `supabase/migrations/20260514190000_add_unique_response_constraint.sql`.
+- Constraint name: `responses_unique_player_question`.
 
-## 10. Score Distribution Review
+RLS risks:
+
+- `supabase-rls-policies.sql` only allows anyone to view sessions with `status IN ('active', 'waiting')`; current student flow also needs `choosing_difficulty`, `round_results`, and `finished`.
+- Response insert policy in `20240426060000_add_quiz_flow.sql` still assumes `responses.player_id` is a student display name.
+- Student updates to `sessions` should be tightly restricted or moved server-side.
+
+## 9. Score Distribution Review
+
+File: `src/pages/instructor/InstructorScoreDistribution.jsx`
+
+Current strengths:
+
+- Uses `calculateLeaderboard(...)`.
+- Uses `getScoreDistributionBuckets(...)`.
+- Shows average, highest, lowest, ranked students, and Most Incorrect Question.
+- Back to Questions Analysis passes `sessionId`, `gameCode`, `students`, `responses`, `questionsByDifficulty`, `questionCount`, and `session`.
+
+Remaining risks:
+
+- `maxPossibleScore` can be approximate without `points_possible`.
+- Bucket labels can look odd for small quizzes because ranges are mechanical.
+- Most Incorrect Question only works well when response question IDs match the stored question-bank IDs.
+- Button label source contains mojibake before `Back to Questions Analysis`.
+
+## 10. AI Question Generation Review
+
+File: `api/generate-questions.js`
+
+Supported uploads:
+
+- PDF
+- TXT
+- CSV
+- JSON
+- MD
+- DOCX
+- PPTX
 
 Current implementation:
 
-- `InstructorScoreDistribution.jsx` uses `calculateLeaderboard`.
-- Summary cards use ranked scores.
-- Buckets use `getScoreDistributionBuckets`.
+- PDF uses `pdf-parse`.
+- Text files are decoded as UTF-8.
+- DOCX/PPTX are parsed as Office Open XML zip containers using Node `zlib` inflation.
+- DOCX extraction reads Word XML entries such as document/header/footer/footnote/endnote files.
+- PPTX extraction reads slide XML entries in slide-number order.
+- Extracted text is passed into the same AI generation prompt path as PDF/text input.
 
-Good:
+Limitations:
 
-- No direct use of `session_players.total_score` for final ranking.
-- No fixed 1000 bucket scale after recent changes.
+- No OCR for scanned PDFs or image-only Office files.
+- Does not extract text from images, charts, SmartArt, embedded media, speaker notes, comments, or legacy binary `.doc`/`.ppt`.
+- Plain-text extraction does not preserve formatting.
+- No explicit upload size/rate limit is visible in this API route.
+- Uses OpenRouter models; free model availability and reliability can vary.
 
-Remaining concern:
+Fixed lint/API issues:
 
-- Dynamic bucket max depends on `maxPossibleScore` from helper.
-- If helper's points-per-question inference is wrong, bucket ranges are wrong.
-- For difficulty-based scoring, the distribution max might be better derived from known selected-question points or from total possible points per played round.
+- `api/**/*.js` is treated as Node by ESLint.
+- `process`/`Buffer` undefined errors no longer appear.
+- `api/generate-questions.js` currently has no lint errors or warnings in the full lint output.
 
 ## 11. Routing and Navigation Issues
 
-Major navigation dependencies:
+Routes are defined in `src/App.jsx`.
 
-- Student pages often require `studentName`, `gameCode`, and/or `sessionId` in route state.
-- Refreshing pages can lose route state.
-- Some pages can recover from Supabase by `sessionId` or `gameCode`; others cannot.
+Current improvements:
 
-Risks:
+- End Quiz writes shared final status.
+- Lobby, Difficulty, Question, WaitingForOthers, and RoundResults respond to final status.
+- Score Distribution back navigation to Questions Analysis works.
 
-- Refreshing Final Results with no route state can load session data but cannot know which student to highlight.
-- Lobby hook rule violations can cause unstable navigation behavior.
-- Multiple mechanisms can advance quiz state: instructor polling, student difficulty selection, student round result finalization.
+Remaining concerns:
 
-Recommendation:
-
-- Store a non-secret student identity/session membership key in localStorage and validate against Supabase.
-- Make session phase transitions server/instructor-owned where possible.
-- Keep students as listeners, not writers, for global session phases.
+- Most student pages still depend on route state for `studentName`, `gameCode`, `sessionId`, and `playerId`.
+- localStorage recovery is partial and inconsistent across pages.
+- `WaitingForOthers.jsx` does not carry `playerId` through redirects.
+- Several clients can still drive global phase transitions:
+  - Instructor Live Quiz.
+  - Student Difficulty.
+  - Student Round Results.
+- `/student/result` and `/student/leaderboard`-style older pages should be reviewed against the current flow before being kept long term.
 
 ## 12. UI / UX Issues
 
-Strengths:
+Current strengths:
 
-- Pages are visually polished and game-themed.
-- Student Final Results has a clear leaderboard and summary.
-- Instructor Score Distribution has useful summary cards and "Most Incorrect Question".
+- Lobby, Question, and WaitingForOthers have compact layout changes.
+- Student flow has a consistent racing/game visual style.
+- Score Distribution provides practical instructor analytics.
 
 Issues:
 
-- Some strings show mojibake/encoding artifacts in source/output, such as corrupted symbols.
-- Some files are very large and hard to maintain.
-- Round Results still shows rankings based on per-round `points_awarded`, while final pages use shared helper. This can look inconsistent if not labeled clearly.
-- Loading/error states are inconsistent across pages.
-- Refresh recovery is partial.
-- Question, WaitingForOthers, and Lobby were compacted to reduce laptop-screen scrolling while keeping the same visual style. Very large player counts can still require scrolling, but the Lobby now uses denser spacing and a two-column md+ layout for the main waiting/player content.
+- Mojibake/encoding artifacts are widespread, including `Lobby.jsx`, `Difficulty.jsx`, `Question.jsx`, `RoundResults.jsx`, `FinalResults.jsx`, and `InstructorScoreDistribution.jsx`.
+- Decorative background content is very large in several pages and makes files difficult to maintain.
+- Some pages may still feel crowded on smaller laptop screens.
+- Round Results mixes round-only result data with total-score status; labels should be checked manually.
+- Error/loading states are inconsistent.
+- Duplicate-name blocking improves clarity but may surprise students who expect same first names to be allowed.
 
 ## 13. Code Quality Issues
 
-High-level issues:
+Active quality concerns:
 
-- Several files have many responsibilities:
-  - `DashboardOfficial.jsx`
-  - `InstructorLiveQuiz.jsx`
-  - `Question.jsx`
-  - `RoundResults.jsx`
-- Many unused variables/functions.
-- React hook dependency warnings in key flow files.
-- Conditional hooks in `Lobby.jsx`.
-- Legacy/original instructor backup files were removed from the project root after confirming they were unused.
-- Encoding issues may still exist in some UI strings.
+- `src/pages/instructor/DashboardOfficial.jsx` is very large and has many unused states/functions.
+- `src/pages/instructor/InstructorLiveQuiz.jsx` mixes live control, timers, polling, realtime, ranking, and navigation.
+- `src/pages/student/Question.jsx` has several responsibilities and 4 active hook warnings.
+- `src/pages/student/RoundResults.jsx` mixes readiness tracking, countdown, finalization, leaderboard, and UI.
+- `src/lib/supabase.js` has unused parameters and a no-op `updateSessionQuestions(...)`.
+- `clear_loop.js` and `clear_session.js` remain in the project root and appear to be ad hoc cleanup/debug scripts.
+- `public/vite.svg` and `src/assets/react.svg` remain from the Vite starter and appear unused.
+- `functions/` remains even though the current AI route is `api/generate-questions.js`; confirm whether Firebase Functions are still deployed.
 
-Recommended structure:
+Already fixed and no longer active:
 
-- Move quiz state transition logic into helpers/services.
-- Move leaderboard/scoring into tested utility functions.
-- Add a `src/utils/sessionFlow.js`.
-- Add a `src/utils/question.js` for question ID/text/correct-answer normalization.
-- Add tests for `calculateLeaderboard`.
+- Lobby hook-rule issue.
+- Node globals lint errors in API/Vite files.
+- `SessionOfficial.jsx` unused helper and fallback dependency warning.
+- `Difficulty.jsx` `handleDifficultyTimeout` dependency warning.
+- `InstructorFinalResults.jsx` `gameCode` dependency warning.
+- `api/generate-questions.js` unused-variable errors.
+- Legacy original instructor files.
 
 ## 14. Security and Environment Review
 
-Environment variables:
+Environment variables used:
 
-- Frontend requires:
-  - `VITE_SUPABASE_URL`
-  - `VITE_SUPABASE_ANON_KEY`
-- API route requires:
-  - `SUPABASE_SERVICE_ROLE_KEY`
-  - `OPENROUTER_API_KEY`
-  - `APP_URL` optional
+- Frontend: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+- API/server: `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, optional `SUPABASE_URL`, optional `APP_URL`
 
 Risks:
 
-- `api/generate-questions.js` uses `SUPABASE_SERVICE_ROLE_KEY`; it must never be exposed to the client.
-- API route logs whether sensitive env vars are set. It does not print values, which is good.
-- ESLint does not configure Node globals for `api/**/*.js`, so `process` and `Buffer` are lint errors.
-- RLS policies shown are incomplete for the student flow and may either block required actions or require overly permissive policies elsewhere.
-- Client-side student code updates global session state (`Difficulty.jsx`, `RoundResults.jsx`). That is risky if RLS allows broad update access.
-
-Recommended security improvements:
-
-- Define exact RLS policies for students:
-  - join by game code
-  - insert own response
-  - read session phases needed for their session
-  - never update global session state except controlled fields, if at all
-- Move phase updates to instructor/server authority.
-- Add rate limiting / file size limits for AI route.
+- `.env` exists locally; ensure it is never committed and does not contain production secrets in source control.
+- `api/generate-questions.js` uses Supabase service role and must remain server-only.
+- Upload generation endpoint lacks visible rate limiting and upload size enforcement.
+- Client-side session status updates remain a security risk if RLS permits them broadly.
+- Current response RLS policies may not match stable `session_players.id` player identity.
+- Duplicate display-name blocking is client-side; a database-backed normalized uniqueness rule would be stronger.
 
 ## 15. Build and Lint Status
 
-### `npm run build`
+`npm run build`
 
-Status: Passed.
-
-Output summary:
-
+- First sandboxed run failed with:
+  - `Cannot read directory "../../../..": Access is denied.`
+  - `Could not resolve "...\\quiz-play\\vite.config.js"`
+- Approved rerun outside the sandbox passed.
 - Vite transformed 102 modules.
-- Build completed successfully.
-- Warning: bundle chunk is larger than 500 kB.
+- Output:
+  - `dist/index.html`
+  - `dist/assets/index-CO7YIPBv.css`
+  - `dist/assets/index-Dq_jbaTt.js`
+- Warning remains: some chunks are larger than 500 kB after minification.
 
-### `npm run lint`
+`npm run lint`
 
-Status: Failed.
+- Status: failed.
+- Current total: 25 problems.
+- Current errors: 16.
+- Current warnings: 9.
 
-Post-removal total: 45 problems, 33 errors, 12 warnings.
-
-Recent update:
-
-- Removed `original_InstructorLiveQuiz.jsx` and `original_InstructorLiveQuiz_utf8.jsx` after confirming they were unused.
-- The legacy backup parsing/unused-variable/hook-dependency failures no longer appear in `npm run lint`.
-
-Grouped errors/warnings:
-
-- `api/generate-questions.js`
-  - `process` not defined.
-  - `Buffer` not defined.
-  - Unused variables: `error`, `innerError`, `requiredCount`, `buildGeminiParts`, `fileContent`, `bodySessionId`.
-  - Likely cause: ESLint config treats `api/**/*.js` as browser code instead of Node/server code; some unused code is real cleanup work.
-
-- `original_InstructorLiveQuiz.jsx`
-  - Removed after confirming it was unused.
-  - This eliminates the parsing error from lint.
-
-- `original_InstructorLiveQuiz_utf8.jsx`
-  - Removed after confirming it was unused.
-  - This eliminates its unused-variable and hook-dependency lint failures.
+Active lint errors grouped by file:
 
 - `src/lib/supabase.js`
-  - Unused destructured `id` in `createSession`.
-  - Unused parameters in `updateSessionQuestions`.
-  - Pre-existing utility cleanup.
+  - `46:11` unused `id`.
+  - `50:46` unused `gameCode`.
+  - `50:56` unused `questionsByDifficulty`.
 
 - `src/pages/instructor/DashboardOfficial.jsx`
-  - Multiple unused state variables and functions.
-  - Pre-existing code quality issue.
+  - `21:10` unused `fileContent`.
+  - `22:10` unused `fileMimeType`.
+  - `23:10` unused `uploadedFileId`.
+  - `24:10` unused `isReadingFile`.
+  - `38:10` unused `selectedSession`.
+  - `38:27` unused `setSelectedSession`.
+  - `258:18` unused `deleteSessionRecord`.
+  - `289:9` unused `deleteSelectedSessions`.
+  - `331:9` unused `deleteSelectedBanks`.
+  - `478:18` unused `handleCreateManualSession`.
+  - `562:11` unused `fromUploadFile`.
+  - `824:47` unused `difficulty`.
+  - `844:9` unused `fromBankOnly`.
 
-- `src/pages/instructor/InstructorFinalResults.jsx`
-  - Hook dependency warning for `gameCode`.
+Active lint warnings grouped by file:
 
 - `src/pages/instructor/InstructorLiveQuiz.jsx`
-  - Hook dependency warnings only after recent unused-variable suppression.
-  - Existing warnings should be reviewed carefully before changing because effects drive quiz flow.
-
-- `src/pages/instructor/SessionOfficial.jsx`
-  - Hook dependency warning.
-  - Unused `getStudentJoinedTime`.
-
-- `src/pages/student/Difficulty.jsx`
-  - Hook dependency warning.
+  - `12:9` `questionsByDifficulty` logical expression changes dependencies for `useMemo`.
+  - `12:9` `questionsByDifficulty` logical expression changes dependencies for `useEffect`.
+  - `212:6` missing dependency `questionsByDifficulty`.
+  - `605:6` missing dependency `endRound`.
+  - `629:6` missing dependency `nextRound`.
 
 - `src/pages/student/Question.jsx`
-  - Hook dependency warnings.
+  - `188:6` missing dependency `currentQuestionId`.
+  - `271:6` missing dependency `sessionData.questionsByDifficulty`.
+  - `330:6` missing dependency `handleTimeout`.
+  - `352:6` missing dependency `checkIfAlreadyAnswered`.
 
-- `vite.config.js`
-  - `process` not defined.
-  - Unused `err`.
-  - Cause: ESLint config does not mark Vite config as Node environment.
+Issues already fixed and no longer appearing:
+
+- No `process` or `Buffer` undefined errors from `api/generate-questions.js`.
+- No active lint errors from `vite.config.js`.
+- No active lint errors or warnings from `api/generate-questions.js`.
+- No active lint errors or warnings from `src/pages/student/JoinGame.jsx`.
+- No active lint errors or warnings from `src/pages/student/Difficulty.jsx`.
+- No active lint errors or warnings from `src/pages/student/Lobby.jsx`.
+- No active lint errors or warnings from `src/pages/instructor/SessionOfficial.jsx`.
+- No active lint errors or warnings from `src/pages/instructor/InstructorFinalResults.jsx`.
+- No legacy `original_InstructorLiveQuiz*` lint/parsing errors.
 
 ## 16. Recommended Fix Plan
 
-Priority 1: Correct final scoring for difficulty-based points.
+1. Align Supabase schema and RLS with current code.
+   - Add migrations for missing fields/tables used by the app.
+   - Update response insert policy to allow `responses.player_id = session_players.id`.
+   - Apply and verify `responses_unique_player_question` in the target Supabase project.
 
-- Change `calculateLeaderboard` to sum correct `responses.points_awarded`.
-- Keep `correctAnswers` from `is_correct`.
-- Keep `accuracy` from `correctAnswers / totalQuestions`.
-- Add tests for mixed difficulty examples.
+2. Move global session authority away from student clients.
+   - Remove or restrict `markSessionFinished(...)` from `RoundResults.jsx`.
+   - Restrict student updates to `sessions.status` unless intentionally allowed.
+   - Prefer instructor/server-controlled phase transitions.
 
-Priority 2: Fix React hook rule violations in `Lobby.jsx`.
+3. Persist possible scoring metadata.
+   - Add and write `responses.difficulty`.
+   - Add and write `responses.points_possible`.
+   - Keep `responses.points_awarded` as the score source.
 
-- Move all hooks before early returns.
-- Ensure no conditional hook calls.
+4. Finish player identity propagation.
+   - Add `playerId`/`sessionPlayerId` to `WaitingForOthers.jsx` redirects.
+   - Use player ID for timer/localStorage keys consistently.
+   - Add a database-backed duplicate display-name guard if schema changes are allowed.
 
-Priority 3: Clean lint scope/config.
+5. Clean active lint.
+   - Remove or use unused DashboardOfficial/supabase variables.
+   - Fix `InstructorLiveQuiz.jsx` hook warnings carefully.
+   - Fix `Question.jsx` hook warnings carefully.
 
-- Add Node globals for:
-  - `api/**/*.js`
-  - `vite.config.js`
-- Exclude legacy backup files or move them outside lint scope.
-
-Priority 4: Formalize Supabase schema.
-
-- Add migrations for fields used by code but absent from migrations.
-- Add unique constraints and indexes.
-- Add `responses.difficulty` and `responses.points_possible`.
-
-Priority 5: Clarify authority over session transitions.
-
-- Students should not finalize global sessions unless explicitly intended.
-- Prefer instructor/server state updates.
-- Recent update: instructor End Quiz now finalizes via shared `sessions.status = "finished"` so student pages can react consistently.
-- Next step: move any remaining student-owned finalization in `RoundResults.jsx` to instructor/server-owned logic.
-
-Priority 6: Reduce localStorage dependence.
-
-- Keep localStorage for cache/timer resilience.
-- Never use it for authoritative quiz progress, score, or final navigation.
+6. Clean UI text encoding and old files.
+   - Replace mojibake with valid text/icons.
+   - Review `Result.jsx`, `Leaderboard.jsx`, `clear_loop.js`, `clear_session.js`, `functions/`, and starter assets.
 
 ## 17. Manual Test Cases
 
-### Scoring
+Scoring:
 
-1. Five questions, all worth 300:
-   - 5/5 -> 1500
-   - 4/5 -> 1200
-   - 3/5 -> 900
-   - 2/5 -> 600
-   - 1/5 -> 300
-   - 0/5 -> 0
+1. Easy correct answer produces `10` points.
+2. Medium correct answer produces `25` points.
+3. Hard correct answer produces `50` points.
+4. Easy + Hard correct answers produce `60`.
+5. Easy + Medium + Hard correct answers produce `85`.
+6. Incorrect answer writes `points_awarded = 0`.
+7. Student Final Results, Instructor Live Rankings, and Score Distribution show the same score/order.
 
-2. Mixed difficulty scoring:
-   - Student answers one easy and one hard correctly.
-   - Expected score: 100 + 300 = 400.
-   - This is the key test likely to expose current helper risk.
+Player identity:
 
-3. All students view Final Results from different devices:
-   - Same scores.
-   - Same order.
-   - Only current viewer row has "You".
+8. Student joins and `session_players.id` is stored as `playerId`/`sessionPlayerId`.
+9. Answer submission writes `responses.player_id = session_players.id`.
+10. Same browser can rejoin the same game/name with stored player ID.
+11. A new browser joining as `Ahmed`, ` ahmed `, or `AHMED` when that name exists gets the clear duplicate-name error.
+12. "You" highlighting follows `playerId`.
+13. Old sessions where `responses.player_id = studentName` still display using fallback.
 
-### Navigation
+Final flow:
 
-4. Five students finish last question:
-   - All land on Round Results.
-   - Shared session becomes `finished`.
-   - All navigate to Final Results.
+14. Instructor clicks End Quiz while students are in Lobby; students reach Final Results.
+15. Instructor clicks End Quiz while students are in Difficulty; students immediately reach Final Results without selecting difficulty.
+16. Instructor clicks End Quiz while students are in Question; students reach Final Results.
+17. Instructor clicks End Quiz while students are in WaitingForOthers; students reach Final Results.
+18. Instructor clicks End Quiz while students are in RoundResults; students reach Final Results.
 
-5. Refresh on Round Results after session is finished:
-   - Student redirects to Final Results.
+Score Distribution:
 
-6. Refresh on WaitingForOthers after session is finished:
-   - Student redirects to Final Results.
+19. Score Distribution uses the same rankings as Final Results.
+20. Back to Questions Analysis returns to `InstructorFinalResults.jsx` with session state.
+21. Most Incorrect Question works when question IDs match.
+22. Score buckets remain reasonable for short and long quizzes.
 
-### Instructor views
+AI generation:
 
-7. Instructor Score Distribution:
-   - Summary cards match Final Results leaderboard.
-   - Chart buckets match actual score ranges.
+23. Upload PDF and generate questions.
+24. Upload TXT, CSV, JSON, and MD and verify existing support.
+25. Upload DOCX with headings/paragraphs/bullets and verify text-based generation.
+26. Upload PPTX with slide titles/bullets/text boxes and verify slide text extraction.
+27. Upload image-only DOCX/PPTX and expect the no-readable-text Office error.
+28. Upload unsupported file and expect the all-format unsupported-file message.
 
-8. Instructor Live Quiz:
-   - Live rankings match shared helper output.
+Data/RLS:
 
-### Data integrity
-
-9. Duplicate student names:
-   - Verify whether rows collapse or highlight incorrectly.
-
-10. Missing route state:
-   - Direct open Final Results with only `sessionId`.
-   - Verify data loads and UI handles missing student identity gracefully.
+29. Apply the unique response migration and verify duplicate inserts/upserts do not create duplicate rows.
+30. Verify response insert RLS works with `session_players.id`.
+31. Verify students can read session status in `waiting`, `choosing_difficulty`, `active`, `round_results`, and `finished`.
+32. Verify students cannot arbitrarily finish sessions unless that is intentionally allowed.
 
 ## 18. Quick Wins
 
-1. Fix `calculateLeaderboard` to sum `points_awarded` for correct responses.
-2. Removed unused legacy files `original_InstructorLiveQuiz.jsx` and `original_InstructorLiveQuiz_utf8.jsx`.
-3. Next recommended fix: add ESLint Node globals for `api/**/*.js` and `vite.config.js`.
-4. Fix conditional hooks in `Lobby.jsx`.
-5. Add migration for `responses.round_results_seen_at`.
-6. Add migration for `responses.difficulty` and `responses.points_possible`.
-7. Remove or clearly label stale `session_players.total_score` displays.
-8. Add unit tests for `src/utils/leaderboard.js`.
-9. Add a small session-state helper so every student page checks final/round/active status consistently.
-10. Document which fields are authoritative:
-    - Score: `responses`
-    - Correctness: `responses.is_correct`
-    - Phase: `sessions.status`
-    - Question count: `sessions.question_count`
-    - Timer: `sessions.current_question_ends_at`
+1. Update response RLS to match stable `session_players.id` identity.
+2. Add missing migrations for `session_players`, `questions_by_difficulty`, `question_count`, `time_per_question`, `current_phase`, and `round_results_seen_at`.
+3. Add `responses.difficulty` and `responses.points_possible`.
+4. Preserve `playerId` in `WaitingForOthers.jsx` navigation state.
+5. Remove or document `clear_loop.js` and `clear_session.js`.
+6. Remove unused Vite starter assets if confirmed unused: `public/vite.svg`, `src/assets/react.svg`.
+7. Fix the 16 active unused-variable lint errors.
+8. Fix the 9 active hook dependency warnings with behavior-preserving changes.
+9. Add unit tests for `calculateLeaderboard(...)` covering mixed difficulty scores and duplicate display names.
+10. Add small fixtures for AI extraction: TXT, DOCX, PPTX, unsupported file, and no-readable-text Office file.

@@ -3,6 +3,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { getDifficultyPoints } from "../../utils/leaderboard";
 
+function isFinalSessionStatus(session) {
+  return session?.status === "finished" || session?.current_phase === "final_results";
+}
+
 function Difficulty() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -10,7 +14,14 @@ function Difficulty() {
   const studentName = state?.studentName ?? "";
   const gameCode = state?.gameCode ?? "";
   const sessionId = state?.sessionId ?? "";
-  const playerId = studentName;
+  const savedSessionRaw = gameCode ? localStorage.getItem(`quizplay_session_${gameCode}`) : null;
+  const savedSession = savedSessionRaw ? JSON.parse(savedSessionRaw) : null;
+  const playerId =
+    state?.playerId ||
+    state?.sessionPlayerId ||
+    savedSession?.playerId ||
+    savedSession?.sessionPlayerId ||
+    studentName;
   const questionsByDifficulty = state?.questionsByDifficulty || {};
 
   const hasSessionData = Boolean(studentName && gameCode);
@@ -20,6 +31,8 @@ function Difficulty() {
   const [roundTimerStartedAt, setRoundTimerStartedAt] = useState(null);
   const [roundTimerDuration, setRoundTimerDuration] = useState(0);
   const difficultyTimeoutHandledRef = useRef(false);
+  const handleDifficultyTimeoutRef = useRef(null);
+  const finalNavigationDoneRef = useRef(false);
 
   const [session, setSession] = useState(null);
 
@@ -110,7 +123,7 @@ function Difficulty() {
         // Handle timeout if no difficulty selected and not already handled
         if (!difficultyTimeoutHandledRef.current) {
           difficultyTimeoutHandledRef.current = true;
-          handleDifficultyTimeout();
+          handleDifficultyTimeoutRef.current?.();
         }
       }
     }, 1000);
@@ -148,10 +161,10 @@ function Difficulty() {
         .from("session_players")
         .select("id, student_name")
         .eq("session_id", targetSessionId)
-        .eq("student_name", studentName)
+        .eq(playerId && playerId !== studentName ? "id" : "student_name", playerId && playerId !== studentName ? playerId : studentName)
         .maybeSingle();
 
-      const resolvedPlayerId = playerRow?.student_name || studentName || playerId;
+      const resolvedPlayerId = playerRow?.id || playerId || studentName;
 
       // Determine round number
       const currentRound = Number(state?.currentRound) || 1;
@@ -180,6 +193,8 @@ function Difficulty() {
           state: {
             ...state,
             studentName,
+            playerId: resolvedPlayerId,
+            sessionPlayerId: resolvedPlayerId,
             gameCode,
             sessionId: targetSessionId,
             currentRound,
@@ -247,6 +262,8 @@ function Difficulty() {
         state: {
           ...state,
           studentName,
+          playerId: resolvedPlayerId,
+          sessionPlayerId: resolvedPlayerId,
           gameCode,
           sessionId: targetSessionId,
           currentRound,
@@ -274,6 +291,8 @@ function Difficulty() {
         state: {
           ...state,
           studentName,
+          playerId,
+          sessionPlayerId: playerId,
           gameCode,
           sessionId: state?.sessionId || session?.id || sessionId,
           currentRound: Number(state?.currentRound) || 1,
@@ -289,17 +308,81 @@ function Difficulty() {
   };
 
   useEffect(() => {
-    if (!hasSessionData || !sessionId) return;
-    const fetchSession = async () => {
-      const { data } = await supabase
-        .from("sessions")
-        .select("*")
-        .eq("id", sessionId)
-        .maybeSingle();
-      if (data) setSession(data);
+    handleDifficultyTimeoutRef.current = handleDifficultyTimeout;
+  });
+
+  useEffect(() => {
+    if (!hasSessionData || (!sessionId && !gameCode)) return;
+
+    let isMounted = true;
+
+    const goToFinalResults = (finalSession) => {
+      if (finalNavigationDoneRef.current) return;
+      finalNavigationDoneRef.current = true;
+
+      navigate("/student/final-results", {
+        state: {
+          studentName,
+          playerId,
+          sessionPlayerId: playerId,
+          gameCode: finalSession?.game_code || gameCode,
+          sessionId: finalSession?.id || sessionId,
+        },
+        replace: true,
+      });
     };
-    fetchSession();
-  }, [hasSessionData, sessionId]);
+
+    const loadSession = async () => {
+      const query = supabase.from("sessions").select("*");
+      const { data } = sessionId
+        ? await query.eq("id", sessionId).maybeSingle()
+        : await query.eq("game_code", gameCode).maybeSingle();
+
+      if (!isMounted || !data) return;
+
+      setSession(data);
+      if (isFinalSessionStatus(data)) {
+        goToFinalResults(data);
+      }
+    };
+
+    loadSession();
+
+    const channelName = sessionId
+      ? `difficulty-session-${sessionId}`
+      : `difficulty-game-${gameCode}`;
+    const filter = sessionId ? `id=eq.${sessionId}` : `game_code=eq.${gameCode}`;
+
+    const subscription = supabase
+      .channel(channelName)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "sessions",
+          filter,
+        },
+        (payload) => {
+          const updatedSession = payload.new;
+          if (!updatedSession) return;
+
+          setSession((prev) => ({ ...prev, ...updatedSession }));
+          if (isFinalSessionStatus(updatedSession)) {
+            goToFinalResults(updatedSession);
+          }
+        }
+      )
+      .subscribe();
+
+    const pollingInterval = setInterval(loadSession, 2000);
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(subscription);
+      clearInterval(pollingInterval);
+    };
+  }, [gameCode, hasSessionData, navigate, sessionId, studentName, playerId]);
 
   useEffect(() => {
     if (!hasSessionData) return;

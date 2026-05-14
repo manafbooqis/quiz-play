@@ -52,7 +52,9 @@ function InstructorFinalResults() {
 
         if (sessionData) {
           setQuestionsByDifficulty(sessionData.questions_by_difficulty || {});
-          if (!gameCode) setGameCode(sessionData.game_code);
+          setGameCode((currentGameCode) =>
+            currentGameCode || sessionData.game_code || ""
+          );
           if (sessionData.question_count != null) {
             setQuizRoundCap(Number(sessionData.question_count));
           }

@@ -52,6 +52,14 @@ function Lobby() {
   const { state } = useLocation();
   const studentName = state?.studentName ?? "";
   const gameCode = state?.gameCode ?? "";
+  const savedSessionRaw = gameCode ? localStorage.getItem(`quizplay_session_${gameCode}`) : null;
+  const savedSession = savedSessionRaw ? JSON.parse(savedSessionRaw) : null;
+  const playerId =
+    state?.playerId ||
+    state?.sessionPlayerId ||
+    savedSession?.playerId ||
+    savedSession?.sessionPlayerId ||
+    "";
   const [, setSessionData] = useState(null);
   const [livePlayers, setLivePlayers] = useState(null);
 
@@ -90,6 +98,8 @@ function Lobby() {
             navigate("/student/final-results", {
               state: {
                 studentName,
+                playerId,
+                sessionPlayerId: playerId,
                 gameCode: session.game_code || gameCode,
                 sessionId: session.id,
               },
@@ -108,6 +118,8 @@ function Lobby() {
             navigate("/student/difficulty", {
               state: {
                 studentName,
+                playerId,
+                sessionPlayerId: playerId,
                 gameCode,
                 sessionId: session.id,
                 currentRound: session.current_round || 1,
@@ -150,6 +162,8 @@ function Lobby() {
           navigate("/student/final-results", {
             state: {
               studentName,
+              playerId,
+              sessionPlayerId: playerId,
               gameCode: updatedSession.game_code || gameCode,
               sessionId: updatedSession.id,
             },
@@ -172,6 +186,8 @@ function Lobby() {
           navigate("/student/difficulty", {
             state: {
               studentName,
+              playerId,
+              sessionPlayerId: playerId,
               gameCode,
               sessionId: updatedSession.id,
               currentRound: updatedSession.current_round || 1,
@@ -201,6 +217,8 @@ function Lobby() {
             navigate("/student/final-results", {
               state: {
                 studentName,
+                playerId,
+                sessionPlayerId: playerId,
                 gameCode: session.game_code || gameCode,
                 sessionId: session.id,
               },
@@ -221,6 +239,8 @@ function Lobby() {
             navigate("/student/difficulty", {
               state: {
                 studentName,
+                playerId,
+                sessionPlayerId: playerId,
                 gameCode,
                 sessionId: session.id,
                 currentRound: session.current_round || 1,
@@ -242,7 +262,7 @@ function Lobby() {
       supabase.removeChannel(subscription);
       clearInterval(pollingInterval);
     };
-  }, [gameCode, studentName, navigate]);
+  }, [gameCode, studentName, playerId, navigate]);
 
   // Poll session_players for live updates
   useEffect(() => {
@@ -297,8 +317,7 @@ function Lobby() {
   }
 
   // Read instructor config (questionCount + timePerQuestion + players)
-  const raw = localStorage.getItem(`quizplay_session_${gameCode}`);
-  const config = raw ? JSON.parse(raw) : null;
+  const config = savedSession;
 
   const totalQuestions =
     config?.questionCount ?? config?.question_count ?? 3;
@@ -652,7 +671,7 @@ function Lobby() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
                 {displayPlayers.map((p, idx) => {
                   const playerName = getStudentName(p, idx);
-                  const isCurrentUser = playerName === studentName;
+                  const isCurrentUser = playerId ? p?.id === playerId : playerName === studentName;
                   return (
                     <div
                       key={`${playerName}-${idx}`}

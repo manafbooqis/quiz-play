@@ -10,6 +10,14 @@ function FinalResults() {
   const studentName = state?.studentName ?? "";
   const initialGameCode = state?.gameCode ?? "";
   const sessionId = state?.sessionId ?? "";
+  const savedSessionRaw = initialGameCode ? localStorage.getItem(`quizplay_session_${initialGameCode}`) : null;
+  const savedSession = savedSessionRaw ? JSON.parse(savedSessionRaw) : null;
+  const playerId =
+    state?.playerId ||
+    state?.sessionPlayerId ||
+    savedSession?.playerId ||
+    savedSession?.sessionPlayerId ||
+    "";
 
   const [gameCode, setGameCode] = useState(initialGameCode);
   const [players, setPlayers] = useState([]);
@@ -114,7 +122,10 @@ function FinalResults() {
   );
 
   // This student's data
-  const myData = leaderboard.find((player) => player.name === studentName) || {
+  const myData = (
+    (playerId ? leaderboard.find((player) => player.id === playerId) : null) ||
+    leaderboard.find((player) => player.name === studentName)
+  ) || {
     score: 0,
     correct: 0,
     total: sessionQuestionCount,
@@ -128,8 +139,12 @@ function FinalResults() {
   const rank = myData.rank;
 
   // Build answersStatus from real responses for this student
-  const myResponses = responses
-    .filter((r) => r.player_id === studentName)
+  const directMyResponses = playerId
+    ? responses.filter((r) => r.player_id === playerId)
+    : [];
+  const myResponses = (directMyResponses.length > 0
+    ? directMyResponses
+    : responses.filter((r) => r.player_id === studentName))
     .sort((a, b) => {
       // Sort by answered_at first, then by created_at as fallback
       const aTime = new Date(a.answered_at || a.created_at).getTime();
@@ -445,10 +460,10 @@ function FinalResults() {
                   ) : (
                     <div className={["space-y-3 pr-1", leaderboard.length <= 5 ? "" : "max-h-[400px] overflow-y-auto"].join(" ")}>
                       {leaderboard.map((p, idx) => {
-                        const isCurrentUser = p.name === studentName;
+                        const isCurrentUser = playerId ? p.id === playerId : p.name === studentName;
                         return (
                           <div
-                            key={`${p.name}-${p.rank}`}
+                            key={`${p.id || p.name}-${p.rank}`}
                             className={[
                               "relative px-4 py-3 rounded-2xl flex items-center justify-between transition-all duration-300",
                               isCurrentUser 

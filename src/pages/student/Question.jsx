@@ -17,7 +17,17 @@ function Question() {
   const currentRound = state?.currentRound ?? 1;
   const currentQuestionId = state?.currentQuestionId ?? null;
   const currentDifficulty = state?.currentDifficulty ?? null;
-  const playerId = String(studentName ?? "").trim();
+  const savedSessionRaw = gameCode ? localStorage.getItem(`quizplay_session_${gameCode}`) : null;
+  const savedSession = savedSessionRaw ? JSON.parse(savedSessionRaw) : null;
+  const playerId = String(
+    state?.playerId ||
+      state?.sessionPlayerId ||
+      savedSession?.playerId ||
+      savedSession?.sessionPlayerId ||
+      studentName ||
+      ""
+  ).trim();
+  const legacyPlayerIds = [playerId, studentName].filter(Boolean);
   
   const [sessionData, setSessionData] = useState(null);
   // resolvedSessionId: prefer the DB-fetched session.id over state.sessionId
@@ -66,14 +76,14 @@ function Question() {
 
         if (session.status === "round_results") {
           navigate("/student/round-results", {
-            state: { studentName, gameCode, sessionId: session.id, currentRound: session.current_round }
+            state: { studentName, playerId, sessionPlayerId: playerId, gameCode, sessionId: session.id, currentRound: session.current_round }
           });
           return;
         }
 
         if (isFinalSessionStatus(session)) {
           navigate("/student/final-results", {
-            state: { studentName, gameCode: session.game_code || gameCode, sessionId: session.id },
+            state: { studentName, playerId, sessionPlayerId: playerId, gameCode: session.game_code || gameCode, sessionId: session.id },
             replace: true,
           });
           return;
@@ -81,7 +91,7 @@ function Question() {
 
         if (session.status === "waiting") {
           navigate("/student/lobby", {
-            state: { studentName, gameCode }
+            state: { studentName, playerId, sessionPlayerId: playerId, gameCode }
           });
           return;
         }
@@ -91,6 +101,8 @@ function Question() {
           navigate("/student/difficulty", {
             state: {
               studentName,
+              playerId,
+              sessionPlayerId: playerId,
               gameCode,
               sessionId: session.id,
               currentRound: session.current_round,
@@ -135,13 +147,15 @@ function Question() {
 
         if (isFinalSessionStatus(full)) {
           navigate("/student/final-results", {
-            state: { studentName, gameCode: full.game_code || gameCode, sessionId: full.id },
+            state: { studentName, playerId, sessionPlayerId: playerId, gameCode: full.game_code || gameCode, sessionId: full.id },
             replace: true,
           });
         } else if (full.status === "round_results") {
           navigate("/student/round-results", {
             state: {
               studentName,
+              playerId,
+              sessionPlayerId: playerId,
               gameCode,
               sessionId: full.id,
               currentRound: full.current_round,
@@ -149,12 +163,14 @@ function Question() {
           });
         } else if (full.status === "waiting") {
           navigate("/student/lobby", {
-            state: { studentName, gameCode },
+            state: { studentName, playerId, sessionPlayerId: playerId, gameCode },
           });
         } else if (full.status === "choosing_difficulty" && !currentQuestionId) {
           navigate("/student/difficulty", {
             state: {
               studentName,
+              playerId,
+              sessionPlayerId: playerId,
               gameCode,
               sessionId: full.id,
               currentRound: full.current_round,
@@ -172,6 +188,7 @@ function Question() {
   }, [
     gameCode,
     studentName,
+    playerId,
     sessionId,
     currentRound,
     navigate,
@@ -346,6 +363,8 @@ function Question() {
           state: {
             ...state,
             studentName,
+            playerId,
+            sessionPlayerId: playerId,
             gameCode,
             sessionId: targetSessionId,
             currentQuestionId: targetQuestionId || "",
@@ -367,10 +386,10 @@ function Question() {
         .from("session_players")
         .select("id, student_name")
         .eq("session_id", targetSessionId)
-        .eq("student_name", studentName)
+        .eq(playerId && playerId !== studentName ? "id" : "student_name", playerId && playerId !== studentName ? playerId : studentName)
         .maybeSingle();
 
-      const resolvedPlayerId = playerRow?.student_name || studentName || playerId;
+      const resolvedPlayerId = playerRow?.id || playerId || studentName;
 
       // Determine round number
       const actualRoundNumber = Number(state?.currentRound) || Number(sessionData?.current_round) || 1;
@@ -403,6 +422,8 @@ function Question() {
           state: {
             ...state,
             studentName,
+            playerId: resolvedPlayerId,
+            sessionPlayerId: resolvedPlayerId,
             gameCode,
             sessionId: targetSessionId,
             currentQuestionId: targetQuestionId || "",
@@ -425,7 +446,7 @@ function Question() {
         .select("*")
         .eq("session_id", targetSessionId)
         .eq("question_id", String(realQuestionId))
-        .eq("player_id", resolvedPlayerId)
+        .in("player_id", [resolvedPlayerId, studentName].filter(Boolean))
         .maybeSingle();
 
       console.log("[QuestionTimeoutDuplicateCheck]", {
@@ -472,6 +493,8 @@ function Question() {
         state: {
           ...state,
           studentName,
+          playerId: resolvedPlayerId,
+          sessionPlayerId: resolvedPlayerId,
           gameCode,
           sessionId: targetSessionId,
           currentQuestionId: String(realQuestionId),
@@ -503,6 +526,8 @@ function Question() {
         state: {
           ...state,
           studentName,
+          playerId,
+          sessionPlayerId: playerId,
           gameCode,
           sessionId: resolvedSessionId || sessionId,
           currentRound: safeCurrentRound,
@@ -528,7 +553,7 @@ function Question() {
         .select("*")
         .eq("session_id", targetSessionId)
         .eq("question_id", targetQuestionId)
-        .eq("player_id", playerId)
+        .in("player_id", legacyPlayerIds)
         .maybeSingle();
 
       if (existingResponse) {
@@ -550,6 +575,8 @@ function Question() {
             state: {
               ...state,
               studentName,
+              playerId,
+              sessionPlayerId: playerId,
               gameCode,
               sessionId: targetSessionId,
               currentRound: safeCurrentRound,
@@ -558,7 +585,7 @@ function Question() {
           });
         } else {
           navigate("/student/difficulty", {
-            state: { ...state, studentName, gameCode, sessionId: targetSessionId, currentRound: safeCurrentRound, questionCount: maxQuestions }
+            state: { ...state, studentName, playerId, sessionPlayerId: playerId, gameCode, sessionId: targetSessionId, currentRound: safeCurrentRound, questionCount: maxQuestions }
           });
         }
       }
@@ -611,13 +638,21 @@ function Question() {
 
       const targetQuestionId = currentQuestion.id || currentQuestionId || sessionData?.current_question_id;
       const targetSessionId = targetSessionIdPre;
+      const { data: playerRow } = await supabase
+        .from("session_players")
+        .select("id, student_name")
+        .eq("session_id", targetSessionId)
+        .eq(playerId && playerId !== studentName ? "id" : "student_name", playerId && playerId !== studentName ? playerId : studentName)
+        .maybeSingle();
+      const resolvedPlayerId = playerRow?.id || playerId || studentName;
+      const responsePlayerIds = [resolvedPlayerId, studentName].filter(Boolean);
 
       // Calculate actual round number based on student's previous responses
       const { data: existingResponses } = await supabase
         .from("responses")
         .select("round_number")
         .eq("session_id", targetSessionId)
-        .eq("player_id", playerId)
+        .in("player_id", responsePlayerIds)
         .order("answered_at", { ascending: false })
         .limit(1);
 
@@ -632,7 +667,7 @@ function Question() {
       const responsePayload = {
         session_id: targetSessionId,
         question_id: String(targetQuestionId ?? ""),
-        player_id: playerId,
+        player_id: resolvedPlayerId,
         round_number: actualRoundNumber,
         selected_answer: answerToSubmit,
         is_correct: isCorrect,
@@ -679,6 +714,8 @@ function Question() {
           state: {
             ...state,
             studentName,
+            playerId: resolvedPlayerId,
+            sessionPlayerId: resolvedPlayerId,
             gameCode,
             sessionId: targetSessionId,
             currentRound: sessionData?.current_round,
@@ -698,6 +735,8 @@ function Question() {
           state: {
             ...state,
             studentName,
+            playerId: resolvedPlayerId,
+            sessionPlayerId: resolvedPlayerId,
             gameCode,
             sessionId: targetSessionId,
             currentQuestionId: targetQuestionId,

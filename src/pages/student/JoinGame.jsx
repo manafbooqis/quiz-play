@@ -6,6 +6,10 @@ import {
   insertSessionPlayer,
 } from "../../lib/supabase";
 
+function normalizeDisplayName(name) {
+  return String(name || "").trim().toLowerCase();
+}
+
 function JoinGame() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -62,12 +66,29 @@ function JoinGame() {
         throw playerError;
       }
 
+      const playerStorageKey = `quizplay_player_${trimmedCode}_${trimmedName}`;
+      const storedPlayerId = localStorage.getItem(playerStorageKey);
       const matchingPlayer = Array.isArray(existingPlayer)
-        ? existingPlayer.find((player) => player.name === trimmedName)
+        ? existingPlayer.find((player) => player.id === storedPlayerId)
         : null;
+      let sessionPlayer = matchingPlayer || null;
 
-      if (!matchingPlayer) {
-        const { error: insertError } = await insertSessionPlayer({
+      if (!sessionPlayer) {
+        const requestedName = normalizeDisplayName(trimmedName);
+        const duplicateNamePlayer = Array.isArray(existingPlayer)
+          ? existingPlayer.find(
+              (player) =>
+                normalizeDisplayName(player.student_name || player.name) === requestedName
+            )
+          : null;
+
+        if (duplicateNamePlayer) {
+          setError("This name is already used in this game. Please choose another name.");
+          setLoading(false);
+          return;
+        }
+
+        const { data: insertedPlayer, error: insertError } = await insertSessionPlayer({
           session_id: sessionData.id, // Use actual session UUID, not game code
           student_name: trimmedName,
           joined_at: new Date().toISOString(),
@@ -76,12 +97,26 @@ function JoinGame() {
         if (insertError) {
           throw insertError;
         }
+
+        sessionPlayer = insertedPlayer;
       }
 
       const { data: updatedPlayers, error: refreshedPlayersError } = await getSessionPlayers(trimmedCode);
 
       if (refreshedPlayersError) {
         throw refreshedPlayersError;
+      }
+
+      if (!sessionPlayer?.id) {
+        sessionPlayer = Array.isArray(updatedPlayers)
+          ? updatedPlayers.find((player) => player.id === storedPlayerId) ||
+              updatedPlayers.find((player) => player.student_name === trimmedName)
+          : null;
+      }
+
+      const sessionPlayerId = sessionPlayer?.id || "";
+      if (sessionPlayerId) {
+        localStorage.setItem(playerStorageKey, sessionPlayerId);
       }
 
       localStorage.setItem(
@@ -93,6 +128,9 @@ function JoinGame() {
           questionsByDifficulty: sessionData.questions_by_difficulty ?? {},
           questionCount: sessionData.question_count,
           timePerQuestion: sessionData.time_per_question,
+          playerId: sessionPlayerId,
+          sessionPlayerId,
+          studentName: trimmedName,
         })
       );
 
@@ -100,6 +138,8 @@ function JoinGame() {
         state: {
           studentName: trimmedName,
           gameCode: trimmedCode,
+          playerId: sessionPlayerId,
+          sessionPlayerId,
         },
       });
     } catch (err) {

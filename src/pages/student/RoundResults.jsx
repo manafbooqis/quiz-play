@@ -49,6 +49,14 @@ function RoundResults() {
   const gameCode = state?.gameCode ?? "";
   const sessionId = state?.sessionId ?? "";
   const currentRound = state?.currentRound ?? 1;
+  const savedSessionRaw = gameCode ? localStorage.getItem(`quizplay_session_${gameCode}`) : null;
+  const savedSession = savedSessionRaw ? JSON.parse(savedSessionRaw) : null;
+  const playerId =
+    state?.playerId ||
+    state?.sessionPlayerId ||
+    savedSession?.playerId ||
+    savedSession?.sessionPlayerId ||
+    studentName;
   
   // Get result data from navigation state (Phase 1)
   const pointsAwarded = state?.pointsAwarded ?? 0;
@@ -80,12 +88,14 @@ function RoundResults() {
     navigate("/student/final-results", {
       state: {
         studentName,
+        playerId,
+        sessionPlayerId: playerId,
         gameCode: session?.game_code || gameCode,
         sessionId: session?.id || sessionId,
       },
       replace: true,
     });
-  }, [gameCode, navigate, sessionId, studentName]);
+  }, [gameCode, navigate, sessionId, studentName, playerId]);
 
   const markSessionFinished = useCallback(async () => {
     const targetSessionId = sessionData?.id || sessionId;
@@ -181,7 +191,7 @@ function RoundResults() {
           })
           .eq("session_id", sessionId)
           .eq("round_number", Number(currentRound))
-          .eq("player_id", studentName);
+          .in("player_id", [playerId, studentName].filter(Boolean));
 
         // Add question_id filter if available
         if (state?.currentQuestionId) {
@@ -195,13 +205,13 @@ function RoundResults() {
           console.error("[RoundResultsSeenMark] Failed to mark student seen:", error);
         } else if (!data || data.length === 0) {
           console.warn("[RoundResultsSeenMark] No response row found to update", {
-            playerId: studentName,
+            playerId,
             currentRound,
             currentQuestionId: state?.currentQuestionId
           });
         } else {
           console.log("[RoundResultsSeenMark]", {
-            playerId: studentName,
+            playerId,
             currentRound,
             currentQuestionId: state?.currentQuestionId,
             markedAt: new Date().toISOString(),
@@ -214,7 +224,7 @@ function RoundResults() {
     };
 
     markStudentSeen();
-  }, [gameCode, studentName, sessionId, currentRound, state?.currentQuestionId]);
+  }, [gameCode, studentName, playerId, sessionId, currentRound, state?.currentQuestionId]);
 
   // Polling logic for all-students sync
   useEffect(() => {
@@ -253,8 +263,8 @@ function RoundResults() {
           Number(sessionData?.question_count || questionCount || 0),
           sessionData || {}
         );
-        const scoreByName = new Map(
-          leaderboard.map((player) => [player.name, player.score])
+        const scoreById = new Map(
+          leaderboard.map((player) => [String(player.id), player.score])
         );
 
         // Determine which students have answered vs seen RoundResults
@@ -263,30 +273,33 @@ function RoundResults() {
         const seen = [];
 
         players.forEach(player => {
+          const playerKeys = [player.id, player.student_name].filter(Boolean).map(String);
           const hasResponse = responses.some(response => 
-            response.player_id === player.student_name || 
-            response.player_id === player.id
+            playerKeys.includes(String(response.player_id))
           );
           
           const hasSeenResults = responses.some(response => 
-            response.player_id === player.student_name && 
+            playerKeys.includes(String(response.player_id)) &&
             response.round_results_seen_at !== null
           );
           
           if (hasResponse) {
             answered.push({
+              playerId: player.id,
               studentName: player.student_name,
-              score: scoreByName.get(player.student_name) || 0
+              score: scoreById.get(String(player.id)) || 0
             });
           } else if (hasSeenResults) {
             seen.push({
+              playerId: player.id,
               studentName: player.student_name,
-              score: scoreByName.get(player.student_name) || 0
+              score: scoreById.get(String(player.id)) || 0
             });
           } else {
             waiting.push({
+              playerId: player.id,
               studentName: player.student_name,
-              score: scoreByName.get(player.student_name) || 0
+              score: scoreById.get(String(player.id)) || 0
             });
           }
         });
@@ -295,7 +308,13 @@ function RoundResults() {
         setWaitingStudents(waiting);
         // Calculate target time when all students are seen
         const seenResponses = responses.filter(r => r.round_results_seen_at !== null);
-        const seenPlayers = new Set(seenResponses.map(r => String(r.player_id)));
+        const seenPlayers = new Set();
+        players.forEach((player) => {
+          const playerKeys = [player.id, player.student_name].filter(Boolean).map(String);
+          if (seenResponses.some((response) => playerKeys.includes(String(response.player_id)))) {
+            seenPlayers.add(String(player.id));
+          }
+        });
         
         let latestSeenTime = null;
         if (seenResponses.length > 0) {
@@ -386,6 +405,8 @@ function RoundResults() {
         navigate("/student/difficulty", {
           state: {
             studentName,
+            playerId,
+            sessionPlayerId: playerId,
             gameCode,
             sessionId,
             currentRound: Number(currentRound) + 1,
@@ -403,6 +424,7 @@ function RoundResults() {
     questionCount,
     navigate,
     studentName,
+    playerId,
     gameCode,
     sessionId,
     state,
@@ -479,6 +501,7 @@ function RoundResults() {
 
         // Find my result
         const myResponse = processedResults.find(r => 
+          r.player_id === playerId ||
           r.player_id === studentName || 
           r.studentName === studentName
         );
@@ -492,7 +515,7 @@ function RoundResults() {
     }
 
     loadData();
-  }, [gameCode, studentName, sessionId, currentRound, navigate, goToFinalResults]);
+  }, [gameCode, studentName, playerId, sessionId, currentRound, navigate, goToFinalResults]);
 
   if (loading) {
     return (
@@ -784,12 +807,12 @@ function RoundResults() {
                     <div className="max-h-48 overflow-y-auto space-y-2">
                       {[...answeredStudents, ...waitingStudents]
                         .sort((a, b) => b.score - a.score)
-                        .filter(student => answeredStudents.some(as => as.studentName === student.studentName))
+                        .filter(student => answeredStudents.some(as => as.playerId === student.playerId))
                         .map(student => (
-                          <div key={student.studentName} className="flex justify-between p-3 rounded-xl bg-emerald-900/20 border border-emerald-800/50 backdrop-blur-sm">
-                            <span className={student.studentName === studentName ? "text-cyan-400 font-semibold" : "text-emerald-300"}>
+                          <div key={student.playerId || student.studentName} className="flex justify-between p-3 rounded-xl bg-emerald-900/20 border border-emerald-800/50 backdrop-blur-sm">
+                            <span className={(playerId ? student.playerId === playerId : student.studentName === studentName) ? "text-cyan-400 font-semibold" : "text-emerald-300"}>
                               {student.studentName}
-                              {student.studentName === studentName && " (You)"}
+                              {(playerId ? student.playerId === playerId : student.studentName === studentName) && " (You)"}
                             </span>
                             <span className="text-emerald-400 font-bold">{student.score} pts</span>
                           </div>
@@ -810,10 +833,10 @@ function RoundResults() {
                       {waitingStudents
                         .sort((a, b) => b.score - a.score)
                         .map(student => (
-                          <div key={student.studentName} className="flex justify-between p-3 rounded-xl bg-amber-900/20 border border-amber-800/50 backdrop-blur-sm">
-                            <span className={student.studentName === studentName ? "text-cyan-400 font-semibold" : "text-amber-300"}>
+                          <div key={student.playerId || student.studentName} className="flex justify-between p-3 rounded-xl bg-amber-900/20 border border-amber-800/50 backdrop-blur-sm">
+                            <span className={(playerId ? student.playerId === playerId : student.studentName === studentName) ? "text-cyan-400 font-semibold" : "text-amber-300"}>
                               {student.studentName}
-                              {student.studentName === studentName && " (You)"}
+                              {(playerId ? student.playerId === playerId : student.studentName === studentName) && " (You)"}
                             </span>
                             <span className="text-amber-400 font-bold">{student.score} pts</span>
                           </div>

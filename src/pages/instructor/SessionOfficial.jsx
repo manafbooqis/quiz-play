@@ -217,7 +217,7 @@ function SessionOfficial() {
     return () => {
       isMounted = false;
     };
-  }, [gameCode, state]);
+  }, [fallbackSession, gameCode, state]);
 
   useEffect(() => {
     if (!gameCode || sessionData?.localOnly || fallbackSession?.localOnly) {
@@ -328,15 +328,6 @@ function SessionOfficial() {
   function getStudentInitial(student, index) {
     const name = getStudentName(student, index).trim();
     return name ? name.charAt(0).toUpperCase() : "?";
-  }
-
-  function getStudentJoinedTime(student) {
-    if (!student || typeof student !== "object") {
-      return new Date().toLocaleTimeString();
-    }
-
-    const joinedValue = student.joined_at || student.joinedAt || Date.now();
-    return new Date(joinedValue).toLocaleTimeString();
   }
 
   function normalizeStudent(student, index) {
