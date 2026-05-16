@@ -16,7 +16,7 @@ AI question generation now supports PDF, TXT, CSV, JSON, MD, DOCX, and PPTX in `
 
 The remaining highest risks are:
 
-- `npm run lint` completes with 9 warnings and 0 errors; only React Hook dependency warnings remain.
+- `npm run lint` completes with 5 warnings and 0 errors; only `InstructorLiveQuiz.jsx` React Hook dependency warnings remain.
 - `src/pages/student/RoundResults.jsx` can still mark the whole session `finished` from a student client through `markSessionFinished(...)`.
 - Supabase migrations and `supabase-rls-policies.sql` do not fully match the tables/columns and identity model used by current code.
 - Existing old sessions with name-based `responses.player_id` remain best-effort only when duplicate display names existed.
@@ -56,6 +56,7 @@ Confirmed implemented:
   - Uses stable `session_players.id` for new `responses.player_id` when available.
   - Checks legacy player-name response IDs for backward compatibility.
   - Listens for final session status and routes to Final Results.
+  - Previous React Hook dependency warnings are fixed.
 
 - `src/pages/student/Lobby.jsx`
   - Previous React Hooks conditional-order issue is fixed.
@@ -238,7 +239,7 @@ Remaining issues:
 - Handles session loading, answer submission, timeout, already-answered checks, and final routing.
 - New responses use stable player ID.
 - Route state/localStorage remain central to recovery.
-- Active lint warnings remain for hook dependencies.
+- Previous hook dependency warnings for `currentQuestionId`, `sessionData.questionsByDifficulty`, `handleTimeout`, and `checkIfAlreadyAnswered` are fixed.
 
 `src/pages/student/WaitingForOthers.jsx`
 
@@ -461,7 +462,7 @@ Active quality concerns:
 
 - `src/pages/instructor/DashboardOfficial.jsx` is very large and handles many responsibilities, though its previous unused-variable lint errors are fixed.
 - `src/pages/instructor/InstructorLiveQuiz.jsx` mixes live control, timers, polling, realtime, ranking, and navigation.
-- `src/pages/student/Question.jsx` has several responsibilities and 4 active hook warnings.
+- `src/pages/student/Question.jsx` has several responsibilities, though its previous hook dependency warnings are fixed.
 - `src/pages/student/RoundResults.jsx` mixes readiness tracking, countdown, finalization, leaderboard, and UI.
 - `src/lib/supabase.js` still has a no-op `updateSessionQuestions(...)`, but its previous unused-variable lint errors are fixed.
 - `clear_loop.js` and `clear_session.js` remain in the project root and appear to be ad hoc cleanup/debug scripts.
@@ -478,6 +479,7 @@ Already fixed and no longer active:
 - `api/generate-questions.js` unused-variable errors.
 - `DashboardOfficial.jsx` unused-variable errors for `fileContent`, `fileMimeType`, `uploadedFileId`, `isReadingFile`, `selectedSession`, `setSelectedSession`, `deleteSessionRecord`, `deleteSelectedSessions`, `deleteSelectedBanks`, `handleCreateManualSession`, `fromUploadFile`, `difficulty`, and `fromBankOnly`.
 - `src/lib/supabase.js` unused-variable errors for the omitted `id` in `createSession(...)` and unused `gameCode`/`questionsByDifficulty` parameters in `updateSessionQuestions(...)`.
+- `Question.jsx` hook dependency warnings for `currentQuestionId`, `sessionData.questionsByDifficulty`, `handleTimeout`, and `checkIfAlreadyAnswered`.
 - Legacy original instructor files.
 
 ## 14. Security and Environment Review
@@ -510,13 +512,14 @@ Risks:
   - `dist/assets/index-CO7YIPBv.css`
   - `dist/assets/index-Dq_jbaTt.js`
 - Warning remains: some chunks are larger than 500 kB after minification.
+- Latest requested rerun after the `Question.jsx` hook-warning fix could not complete because the local C: drive had no free space; Vite failed while writing its temporary bundled config with `ENOSPC: no space left on device`.
 
 `npm run lint`
 
 - Status: passed with warnings.
-- Current total: 9 problems.
+- Current total: 5 problems.
 - Current errors: 0.
-- Current warnings: 9.
+- Current warnings: 5.
 
 Active lint errors grouped by file:
 
@@ -531,12 +534,6 @@ Active lint warnings grouped by file:
   - `605:6` missing dependency `endRound`.
   - `629:6` missing dependency `nextRound`.
 
-- `src/pages/student/Question.jsx`
-  - `188:6` missing dependency `currentQuestionId`.
-  - `271:6` missing dependency `sessionData.questionsByDifficulty`.
-  - `330:6` missing dependency `handleTimeout`.
-  - `352:6` missing dependency `checkIfAlreadyAnswered`.
-
 Issues already fixed and no longer appearing:
 
 - No `process` or `Buffer` undefined errors from `api/generate-questions.js`.
@@ -545,6 +542,7 @@ Issues already fixed and no longer appearing:
 - No active lint errors or warnings from `src/pages/student/JoinGame.jsx`.
 - No active lint errors or warnings from `src/pages/student/Difficulty.jsx`.
 - No active lint errors or warnings from `src/pages/student/Lobby.jsx`.
+- No active lint errors or warnings from `src/pages/student/Question.jsx`.
 - No active lint errors or warnings from `src/pages/instructor/DashboardOfficial.jsx`.
 - No active lint errors or warnings from `src/lib/supabase.js`.
 - No active lint errors or warnings from `src/pages/instructor/SessionOfficial.jsx`.
@@ -575,7 +573,6 @@ Issues already fixed and no longer appearing:
 
 5. Clean active lint.
    - Fix `InstructorLiveQuiz.jsx` hook warnings carefully.
-   - Fix `Question.jsx` hook warnings carefully.
 
 6. Clean UI text encoding and old files.
    - Replace mojibake with valid text/icons.
@@ -640,6 +637,6 @@ Data/RLS:
 3. Add `responses.difficulty` and `responses.points_possible`.
 4. Remove or document `clear_loop.js` and `clear_session.js`.
 5. Remove unused Vite starter assets if confirmed unused: `public/vite.svg`, `src/assets/react.svg`.
-6. Fix the 9 active hook dependency warnings with behavior-preserving changes.
+6. Fix the 5 active `InstructorLiveQuiz.jsx` hook dependency warnings with behavior-preserving changes.
 7. Add unit tests for `calculateLeaderboard(...)` covering mixed difficulty scores and duplicate display names.
 8. Add small fixtures for AI extraction: TXT, DOCX, PPTX, unsupported file, and no-readable-text Office file.

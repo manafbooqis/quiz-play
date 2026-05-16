@@ -43,6 +43,8 @@ function Question() {
   const hasAnsweredRef = useRef(false);
   const timerStartRef = useRef(null);
   const timeoutHandledRef = useRef(false);
+  const handleTimeoutRef = useRef(null);
+  const checkIfAlreadyAnsweredRef = useRef(null);
 
   // Shared round timer from Difficulty screen
   const roundTimerStartedAt = state?.roundTimerStartedAt;
@@ -191,6 +193,7 @@ function Question() {
     playerId,
     sessionId,
     currentRound,
+    currentQuestionId,
     navigate,
   ]);
 
@@ -273,6 +276,7 @@ function Question() {
     sessionData?.current_question_id,
     sessionData?.current_difficulty,
     sessionData?.questions_by_difficulty,
+    sessionData?.questionsByDifficulty,
     currentQuestionId,
     currentDifficulty,
     gameCode,
@@ -311,7 +315,7 @@ function Question() {
       if (remaining === 0 && !hasAnsweredRef.current && !timeoutHandledRef.current) {
         // Time expired - handle timeout properly
         timeoutHandledRef.current = true;
-        handleTimeout();
+        handleTimeoutRef.current?.();
       }
     };
 
@@ -347,7 +351,7 @@ function Question() {
     timeoutHandledRef.current = false;
     
     if (sessionId && sessionData?.current_question_id) {
-      checkIfAlreadyAnswered();
+      checkIfAlreadyAnsweredRef.current?.();
     }
   }, [sessionId, sessionData?.current_question_id, currentQuestionId]);
 
@@ -593,6 +597,9 @@ function Question() {
       // No existing response is fine
     }
   };
+
+  handleTimeoutRef.current = handleTimeout;
+  checkIfAlreadyAnsweredRef.current = checkIfAlreadyAnswered;
 
   const handleSubmit = async (answerOverride = null) => {
     if (isSubmitting || hasAnswered) return;
