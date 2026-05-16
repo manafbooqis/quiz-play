@@ -43,11 +43,14 @@ export async function getSessionsByOwner(ownerUid) {
 
 export async function createSession(sessionPayload) {
   // Remove any manual id - let Supabase generate UUID
-  const { id, ...payloadWithoutId } = sessionPayload;
+  const payloadWithoutId = { ...sessionPayload };
+  delete payloadWithoutId.id;
   return supabase.from("sessions").insert([payloadWithoutId]).select().maybeSingle();
 }
 
 export async function updateSessionQuestions(gameCode, questionsByDifficulty) {
+  void gameCode;
+  void questionsByDifficulty;
   console.log("Questions are stored in the questions table, not in sessions");
   return { data: null, error: null };
 }

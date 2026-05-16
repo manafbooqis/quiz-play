@@ -16,7 +16,7 @@ AI question generation now supports PDF, TXT, CSV, JSON, MD, DOCX, and PPTX in `
 
 The remaining highest risks are:
 
-- `npm run lint` still fails with 25 problems: 16 errors and 9 warnings.
+- `npm run lint` completes with 9 warnings and 0 errors; only React Hook dependency warnings remain.
 - `src/pages/student/RoundResults.jsx` can still mark the whole session `finished` from a student client through `markSessionFinished(...)`.
 - Supabase migrations and `supabase-rls-policies.sql` do not fully match the tables/columns and identity model used by current code.
 - Existing old sessions with name-based `responses.player_id` remain best-effort only when duplicate display names existed.
@@ -278,8 +278,9 @@ Remaining issues:
 `src/pages/instructor/DashboardOfficial.jsx`
 
 - Large page handling auth/session creation/uploads/question banks/navigation.
-- Current largest lint source with 13 unused-variable errors.
+- Previous 13 unused-variable lint errors are fixed.
 - Uses localStorage heavily.
+- Remaining risk: the file is still large and handles many workflows in one component, so future changes should stay tightly scoped or split responsibilities carefully.
 
 `src/pages/instructor/SessionOfficial.jsx`
 
@@ -458,11 +459,11 @@ Issues:
 
 Active quality concerns:
 
-- `src/pages/instructor/DashboardOfficial.jsx` is very large and has many unused states/functions.
+- `src/pages/instructor/DashboardOfficial.jsx` is very large and handles many responsibilities, though its previous unused-variable lint errors are fixed.
 - `src/pages/instructor/InstructorLiveQuiz.jsx` mixes live control, timers, polling, realtime, ranking, and navigation.
 - `src/pages/student/Question.jsx` has several responsibilities and 4 active hook warnings.
 - `src/pages/student/RoundResults.jsx` mixes readiness tracking, countdown, finalization, leaderboard, and UI.
-- `src/lib/supabase.js` has unused parameters and a no-op `updateSessionQuestions(...)`.
+- `src/lib/supabase.js` still has a no-op `updateSessionQuestions(...)`, but its previous unused-variable lint errors are fixed.
 - `clear_loop.js` and `clear_session.js` remain in the project root and appear to be ad hoc cleanup/debug scripts.
 - `public/vite.svg` and `src/assets/react.svg` remain from the Vite starter and appear unused.
 - `functions/` remains even though the current AI route is `api/generate-questions.js`; confirm whether Firebase Functions are still deployed.
@@ -475,6 +476,8 @@ Already fixed and no longer active:
 - `Difficulty.jsx` `handleDifficultyTimeout` dependency warning.
 - `InstructorFinalResults.jsx` `gameCode` dependency warning.
 - `api/generate-questions.js` unused-variable errors.
+- `DashboardOfficial.jsx` unused-variable errors for `fileContent`, `fileMimeType`, `uploadedFileId`, `isReadingFile`, `selectedSession`, `setSelectedSession`, `deleteSessionRecord`, `deleteSelectedSessions`, `deleteSelectedBanks`, `handleCreateManualSession`, `fromUploadFile`, `difficulty`, and `fromBankOnly`.
+- `src/lib/supabase.js` unused-variable errors for the omitted `id` in `createSession(...)` and unused `gameCode`/`questionsByDifficulty` parameters in `updateSessionQuestions(...)`.
 - Legacy original instructor files.
 
 ## 14. Security and Environment Review
@@ -510,32 +513,14 @@ Risks:
 
 `npm run lint`
 
-- Status: failed.
-- Current total: 25 problems.
-- Current errors: 16.
+- Status: passed with warnings.
+- Current total: 9 problems.
+- Current errors: 0.
 - Current warnings: 9.
 
 Active lint errors grouped by file:
 
-- `src/lib/supabase.js`
-  - `46:11` unused `id`.
-  - `50:46` unused `gameCode`.
-  - `50:56` unused `questionsByDifficulty`.
-
-- `src/pages/instructor/DashboardOfficial.jsx`
-  - `21:10` unused `fileContent`.
-  - `22:10` unused `fileMimeType`.
-  - `23:10` unused `uploadedFileId`.
-  - `24:10` unused `isReadingFile`.
-  - `38:10` unused `selectedSession`.
-  - `38:27` unused `setSelectedSession`.
-  - `258:18` unused `deleteSessionRecord`.
-  - `289:9` unused `deleteSelectedSessions`.
-  - `331:9` unused `deleteSelectedBanks`.
-  - `478:18` unused `handleCreateManualSession`.
-  - `562:11` unused `fromUploadFile`.
-  - `824:47` unused `difficulty`.
-  - `844:9` unused `fromBankOnly`.
+- None.
 
 Active lint warnings grouped by file:
 
@@ -560,6 +545,8 @@ Issues already fixed and no longer appearing:
 - No active lint errors or warnings from `src/pages/student/JoinGame.jsx`.
 - No active lint errors or warnings from `src/pages/student/Difficulty.jsx`.
 - No active lint errors or warnings from `src/pages/student/Lobby.jsx`.
+- No active lint errors or warnings from `src/pages/instructor/DashboardOfficial.jsx`.
+- No active lint errors or warnings from `src/lib/supabase.js`.
 - No active lint errors or warnings from `src/pages/instructor/SessionOfficial.jsx`.
 - No active lint errors or warnings from `src/pages/instructor/InstructorFinalResults.jsx`.
 - No legacy `original_InstructorLiveQuiz*` lint/parsing errors.
@@ -587,7 +574,6 @@ Issues already fixed and no longer appearing:
    - Add a database-backed duplicate display-name guard if schema changes are allowed.
 
 5. Clean active lint.
-   - Remove or use unused DashboardOfficial/supabase variables.
    - Fix `InstructorLiveQuiz.jsx` hook warnings carefully.
    - Fix `Question.jsx` hook warnings carefully.
 
@@ -654,7 +640,6 @@ Data/RLS:
 3. Add `responses.difficulty` and `responses.points_possible`.
 4. Remove or document `clear_loop.js` and `clear_session.js`.
 5. Remove unused Vite starter assets if confirmed unused: `public/vite.svg`, `src/assets/react.svg`.
-6. Fix the 16 active unused-variable lint errors.
-7. Fix the 9 active hook dependency warnings with behavior-preserving changes.
-8. Add unit tests for `calculateLeaderboard(...)` covering mixed difficulty scores and duplicate display names.
-9. Add small fixtures for AI extraction: TXT, DOCX, PPTX, unsupported file, and no-readable-text Office file.
+6. Fix the 9 active hook dependency warnings with behavior-preserving changes.
+7. Add unit tests for `calculateLeaderboard(...)` covering mixed difficulty scores and duplicate display names.
+8. Add small fixtures for AI extraction: TXT, DOCX, PPTX, unsupported file, and no-readable-text Office file.

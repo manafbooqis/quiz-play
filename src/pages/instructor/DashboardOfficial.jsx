@@ -18,10 +18,6 @@ function DashboardOfficial() {
   }, []);
 
   const [selectedFile, setSelectedFile] = useState(null);
-  const [fileContent, setFileContent] = useState("");        // base64-encoded file content
-  const [fileMimeType, setFileMimeType] = useState("");       // MIME type of the uploaded file
-  const [uploadedFileId, setUploadedFileId] = useState("");  // unique ID per upload to prevent stale data
-  const [isReadingFile, setIsReadingFile] = useState(false); // true while FileReader is running
   const [questionCount, setQuestionCount] = useState(5);
   const [timePerQuestion, setTimePerQuestion] = useState(30);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
@@ -35,13 +31,11 @@ function DashboardOfficial() {
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  const [selectedSession, setSelectedSession] = useState(null);
   const [selectedQuestionBank, setSelectedQuestionBank] = useState(null);
   const [selectedSessions, setSelectedSessions] = useState(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedSource, setSelectedSource] = useState(null); // 'saved' | 'upload' | 'manual' | null
-  const [selectedBanks, setSelectedBanks] = useState(new Set());
   const [useExistingBank, setUseExistingBank] = useState(false);
 
   // Delete selection mode for saved question banks
@@ -255,127 +249,6 @@ function DashboardOfficial() {
     loadSavedQuestionBanks();
   }, [currentUser?.id]);
 
-  async function deleteSessionRecord(target, { listLabel }) {
-    if (!target?.id) return;
-    const title =
-      target.file_name || target.game_code || listLabel || "this session";
-    if (
-      !window.confirm(
-        `Delete "${title}"? This removes only this session row (code ${target.game_code}). This cannot be undone.`
-      )
-    ) {
-      return;
-    }
-
-    const { error: delErr } = await supabase
-      .from("sessions")
-      .delete()
-      .eq("id", target.id);
-
-    if (delErr) {
-      setError(delErr.message || "Could not delete session.");
-      return;
-    }
-
-    setTeacherSessions((prev) => prev.filter((s) => s.id !== target.id));
-    setSavedQuestionBanks((prev) => prev.filter((s) => s.id !== target.id));
-    if (selectedQuestionBank?.id === target.id) {
-      setSelectedQuestionBank(null);
-    }
-    setError("");
-  }
-
-  // Delete multiple selected sessions
-  const deleteSelectedSessions = async () => {
-    if (selectedSessions.size === 0) {
-      setError("No sessions selected for deletion.");
-      return;
-    }
-
-    const title = `Delete ${selectedSessions.size} session${selectedSessions.size === 1 ? '' : 's'}? This action cannot be undone.`;
-    if (!window.confirm(title)) {
-      return;
-    }
-
-    try {
-      // Convert Set to array and filter valid IDs
-      const sessionIds = Array.from(selectedSessions).filter(id => 
-        id && typeof id === 'string' && id.trim() !== ''
-      );
-
-      if (sessionIds.length === 0) {
-        setError("No valid session IDs found for deletion.");
-        return;
-      }
-
-      const { error: delErr } = await supabase
-        .from("sessions")
-        .delete()
-        .in("id", sessionIds);
-
-      if (delErr) {
-        setError(`Failed to delete sessions: ${delErr.message}`);
-        return;
-      }
-
-      // Remove deleted sessions from local state
-      setTeacherSessions(prev => prev.filter(s => !selectedSessions.has(s.id)));
-      setSelectedSessions(new Set());
-      setError("");
-    } catch (err) {
-      setError(`Error deleting sessions: ${err.message}`);
-    }
-  };
-
-  // Delete multiple selected question banks
-  const deleteSelectedBanks = async () => {
-    if (selectedBanks.size === 0) {
-      setError("No question banks selected for deletion.");
-      return;
-    }
-
-    const title = `Delete ${selectedBanks.size} bank${selectedBanks.size === 1 ? '' : 's'}? This action cannot be undone.`;
-    if (!window.confirm(title)) {
-      return;
-    }
-
-    try {
-      // Convert Set to array and filter valid IDs
-      const bankIds = Array.from(selectedBanks).filter(id => 
-        id && typeof id === 'string' && id.trim() !== ''
-      );
-
-      if (bankIds.length === 0) {
-        setError("No valid question bank IDs found for deletion.");
-        return;
-      }
-
-      const { error: delErr } = await supabase
-        .from("sessions")
-        .delete()
-        .in("id", bankIds);
-
-      if (delErr) {
-        setError(`Failed to delete question banks: ${delErr.message}`);
-        return;
-      }
-
-      // Remove deleted banks from local state
-      setSavedQuestionBanks(prev => prev.filter(b => !selectedBanks.has(b.id)));
-      setSelectedBanks(new Set());
-      
-      // Clear selected bank if it was deleted
-      if (selectedQuestionBank && selectedBanks.has(selectedQuestionBank.id)) {
-        setSelectedQuestionBank(null);
-        setUseExistingBank(false);
-      }
-      
-      setError("");
-    } catch (err) {
-      setError(`Error deleting question banks: ${err.message}`);
-    }
-  };
-
   function increaseQuestions() {
     setQuestionCount((prev) => Math.min(prev + 1, MAX_QUESTIONS));
   }
@@ -475,91 +348,9 @@ function DashboardOfficial() {
     return json.questions;
   }
 
-  async function handleCreateManualSession() {
-    if (!currentUser) {
-      setError("You must be logged in to create a session.");
-      return;
-    }
-
-    setIsCreatingSession(true);
-    setError("");
-    setInfoMessage("");
-
-    try {
-      const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-      const nums = "23456789";
-      const pick = (s) => s[Math.floor(Math.random() * s.length)];
-      const freshGameCode = `${pick(letters)}${pick(letters)}${pick(nums)}${pick(nums)}`;
-
-      const sessionPayload = {
-        game_code: freshGameCode,
-        file_name: "Manual Questions",
-        question_count: questionCount,
-        time_per_question: timePerQuestion,
-        status: "waiting",
-        owner_uid: currentUser.id,
-        owner_email: currentUser.email || null,
-        owner_name: teacherName || "Instructor",
-        is_guest: false,
-        questions_by_difficulty: { easy: [], medium: [], hard: [] },
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      const { data: session, error: sessionError } = await supabase
-        .from("sessions")
-        .insert(sessionPayload)
-        .select()
-        .single();
-
-      if (sessionError) {
-        console.error("Create manual session error:", sessionError);
-        throw sessionError;
-      }
-
-      // Persist to localStorage
-      const persistKey = `quizplay_session_${session.game_code}`;
-      try {
-        localStorage.setItem(
-          persistKey,
-          JSON.stringify({
-            ...session,
-            id: session.id,
-            gameCode: session.game_code,
-            questionsByDifficulty: { easy: [], medium: [], hard: [] },
-            questions_by_difficulty: { easy: [], medium: [], hard: [] },
-          })
-        );
-      } catch (e) {
-        console.warn("Failed to write session to localStorage:", e);
-      }
-
-      // Navigate to questions-preview for manual editing
-      navigate("/instructor/questions-preview", {
-        state: {
-          sessionId: session.id,
-          gameCode: session.game_code,
-          fileName: "Manual Questions",
-          questionCount,
-          timePerQuestion,
-          questionsByDifficulty: { easy: [], medium: [], hard: [] },
-          fromSession: true,
-          manualMode: true,
-        },
-      });
-    } catch (err) {
-      console.error("Error creating manual session:", err);
-      setError(`Failed to create manual session: ${err.message || "Unknown error"}`);
-    } finally {
-      setIsCreatingSession(false);
-    }
-  }
-
   async function handleGoToSession() {
     // Define source type variables at the top
     const fromExistingBank = selectedSource === "bank" || useExistingBank;
-    const fromManual = selectedSource === "manual";
-    const fromUploadFile = selectedSource === "upload" || (!fromExistingBank && !fromManual);
 
     if (selectedSource === 'manual') {
       if (!isManualModeComplete()) {
@@ -597,20 +388,14 @@ function DashboardOfficial() {
       let freshFileName = "";
 
       if (!fromExistingBank && selectedFile) {
-        setIsReadingFile(true);
         setInfoMessage("Reading uploaded file...");
         try {
           freshBase64 = await readFileAsBase64(selectedFile);
           freshMime = selectedFile.type || "application/octet-stream";
           freshFileName = selectedFile.name;
-          // Update state for reference (not used for the current call)
-          setFileContent(freshBase64);
-          setFileMimeType(freshMime);
           console.log("[File] Read OK:", freshFileName, "|", freshMime, "| base64 length:", freshBase64.length);
         } catch (readErr) {
           console.warn("[File] Could not read file content:", readErr.message);
-        } finally {
-          setIsReadingFile(false);
         }
       }
 
@@ -821,7 +606,7 @@ function DashboardOfficial() {
 
   const getCompletedManualQuestionsCount = () => {
     let count = 0;
-    Object.entries(manualQuestions).forEach(([difficulty, questions]) => {
+    Object.values(manualQuestions).forEach((questions) => {
       questions.forEach(question => {
         if (question.question.trim() && 
             question.options.every(opt => opt.trim()) && 
@@ -840,8 +625,6 @@ function DashboardOfficial() {
     return getCompletedManualQuestionsCount() === totalQuestions;
   };
 
-  // Upload wins over the "existing bank" checkbox when both are present.
-  const fromBankOnly = useExistingBank && !selectedFile;
   const canCreateSession =
     !isCreatingSession &&
     ((selectedSource === 'saved' && selectedQuestionBank) ||
@@ -1242,10 +1025,6 @@ function DashboardOfficial() {
                           const file = event.target.files?.[0] ?? null;
                           setSelectedFile(file);
 
-                          // Clear ALL stale question/file state
-                          setFileContent("");
-                          setFileMimeType("");
-                          setUploadedFileId(Date.now().toString());
                           setInfoMessage("");
                           setError("");
 
