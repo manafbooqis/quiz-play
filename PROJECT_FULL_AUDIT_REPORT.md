@@ -16,7 +16,7 @@ AI question generation now supports PDF, TXT, CSV, JSON, MD, DOCX, and PPTX in `
 
 The remaining highest risks are:
 
-- `npm run lint` completes with 5 warnings and 0 errors; only `InstructorLiveQuiz.jsx` React Hook dependency warnings remain.
+- `npm run lint` completes with 0 warnings and 0 errors.
 - `src/pages/student/RoundResults.jsx` can still mark the whole session `finished` from a student client through `markSessionFinished(...)`.
 - Supabase migrations and `supabase-rls-policies.sql` do not fully match the tables/columns and identity model used by current code.
 - Existing old sessions with name-based `responses.player_id` remain best-effort only when duplicate display names existed.
@@ -89,6 +89,7 @@ Confirmed implemented:
   - Uses `calculateLeaderboard(...)`.
   - End Quiz sets `sessions.status = "finished"`, `quiz_finished_at`, `show_round_results: false`, and `current_question_ends_at`.
   - Instructor navigates to `/instructor/final-results`.
+  - Previous React Hook dependency warnings are fixed.
 
 - `src/pages/instructor/InstructorFinalResults.jsx`
   - Previous `gameCode` hook dependency warning is fixed.
@@ -299,7 +300,7 @@ Remaining issues:
 - Owns live quiz control, phase changes, timers, rankings, End Quiz, and final navigation.
 - Uses shared leaderboard helper.
 - End Quiz sync with student final redirects is implemented.
-- Remaining hook warnings are active.
+- Previous hook dependency warnings for `questionsByDifficulty`, `endRound`, and `nextRound` are fixed.
 - Risk: multiple realtime/polling effects plus auto-finish logic make this page fragile.
 
 `src/pages/instructor/InstructorFinalResults.jsx`
@@ -461,7 +462,7 @@ Issues:
 Active quality concerns:
 
 - `src/pages/instructor/DashboardOfficial.jsx` is very large and handles many responsibilities, though its previous unused-variable lint errors are fixed.
-- `src/pages/instructor/InstructorLiveQuiz.jsx` mixes live control, timers, polling, realtime, ranking, and navigation.
+- `src/pages/instructor/InstructorLiveQuiz.jsx` mixes live control, timers, polling, realtime, ranking, and navigation, though its previous hook dependency warnings are fixed.
 - `src/pages/student/Question.jsx` has several responsibilities, though its previous hook dependency warnings are fixed.
 - `src/pages/student/RoundResults.jsx` mixes readiness tracking, countdown, finalization, leaderboard, and UI.
 - `src/lib/supabase.js` still has a no-op `updateSessionQuestions(...)`, but its previous unused-variable lint errors are fixed.
@@ -480,6 +481,7 @@ Already fixed and no longer active:
 - `DashboardOfficial.jsx` unused-variable errors for `fileContent`, `fileMimeType`, `uploadedFileId`, `isReadingFile`, `selectedSession`, `setSelectedSession`, `deleteSessionRecord`, `deleteSelectedSessions`, `deleteSelectedBanks`, `handleCreateManualSession`, `fromUploadFile`, `difficulty`, and `fromBankOnly`.
 - `src/lib/supabase.js` unused-variable errors for the omitted `id` in `createSession(...)` and unused `gameCode`/`questionsByDifficulty` parameters in `updateSessionQuestions(...)`.
 - `Question.jsx` hook dependency warnings for `currentQuestionId`, `sessionData.questionsByDifficulty`, `handleTimeout`, and `checkIfAlreadyAnswered`.
+- `InstructorLiveQuiz.jsx` hook dependency warnings for `questionsByDifficulty`, `endRound`, and `nextRound`.
 - Legacy original instructor files.
 
 ## 14. Security and Environment Review
@@ -510,16 +512,15 @@ Risks:
 - Output:
   - `dist/index.html`
   - `dist/assets/index-CO7YIPBv.css`
-  - `dist/assets/index-Dq_jbaTt.js`
+  - `dist/assets/index-BjEE3BXP.js`
 - Warning remains: some chunks are larger than 500 kB after minification.
-- Latest requested rerun after the `Question.jsx` hook-warning fix could not complete because the local C: drive had no free space; Vite failed while writing its temporary bundled config with `ENOSPC: no space left on device`.
 
 `npm run lint`
 
-- Status: passed with warnings.
-- Current total: 5 problems.
+- Status: passed.
+- Current total: 0 problems.
 - Current errors: 0.
-- Current warnings: 5.
+- Current warnings: 0.
 
 Active lint errors grouped by file:
 
@@ -527,12 +528,7 @@ Active lint errors grouped by file:
 
 Active lint warnings grouped by file:
 
-- `src/pages/instructor/InstructorLiveQuiz.jsx`
-  - `12:9` `questionsByDifficulty` logical expression changes dependencies for `useMemo`.
-  - `12:9` `questionsByDifficulty` logical expression changes dependencies for `useEffect`.
-  - `212:6` missing dependency `questionsByDifficulty`.
-  - `605:6` missing dependency `endRound`.
-  - `629:6` missing dependency `nextRound`.
+- None.
 
 Issues already fixed and no longer appearing:
 
@@ -544,6 +540,7 @@ Issues already fixed and no longer appearing:
 - No active lint errors or warnings from `src/pages/student/Lobby.jsx`.
 - No active lint errors or warnings from `src/pages/student/Question.jsx`.
 - No active lint errors or warnings from `src/pages/instructor/DashboardOfficial.jsx`.
+- No active lint errors or warnings from `src/pages/instructor/InstructorLiveQuiz.jsx`.
 - No active lint errors or warnings from `src/lib/supabase.js`.
 - No active lint errors or warnings from `src/pages/instructor/SessionOfficial.jsx`.
 - No active lint errors or warnings from `src/pages/instructor/InstructorFinalResults.jsx`.
@@ -571,10 +568,7 @@ Issues already fixed and no longer appearing:
    - Use player ID for timer/localStorage keys consistently.
    - Add a database-backed duplicate display-name guard if schema changes are allowed.
 
-5. Clean active lint.
-   - Fix `InstructorLiveQuiz.jsx` hook warnings carefully.
-
-6. Clean UI text encoding and old files.
+5. Clean UI text encoding and old files.
    - Replace mojibake with valid text/icons.
    - Review `Result.jsx`, `Leaderboard.jsx`, `clear_loop.js`, `clear_session.js`, `functions/`, and starter assets.
 
@@ -637,6 +631,5 @@ Data/RLS:
 3. Add `responses.difficulty` and `responses.points_possible`.
 4. Remove or document `clear_loop.js` and `clear_session.js`.
 5. Remove unused Vite starter assets if confirmed unused: `public/vite.svg`, `src/assets/react.svg`.
-6. Fix the 5 active `InstructorLiveQuiz.jsx` hook dependency warnings with behavior-preserving changes.
-7. Add unit tests for `calculateLeaderboard(...)` covering mixed difficulty scores and duplicate display names.
-8. Add small fixtures for AI extraction: TXT, DOCX, PPTX, unsupported file, and no-readable-text Office file.
+6. Add unit tests for `calculateLeaderboard(...)` covering mixed difficulty scores and duplicate display names.
+7. Add small fixtures for AI extraction: TXT, DOCX, PPTX, unsupported file, and no-readable-text Office file.

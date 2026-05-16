@@ -9,7 +9,10 @@ function InstructorLiveQuiz() {
   
   const gameCode = state?.gameCode ?? "";
   const sessionId = state?.sessionId ?? "";
-  const questionsByDifficulty = state?.questionsByDifficulty ?? { easy: [], medium: [], hard: [] };
+  const questionsByDifficulty = useMemo(
+    () => state?.questionsByDifficulty ?? { easy: [], medium: [], hard: [] },
+    [state?.questionsByDifficulty]
+  );
   const timePerQuestion = state?.timePerQuestion ?? 15;
   
   const [sessionData, setSessionData] = useState(null);
@@ -92,6 +95,8 @@ function InstructorLiveQuiz() {
   const hasNavigatedToResultsRef = useRef(false);
   const hasEndedCurrentQuestionRef = useRef(false);
   const autoNextRoundRef = useRef(false);
+  const endRoundRef = useRef(null);
+  const nextRoundRef = useRef(null);
 
   // Calculate total questions
   const totalQuestions = useMemo(() => {
@@ -209,7 +214,7 @@ function InstructorLiveQuiz() {
     return () => {
       supabase.removeChannel(subscription);
     };
-  }, [sessionId, navigate]);
+  }, [sessionId, navigate, questionsByDifficulty]);
 
   // Same per-question window as students: current_question_ends_at − now (full time each question).
   useEffect(() => {
@@ -600,7 +605,7 @@ function InstructorLiveQuiz() {
       });
 
       hasEndedCurrentQuestionRef.current = true;
-      endRound();
+      endRoundRef.current?.();
     }
   }, [
     answeredCount,
@@ -621,7 +626,7 @@ function InstructorLiveQuiz() {
 
       const timer = setTimeout(() => {
         console.log("[AutoNextRoundFired]", { currentRound: sessionData?.current_round });
-        nextRound();
+        nextRoundRef.current?.();
       }, 1000);
 
       return () => clearTimeout(timer);
@@ -632,6 +637,9 @@ function InstructorLiveQuiz() {
     sessionData?.question_count,
     sessionData?.questionCount,
   ]);
+
+  endRoundRef.current = endRound;
+  nextRoundRef.current = nextRound;
 
   // Reset the automatic progression ref when entering choosing_difficulty or a new active question
   useEffect(() => {
