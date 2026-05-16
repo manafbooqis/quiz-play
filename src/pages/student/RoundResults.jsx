@@ -41,6 +41,73 @@ function isFinalSessionStatus(session) {
   return session?.status === "finished" || session?.current_phase === "final_results";
 }
 
+function getOptionLetter(value) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 3) {
+    return String.fromCharCode(65 + value);
+  }
+
+  const text = String(value).trim();
+  if (/^[0-3]$/.test(text)) {
+    return String.fromCharCode(65 + Number(text));
+  }
+
+  const namedOptionMatch = text.match(/^option[\s_-]*([A-D])$/i);
+  if (namedOptionMatch) {
+    return namedOptionMatch[1].toUpperCase();
+  }
+
+  const letterMatch = text.match(/^[A-D](?=$|[\s.):_-])/i);
+  return letterMatch ? letterMatch[0].toUpperCase() : "";
+}
+
+function getQuestionOptions(question) {
+  if (!question) {
+    return [];
+  }
+
+  if (Array.isArray(question.options)) {
+    return question.options;
+  }
+
+  if (Array.isArray(question.answers)) {
+    return question.answers;
+  }
+
+  return [question.option_a, question.option_b, question.option_c, question.option_d];
+}
+
+function getCorrectOptionLetter(question) {
+  if (!question) {
+    return "";
+  }
+
+  const correctValue =
+    question.correct_answer ??
+    question.correctAnswer ??
+    question.answer ??
+    question.correct_option ??
+    question.correctOption;
+  const directLetter = getOptionLetter(correctValue);
+  if (directLetter) {
+    return directLetter;
+  }
+
+  const correctText = String(correctValue ?? "").trim();
+  if (!correctText) {
+    return "";
+  }
+
+  const optionIndex = getQuestionOptions(question).findIndex(
+    (option) => String(option ?? "").trim() === correctText
+  );
+
+  return optionIndex >= 0 && optionIndex <= 3 ? getOptionLetter(optionIndex) : "";
+}
+
 function RoundResults() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -65,6 +132,8 @@ function RoundResults() {
   const currentDifficulty = state?.currentDifficulty ?? "";
   const currentQuestion = state?.currentQuestion ?? null;
   const questionCount = state?.questionCount ?? 1;
+  const selectedOptionLetter = getOptionLetter(selectedAnswer);
+  const correctOptionLetter = getCorrectOptionLetter(currentQuestion);
   
   const [sessionData, setSessionData] = useState(null);
   const [roundResults, setRoundResults] = useState([]);
@@ -695,13 +764,13 @@ function RoundResults() {
                     <div>
                       <p className="font-semibold text-cyan-200 mb-2">Your Answer:</p>
                       <p className="text-white text-lg font-medium">
-                        {selectedAnswer === 0 ? 'A' : selectedAnswer === 1 ? 'B' : selectedAnswer === 2 ? 'C' : selectedAnswer === 3 ? 'D' : '-'}
+                        {selectedOptionLetter || "-"}
                       </p>
                     </div>
                     <div>
                       <p className="font-semibold text-emerald-200 mb-2">Correct Answer:</p>
                       <p className="text-white text-lg font-medium">
-                        {currentQuestion.correct_answer === 0 ? 'A' : currentQuestion.correct_answer === 1 ? 'B' : currentQuestion.correct_answer === 2 ? 'C' : currentQuestion.correct_answer === 3 ? 'D' : '-'}
+                        {correctOptionLetter || "Correct answer is not available"}
                       </p>
                     </div>
                   </div>

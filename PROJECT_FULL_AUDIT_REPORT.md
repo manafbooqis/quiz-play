@@ -19,7 +19,6 @@ The remaining highest risks are:
 - `npm run lint` still fails with 25 problems: 16 errors and 9 warnings.
 - `src/pages/student/RoundResults.jsx` can still mark the whole session `finished` from a student client through `markSessionFinished(...)`.
 - Supabase migrations and `supabase-rls-policies.sql` do not fully match the tables/columns and identity model used by current code.
-- `WaitingForOthers.jsx` redirects to Final Results but does not preserve `playerId`/`sessionPlayerId`, unlike the other updated student pages.
 - Existing old sessions with name-based `responses.player_id` remain best-effort only when duplicate display names existed.
 - UI text contains widespread mojibake/encoding artifacts.
 - The production build passes, but the JS bundle remains larger than 500 kB after minification.
@@ -70,6 +69,7 @@ Confirmed implemented:
   - Uses `playerId` for current-student matching, with name fallback.
   - Redirects to Final Results on final session status.
   - Marks `responses.round_results_seen_at` using player ID/name fallback.
+  - Shows the selected answer and correct answer as option letters only.
 
 - `src/pages/student/FinalResults.jsx`
   - Uses `calculateLeaderboard(...)`.
@@ -81,6 +81,8 @@ Confirmed implemented:
   - Has compact layout.
   - Redirects to Round Results on `round_results`.
   - Redirects to Final Results on `finished` or `current_phase === "final_results"`.
+  - Recovers `playerId`/`sessionPlayerId` from route state, `quizplay_session_${gameCode}`, or `quizplay_player_${gameCode}_${studentName}`.
+  - Preserves `studentName`, `gameCode`, `sessionId`, `playerId`, and `sessionPlayerId` when navigating to Round Results or Final Results.
 
 - `src/pages/instructor/InstructorLiveQuiz.jsx`
   - Uses `calculateLeaderboard(...)`.
@@ -125,8 +127,13 @@ Confirmed implemented:
 
 1. `src/pages/student/RoundResults.jsx` still lets a student client finish the whole session.
    - Function: `markSessionFinished(...)`.
-   - It updates `sessions.status` to `finished`.
-   - Risk: any student reaching that path can finalize global session state if RLS allows it.
+   - It updates the shared `sessions` row with `status: "finished"` and `quiz_finished_at: new Date().toISOString()`, then calls `goToFinalResults(...)` for that student.
+   - It is called only from the Round Results countdown/navigation effect after `targetTime` has passed and `Number(currentRound) >= maxRounds`, where `maxRounds` comes from `sessionData.question_count`, route `questionCount`, or a fallback of `1`.
+   - `targetTime` is set only after the polling loop sees every joined `session_players` row represented in current-round responses with `round_results_seen_at !== null`, so the intended path is "all students reached/saw Round Results for the last round."
+   - This is intentional as a natural final-results transition for the end of the quiz, but it is still risky because any student client that reaches this state can write global session finalization if RLS permits the update.
+   - `src/pages/instructor/InstructorLiveQuiz.jsx` already has instructor-owned finalization: manual `finishQuiz()` from End Quiz, `nextRound()` calling `finishQuiz()` when the next round exceeds `question_count`, and a polling auto-finish when every joined student has `questionCount` responses.
+   - Removing `markSessionFinished(...)` without replacing the authority could break the natural student-driven final transition if the instructor page is closed, disconnected, or not advancing past the last round.
+   - Recommended next action: keep the current behavior only until a safer authority exists, then move or restrict finalization to instructor/server code. Students should preferably listen for `sessions.status === "finished"` or `current_phase === "final_results"` and navigate, not decide or write the shared final status themselves.
 
 2. Supabase RLS still appears incompatible with the current stable-player-ID identity model.
    - `supabase/migrations/20240426060000_add_quiz_flow.sql` has a response insert policy that checks `session_players.student_name = responses.player_id`.
@@ -136,11 +143,7 @@ Confirmed implemented:
 3. Current migrations do not define all columns/tables used by the app.
    - Used but not fully represented: `session_players`, `sessions.questions_by_difficulty`, `sessions.question_count`, `sessions.time_per_question`, `sessions.current_phase`, `responses.round_results_seen_at`, `responses.difficulty`, and `responses.points_possible`.
 
-4. `WaitingForOthers.jsx` loses player identity during final redirects.
-   - It passes `studentName`, `gameCode`, and `sessionId`, but not `playerId`/`sessionPlayerId`.
-   - Final Results can still load data, but current-student "You" matching may fall back to display name from that route.
-
-5. Old name-based response data remains ambiguous.
+4. Old name-based response data remains ambiguous.
    - The app supports old rows where `responses.player_id` equals `studentName`.
    - If an old session had duplicate names, exact ownership cannot be reconstructed from the response rows.
 
@@ -241,14 +244,21 @@ Remaining issues:
 
 - Shows answered count and timer.
 - Redirects to Round Results or Final Results.
-- Risk: final and round-results navigation does not preserve `playerId`/`sessionPlayerId`.
+- Preserves `playerId`/`sessionPlayerId` in both final-results and round-results navigation state.
+- Recovers missing player identity from the same localStorage keys used by the student join/rejoin flow.
 
 `src/pages/student/RoundResults.jsx`
 
 - Shows per-round result, round leaderboard, answered/waiting lists, and countdown.
 - Uses shared leaderboard for total status score.
-- Risk: student-owned finalization through `markSessionFinished(...)`.
+- Displays "Your Answer" and "Correct Answer" as option letters only, without full answer text.
+- Correct-answer display checks `correct_answer`, `correctAnswer`, `answer`, `correct_option`, and `correctOption`.
+- If no correct option can be resolved from the question payload, the page shows `Correct answer is not available`.
+- `markSessionFinished(...)` is the student-side finalization path: after all students have seen the last round's results and the countdown target is reached, it writes `sessions.status = "finished"` and `quiz_finished_at`, then navigates the current student to Final Results.
+- The behavior appears intentional for a natural end-of-quiz transition, especially if the instructor page is not driving the last transition, but it duplicates authority already present in `InstructorLiveQuiz.jsx`.
+- Recommendation: restrict or move this finalization to instructor/server authority. Keep students as listeners where possible; if student-side fallback is retained, guard it with stricter RLS/RPC validation that verifies session membership, final round, and all required responses/readiness.
 - Risk: uses `responses.round_results_seen_at`, which is not present in current migrations.
+- Risk: question data that lacks a correct option field, and also lacks an exact option-text match, cannot show the correct option letter.
 
 `src/pages/student/FinalResults.jsx`
 
@@ -421,7 +431,6 @@ Remaining concerns:
 
 - Most student pages still depend on route state for `studentName`, `gameCode`, `sessionId`, and `playerId`.
 - localStorage recovery is partial and inconsistent across pages.
-- `WaitingForOthers.jsx` does not carry `playerId` through redirects.
 - Several clients can still drive global phase transitions:
   - Instructor Live Quiz.
   - Student Difficulty.
@@ -563,7 +572,8 @@ Issues already fixed and no longer appearing:
    - Apply and verify `responses_unique_player_question` in the target Supabase project.
 
 2. Move global session authority away from student clients.
-   - Remove or restrict `markSessionFinished(...)` from `RoundResults.jsx`.
+   - Move `markSessionFinished(...)` out of `RoundResults.jsx` into instructor/server authority, or restrict it behind a validated RPC/RLS rule.
+   - Preserve the natural final-results flow by having students listen for instructor/server final status rather than removing the transition without replacement.
    - Restrict student updates to `sessions.status` unless intentionally allowed.
    - Prefer instructor/server-controlled phase transitions.
 
@@ -573,7 +583,6 @@ Issues already fixed and no longer appearing:
    - Keep `responses.points_awarded` as the score source.
 
 4. Finish player identity propagation.
-   - Add `playerId`/`sessionPlayerId` to `WaitingForOthers.jsx` redirects.
    - Use player ID for timer/localStorage keys consistently.
    - Add a database-backed duplicate display-name guard if schema changes are allowed.
 
@@ -643,10 +652,9 @@ Data/RLS:
 1. Update response RLS to match stable `session_players.id` identity.
 2. Add missing migrations for `session_players`, `questions_by_difficulty`, `question_count`, `time_per_question`, `current_phase`, and `round_results_seen_at`.
 3. Add `responses.difficulty` and `responses.points_possible`.
-4. Preserve `playerId` in `WaitingForOthers.jsx` navigation state.
-5. Remove or document `clear_loop.js` and `clear_session.js`.
-6. Remove unused Vite starter assets if confirmed unused: `public/vite.svg`, `src/assets/react.svg`.
-7. Fix the 16 active unused-variable lint errors.
-8. Fix the 9 active hook dependency warnings with behavior-preserving changes.
-9. Add unit tests for `calculateLeaderboard(...)` covering mixed difficulty scores and duplicate display names.
-10. Add small fixtures for AI extraction: TXT, DOCX, PPTX, unsupported file, and no-readable-text Office file.
+4. Remove or document `clear_loop.js` and `clear_session.js`.
+5. Remove unused Vite starter assets if confirmed unused: `public/vite.svg`, `src/assets/react.svg`.
+6. Fix the 16 active unused-variable lint errors.
+7. Fix the 9 active hook dependency warnings with behavior-preserving changes.
+8. Add unit tests for `calculateLeaderboard(...)` covering mixed difficulty scores and duplicate display names.
+9. Add small fixtures for AI extraction: TXT, DOCX, PPTX, unsupported file, and no-readable-text Office file.

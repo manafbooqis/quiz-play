@@ -14,6 +14,16 @@ function WaitingForOthers() {
   const gameCode = state?.gameCode ?? "";
   const sessionId = state?.sessionId ?? "";
   const currentRound = state?.currentRound ?? 1;
+  const savedSessionRaw = gameCode ? localStorage.getItem(`quizplay_session_${gameCode}`) : null;
+  const savedSession = savedSessionRaw ? JSON.parse(savedSessionRaw) : null;
+  const savedPlayerId = gameCode && studentName ? localStorage.getItem(`quizplay_player_${gameCode}_${studentName}`) : "";
+  const playerId =
+    state?.playerId ||
+    state?.sessionPlayerId ||
+    savedSession?.playerId ||
+    savedSession?.sessionPlayerId ||
+    savedPlayerId ||
+    studentName;
   
   const [sessionData, setSessionData] = useState(null);
   const [timeRemaining, setTimeRemaining] = useState(0);
@@ -42,6 +52,8 @@ function WaitingForOthers() {
           navigate("/student/final-results", {
             state: {
               studentName,
+              playerId,
+              sessionPlayerId: playerId,
               gameCode: session.game_code || gameCode,
               sessionId: session.id,
             },
@@ -93,6 +105,8 @@ function WaitingForOthers() {
           navigate("/student/final-results", {
             state: {
               studentName,
+              playerId,
+              sessionPlayerId: playerId,
               gameCode: updatedSession.game_code || gameCode,
               sessionId: updatedSession.id
             },
@@ -102,6 +116,8 @@ function WaitingForOthers() {
           navigate("/student/round-results", {
             state: {
               studentName,
+              playerId,
+              sessionPlayerId: playerId,
               gameCode,
               sessionId: updatedSession.id,
               currentRound: updatedSession.current_round
@@ -124,7 +140,7 @@ function WaitingForOthers() {
     return () => {
       supabase.removeChannel(subscription);
     };
-  }, [gameCode, studentName, sessionId, navigate]);
+  }, [gameCode, studentName, sessionId, navigate, playerId]);
 
   // Update timer
   useEffect(() => {
@@ -140,6 +156,8 @@ function WaitingForOthers() {
           navigate("/student/round-results", {
             state: {
               studentName,
+              playerId,
+              sessionPlayerId: playerId,
               gameCode,
               sessionId: sessionData.id,
               currentRound: sessionData.current_round
@@ -158,6 +176,7 @@ function WaitingForOthers() {
     navigate,
     studentName,
     gameCode,
+    playerId,
   ]);
 
   const formatTime = (seconds) => {
