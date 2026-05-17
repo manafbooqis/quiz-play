@@ -340,41 +340,41 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
   console.log("[File Debug] mimeType:", mime);
   console.log("[File Debug] base64 length:", cleanBase64.length);
   
-  // Handle PDF files
+  // Handle PDF files using pdf2json (pure JS, no workers, Vercel-compatible)
   if (mime === "application/pdf") {
     try {
       const buffer = Buffer.from(cleanBase64, 'base64');
       console.log("[File Debug] buffer length:", buffer.length);
       
-      // Use pdfjs-dist legacy build for Vercel serverless compatibility
-      const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      // Use pdf2json for Vercel serverless compatibility (pure JS, no workers)
+      const PDFParser = await import('pdf2json');
+      const pdfParser = new PDFParser.default();
       
-      // Convert Buffer to Uint8Array (required by pdfjs-dist)
-      const pdfData = new Uint8Array(buffer);
-      
-      // Load the PDF document (disable worker for Vercel serverless compatibility)
-      const loadingTask = pdfjsLib.getDocument({
-        data: pdfData,
-        disableWorker: true,
-        useWorkerFetch: false,
-        isEvalSupported: false
+      // Parse PDF from buffer
+      const pdfData = await new Promise((resolve, reject) => {
+        pdfParser.parseBuffer(buffer, (err, pdf) => {
+          if (err) reject(err);
+          else resolve(pdf);
+        });
       });
-      const pdfDocument = await loadingTask.promise;
       
-      console.log("[PDF Debug] PDF loaded, pages:", pdfDocument.numPages);
+      console.log("[PDF Debug] PDF parsed successfully");
       
       // Extract text from all pages
       let fullText = "";
-      const totalPages = pdfDocument.numPages;
-      
-      for (let i = 1; i <= totalPages; i++) {
-        const page = await pdfDocument.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map(item => item.str).join(' ');
-        fullText += pageText + "\n";
+      if (pdfData && pdfData.formImage && pdfData.formImage.Pages) {
+        for (const page of pdfData.formImage.Pages) {
+          if (page.Texts) {
+            const pageText = page.Texts.map(text => text.R && text.R[0] ? text.R[0].T : "").join(" ");
+            fullText += pageText + "\n";
+          }
+        }
       }
       
-      const text = fullText.trim();
+      // Decode URL-encoded text
+      const text = decodeURIComponent(fullText).replace(/\\u[\dA-F]{4}/gi, (match) => 
+        String.fromCharCode(parseInt(match.replace(/\\u/g, ''), 16))
+      ).trim();
       
       console.log("[PDF Debug] Extracted text length:", text.length);
       console.log("[PDF Debug] Text preview:", text.substring(0, 200) + (text.length > 200 ? "..." : ""));
