@@ -385,10 +385,12 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
       }
       
       return text;
-    } catch (error) {
-      console.error("[PDF Error]", error?.message || error);
-      console.error("[PDF Error] Stack:", error?.stack);
-      throw new Error("Failed to extract text from PDF. Please ensure it's a valid text-based PDF.");
+    } catch (pdfError) {
+      console.error("[PDF Error Exact Inner]", pdfError?.message || String(pdfError));
+      console.error("[PDF Error Stack Inner]", pdfError?.stack);
+      throw new Error(
+        `Failed to extract text from PDF: ${pdfError?.message || String(pdfError)}`
+      );
     }
   }
 
