@@ -349,8 +349,11 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
       // Use pdfjs-dist (Mozilla PDF.js) - pure JS, works in Vercel serverless
       const pdfjsLib = await import('pdfjs-dist');
       
+      // Convert Buffer to Uint8Array (required by pdfjs-dist)
+      const pdfData = new Uint8Array(buffer);
+      
       // Load the PDF document
-      const loadingTask = pdfjsLib.getDocument({ data: buffer });
+      const loadingTask = pdfjsLib.getDocument({ data: pdfData });
       const pdfDocument = await loadingTask.promise;
       
       console.log("[PDF Debug] PDF loaded, pages:", pdfDocument.numPages);
