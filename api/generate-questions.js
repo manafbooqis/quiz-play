@@ -346,8 +346,8 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
       const buffer = Buffer.from(cleanBase64, 'base64');
       console.log("[File Debug] buffer length:", buffer.length);
       
-      // Use pdfjs-dist (Mozilla PDF.js) - pure JS, works in Vercel serverless
-      const pdfjsLib = await import('pdfjs-dist');
+      // Use pdfjs-dist legacy build for Vercel serverless compatibility
+      const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
       
       // Convert Buffer to Uint8Array (required by pdfjs-dist)
       const pdfData = new Uint8Array(buffer);
