@@ -394,25 +394,57 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
     }
   }
 
-  if (isDocxMime(mime) || isPptxMime(mime)) {
+  // Handle DOCX files using mammoth (Vercel-compatible pure JS)
+  if (isDocxMime(mime)) {
     try {
       const buffer = Buffer.from(cleanBase64, "base64");
-      const text = isDocxMime(mime) ? extractDocxText(buffer) : extractPptxText(buffer);
-
-      console.log("[Office Extraction] Raw text length:", text.length);
-      console.log("[Office Extraction] Text preview:", text.substring(0, 200) + "...");
-
+      console.log("[DOCX Debug] buffer length:", buffer.length);
+      
+      const mammoth = await import('mammoth');
+      const result = await mammoth.extractRawText({ buffer: buffer });
+      const text = result.value?.trim() || "";
+      
+      console.log("[DOCX Debug] Extracted text length:", text.length);
+      console.log("[DOCX Debug] Text preview:", text.substring(0, 200) + (text.length > 200 ? "..." : ""));
+      
       if (!text) {
-        throw new Error("No readable text found in this Word/PowerPoint file. Please upload a text-based file or PDF.");
+        console.error("[DOCX Error] No text extracted from DOCX");
+        throw new Error("No readable text found in this Word document. Please ensure it contains extractable text.");
       }
-
+      
       return text;
-    } catch (error) {
-      console.error("[Office Extraction Error]", error?.message || error);
-      if (error.message && error.message.includes("No readable text found")) {
-        throw error;
+    } catch (docxError) {
+      console.error("[DOCX Error Exact]", docxError?.message || String(docxError));
+      console.error("[DOCX Error Stack]", docxError?.stack);
+      throw new Error(
+        `Failed to extract text from Word document: ${docxError?.message || String(docxError)}`
+      );
+    }
+  }
+
+  // Handle PPTX files using custom ZIP parsing (pure JS, Vercel-compatible)
+  if (isPptxMime(mime)) {
+    try {
+      const buffer = Buffer.from(cleanBase64, "base64");
+      console.log("[PPTX Debug] buffer length:", buffer.length);
+      
+      const text = extractPptxText(buffer);
+      
+      console.log("[PPTX Debug] Extracted text length:", text.length);
+      console.log("[PPTX Debug] Text preview:", text.substring(0, 200) + (text.length > 200 ? "..." : ""));
+      
+      if (!text) {
+        console.error("[PPTX Error] No text extracted from PPTX");
+        throw new Error("No readable text found in this PowerPoint file. Please ensure it contains extractable text.");
       }
-      throw new Error("Failed to extract text from this Word/PowerPoint file. Please ensure it is a valid DOCX or PPTX file.");
+      
+      return text;
+    } catch (pptxError) {
+      console.error("[PPTX Error Exact]", pptxError?.message || String(pptxError));
+      console.error("[PPTX Error Stack]", pptxError?.stack);
+      throw new Error(
+        `Failed to extract text from PowerPoint file: ${pptxError?.message || String(pptxError)}`
+      );
     }
   }
   
@@ -422,9 +454,14 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
       mime === "text/csv" || 
       mime === "text/markdown" || 
       mime === "application/json") {
+    console.log("[Text Debug] Detected text file type:", mime);
     const text = decodeBase64ToUtf8(cleanBase64);
     
+    console.log("[Text Debug] Extracted text length:", text.length);
+    console.log("[Text Debug] Text preview:", text.substring(0, 200) + (text.length > 200 ? "..." : ""));
+    
     if (!text.trim()) {
+      console.error("[Text Error] No text extracted from text file");
       throw new Error("Could not read text from this file. Please upload a text-based file with content.");
     }
     
