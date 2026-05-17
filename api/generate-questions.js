@@ -336,38 +336,50 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
   const mime = normalizeMimeType(fileName, fileMimeType);
   const cleanBase64 = cleanBase64Payload(fileBase64);
   
+  console.log("[File Debug] fileName:", fileName);
+  console.log("[File Debug] mimeType:", mime);
+  console.log("[File Debug] base64 length:", cleanBase64.length);
+  
   // Handle PDF files
   if (mime === "application/pdf") {
     try {
-      const { createRequire } = await import("module");
-      const require = createRequire(import.meta.url);
-      const pdfParseModule = require("pdf-parse");
-      const pdfParse = typeof pdfParseModule === "function" 
-        ? pdfParseModule 
-        : pdfParseModule.default;
+      const buffer = Buffer.from(cleanBase64, 'base64');
+      console.log("[File Debug] buffer length:", buffer.length);
       
-      if (typeof pdfParse !== "function") {
-        throw new Error("pdf-parse did not export a function");
+      // Use pdfjs-dist (Mozilla PDF.js) - pure JS, works in Vercel serverless
+      const pdfjsLib = await import('pdfjs-dist');
+      
+      // Load the PDF document
+      const loadingTask = pdfjsLib.getDocument({ data: buffer });
+      const pdfDocument = await loadingTask.promise;
+      
+      console.log("[PDF Debug] PDF loaded, pages:", pdfDocument.numPages);
+      
+      // Extract text from all pages
+      let fullText = "";
+      const totalPages = pdfDocument.numPages;
+      
+      for (let i = 1; i <= totalPages; i++) {
+        const page = await pdfDocument.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join(' ');
+        fullText += pageText + "\n";
       }
       
-      const buffer = Buffer.from(cleanBase64, 'base64');
-      const data = await pdfParse(buffer);
-      const text = data?.text?.trim() || "";
+      const text = fullText.trim();
       
-      console.log("[PDF Extraction] Raw text length:", text.length);
-      console.log("[PDF Extraction] Text preview:", text.substring(0, 200) + "...");
+      console.log("[PDF Debug] Extracted text length:", text.length);
+      console.log("[PDF Debug] Text preview:", text.substring(0, 200) + (text.length > 200 ? "..." : ""));
       
       if (!text) {
-        console.error("[PDF Extraction Error] No text extracted from PDF");
+        console.error("[PDF Error] No text extracted from PDF");
         throw new Error("Could not read text from this PDF. Please ensure it contains extractable text.");
       }
       
       return text;
     } catch (error) {
-      console.error("[PDF Extraction Error]", error?.message || error);
-      if (error.message && error.message.includes("Could not read text")) {
-        throw error;
-      }
+      console.error("[PDF Error]", error?.message || error);
+      console.error("[PDF Error] Stack:", error?.stack);
       throw new Error("Failed to extract text from PDF. Please ensure it's a valid text-based PDF.");
     }
   }
