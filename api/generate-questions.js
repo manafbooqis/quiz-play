@@ -352,8 +352,13 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
       // Convert Buffer to Uint8Array (required by pdfjs-dist)
       const pdfData = new Uint8Array(buffer);
       
-      // Load the PDF document
-      const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+      // Load the PDF document (disable worker for Vercel serverless compatibility)
+      const loadingTask = pdfjsLib.getDocument({
+        data: pdfData,
+        disableWorker: true,
+        useWorkerFetch: false,
+        isEvalSupported: false
+      });
       const pdfDocument = await loadingTask.promise;
       
       console.log("[PDF Debug] PDF loaded, pages:", pdfDocument.numPages);
