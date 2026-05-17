@@ -10,9 +10,9 @@ const apiPlugin = (env) => ({
       const normalizedUrl = requestUrl.replace(/^\/quiz-play/, "");
 
       if (
-  req.method === "POST" &&
-  normalizedUrl === "/api/generate-questions"
-) {
+        req.method === "POST" &&
+        normalizedUrl === "/api/generate-questions"
+      ) {
         Object.assign(process.env, env);
 
         let body = "";
@@ -67,6 +67,6 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   return {
     plugins: [react(), tailwindcss(), apiPlugin(env)],
-    base: "/quiz-play/",
+    base: "/",
   };
 });
