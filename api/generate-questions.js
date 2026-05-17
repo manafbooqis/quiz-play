@@ -475,9 +475,12 @@ export default async function handler(req, res) {
       fileName: fileName || ""
     });
   } catch (extractionError) {
-    console.error("File text extraction failed:", extractionError);
+    console.error("[PDF Error Exact]", extractionError?.message || String(extractionError));
+    console.error("[PDF Error Stack]", extractionError?.stack);
     return res.status(400).json({ 
-      error: extractionError.message || "Failed to extract text from file." 
+      error: "File text extraction failed",
+      details: extractionError?.message || String(extractionError),
+      stack: extractionError?.stack?.split("\n").slice(0, 5).join("\n")
     });
   }
 
