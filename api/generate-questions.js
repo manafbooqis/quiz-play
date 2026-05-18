@@ -181,6 +181,15 @@ function normalizeBankToPerDifficulty(questions, perDifficultyCount) {
   return out;
 }
 
+function withTimeout(promise, timeoutMs, timeoutMessage) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs)
+    )
+  ]);
+}
+
 function normalizeMimeType(fileName, mimeType) {
   const raw = (mimeType || "").trim().toLowerCase();
   if (raw && raw !== "application/octet-stream") {
@@ -342,6 +351,7 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
   
   // Handle PDF files using pdf2json (pure JS, no workers, Vercel-compatible)
   if (mime === "application/pdf") {
+    const pdfStartTime = Date.now();
     try {
       const buffer = Buffer.from(cleanBase64, 'base64');
       console.log("[File Debug] buffer length:", buffer.length);
@@ -350,13 +360,17 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
       const PDFParser = await import('pdf2json');
       const pdfParser = new PDFParser.default();
       
-      // Parse PDF from buffer
-      const pdfData = await new Promise((resolve, reject) => {
-        pdfParser.parseBuffer(buffer, (err, pdf) => {
-          if (err) reject(err);
-          else resolve(pdf);
-        });
-      });
+      // Parse PDF from buffer with 8-second timeout
+      const pdfData = await withTimeout(
+        new Promise((resolve, reject) => {
+          pdfParser.parseBuffer(buffer, (err, pdf) => {
+            if (err) reject(err);
+            else resolve(pdf);
+          });
+        }),
+        8000,
+        "PDF extraction timed out after 8 seconds"
+      );
       
       console.log("[PDF Debug] PDF parsed successfully");
       
@@ -376,8 +390,10 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
         String.fromCharCode(parseInt(match.replace(/\\u/g, ''), 16))
       ).trim();
       
+      const pdfDuration = Date.now() - pdfStartTime;
       console.log("[PDF Debug] Extracted text length:", text.length);
       console.log("[PDF Debug] Text preview:", text.substring(0, 200) + (text.length > 200 ? "..." : ""));
+      console.log("[PDF Debug] Extraction duration:", pdfDuration, "ms");
       
       if (!text) {
         console.error("[PDF Error] No text extracted from PDF");
@@ -386,8 +402,15 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
       
       return text;
     } catch (pdfError) {
+      const pdfDuration = Date.now() - pdfStartTime;
       console.error("[PDF Error Exact Inner]", pdfError?.message || String(pdfError));
       console.error("[PDF Error Stack Inner]", pdfError?.stack);
+      console.error("[PDF Error] Duration:", pdfDuration, "ms");
+      
+      if (pdfError?.message?.includes("timed out")) {
+        throw new Error("PDF extraction timed out. Please try TXT/DOCX or paste text.");
+      }
+      
       throw new Error(
         `Failed to extract text from PDF: ${pdfError?.message || String(pdfError)}`
       );
@@ -505,17 +528,26 @@ export default async function handler(req, res) {
   }
 
   console.log("Extracting text from uploaded file...");
+  const extractionStartTime = Date.now();
   
   let extractedText = "";
   try {
-    extractedText = await extractFileText({
-      fileBase64: fileBase64 ? String(fileBase64) : "",
-      fileMimeType: fileMimeType || "",
-      fileName: fileName || ""
-    });
+    extractedText = await withTimeout(
+      extractFileText({
+        fileBase64: fileBase64 ? String(fileBase64) : "",
+        fileMimeType: fileMimeType || "",
+        fileName: fileName || ""
+      }),
+      10000,
+      "File extraction timed out after 10 seconds"
+    );
+    const extractionDuration = Date.now() - extractionStartTime;
+    console.log("[Timing] File extraction completed in", extractionDuration, "ms");
   } catch (extractionError) {
+    const extractionDuration = Date.now() - extractionStartTime;
     console.error("[PDF Error Exact]", extractionError?.message || String(extractionError));
     console.error("[PDF Error Stack]", extractionError?.stack);
+    console.error("[Timing] File extraction failed after", extractionDuration, "ms");
     return res.status(400).json({ 
       error: "File text extraction failed",
       details: extractionError?.message || String(extractionError),
@@ -529,8 +561,8 @@ export default async function handler(req, res) {
     });
   }
 
-  // Limit text to safe length
-  const limitedText = extractedText.substring(0, 15000);
+  // Limit text to safe length for AI processing
+  const limitedText = extractedText.substring(0, 12000);
 
   const prompt = buildQuestionPrompt(count);
   const fullPrompt = `${prompt}
@@ -543,6 +575,7 @@ ${limitedText}
 Questions must be strictly from the extracted document content above. If the document is a multiplication table, generated questions must be multiplication questions only. Do not use outside knowledge.`;
 
   console.log("Calling OpenRouter API with fallback models...");
+  const aiStartTime = Date.now();
 
   const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
   let lastError = null;
@@ -552,32 +585,41 @@ Questions must be strictly from the extracted document content above. If the doc
     
     let openrouterResponse;
     try {
-      openrouterResponse = await fetch(OPENROUTER_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-          "HTTP-Referer": process.env.APP_URL || "http://localhost:5173",
-          "X-Title": "Quiz Play AI Question Generator"
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: "system",
-              content: "You are a helpful assistant that only outputs valid JSON for a quiz question bank."
-            },
-            {
-              role: "user",
-              content: fullPrompt
-            }
-          ],
-          temperature: 0.7,
-          response_format: { type: "json_object" }
+      openrouterResponse = await withTimeout(
+        fetch(OPENROUTER_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+            "HTTP-Referer": process.env.APP_URL || "http://localhost:5173",
+            "X-Title": "Quiz Play AI Question Generator"
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              {
+                role: "system",
+                content: "You are a helpful assistant that only outputs valid JSON for a quiz question bank."
+              },
+              {
+                role: "user",
+                content: fullPrompt
+              }
+            ],
+            temperature: 0.7,
+            response_format: { type: "json_object" }
+          }),
         }),
-      });
+        20000,
+        "AI generation timed out after 20 seconds"
+      );
     } catch (fetchError) {
       console.error(`Model ${model} fetch error:`, fetchError.message);
+      if (fetchError?.message?.includes("timed out")) {
+        console.error(`Model ${model} timed out after 20 seconds`);
+        lastError = { model, reason: "timeout", message: "AI generation timed out. Try fewer questions or shorter content." };
+        continue;
+      }
       lastError = { model, reason: "fetch_error", message: fetchError.message };
       continue;
     }
@@ -656,6 +698,8 @@ Questions must be strictly from the extracted document content above. If the doc
         }
 
         console.log(`Success with model: ${model} (${invalidQuestions.length} questions filtered out)`);
+        const aiDuration = Date.now() - aiStartTime;
+        console.log("[Timing] AI generation completed in", aiDuration, "ms");
         return res.status(200).json({ questions });
       } else {
         console.log(`Model ${model} failed quality validation, trying next model...`);
