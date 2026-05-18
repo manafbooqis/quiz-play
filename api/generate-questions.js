@@ -3,33 +3,17 @@ import { inflateRawSync } from "node:zlib";
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const COHERE_API_KEY = process.env.COHERE_API_KEY;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-
-const OPENROUTER_MODELS = [
-  "qwen/qwen3-next-80b-a3b-instruct:free",
-  "openai/gpt-oss-120b:free",
-  "google/gemma-3-27b-it:free",
-  "z-ai/glm-4.5-air:free",
-  "nvidia/nemotron-3-super-120b-a12b:free",
-  "nvidia/nemotron-3-nano-30b-a3b:free",
-  "minimax/minimax-m2.5:free",
-  "nousresearch/hermes-3-llama-3.1-405b:free",
-  "google/gemma-4-31b-it:free",
-  "openai/gpt-oss-20b:free",
-  "nvidia/nemotron-nano-9b-v2:free",
-  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-  "nvidia/nemotron-nano-12b-v2-vl:free"
-];
-
-const FALLBACK_MODELS = [
-  "qwen/qwen3-next-80b-a3b-instruct:free",
-  "nvidia/nemotron-nano-9b-v2:free",
-  "openai/gpt-oss-20b:free"
-];
 
 console.log("=== API Route: generate-questions ===");
 console.log("SUPABASE_URL:", SUPABASE_URL ? "set" : "MISSING");
 console.log("SUPABASE_SERVICE_ROLE_KEY:", SUPABASE_SERVICE_ROLE_KEY ? "set" : "MISSING");
+console.log("GEMINI_API_KEY:", GEMINI_API_KEY ? "set" : "MISSING");
+console.log("GROQ_API_KEY:", GROQ_API_KEY ? "set" : "MISSING");
+console.log("COHERE_API_KEY:", COHERE_API_KEY ? "set" : "MISSING");
 console.log("OPENROUTER_API_KEY:", OPENROUTER_API_KEY ? "set" : "MISSING");
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -39,6 +23,8 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const supabaseAdmin = SUPABASE_URL
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
   : null;
+
+// ─── JSON Helpers ──────────────────────────────────────────────────────────────
 
 function safeParseJson(value) {
   if (!value) return null;
@@ -56,6 +42,209 @@ function safeParseJson(value) {
     return null;
   }
 }
+
+// ─── Prompt ────────────────────────────────────────────────────────────────────
+
+function buildSimplePrompt() {
+  return `You are a quiz question generator. Return ONLY valid JSON. No markdown. No explanation.
+
+Generate exactly 1 easy, 1 medium, and 1 hard multiple-choice question from the document content provided.
+
+Each question must have:
+- "id": unique string (e.g. "easy-1")
+- "question": question text
+- "options": array of exactly 4 strings
+- "correct_answer": the exact string that is the correct option (must match one of the options exactly)
+
+Return this exact structure:
+{
+  "easy": [{ "id": "easy-1", "question": "...", "options": ["...", "...", "...", "..."], "correct_answer": "..." }],
+  "medium": [{ "id": "medium-1", "question": "...", "options": ["...", "...", "...", "..."], "correct_answer": "..." }],
+  "hard": [{ "id": "hard-1", "question": "...", "options": ["...", "...", "...", "..."], "correct_answer": "..." }]
+}`;
+}
+
+// ─── Normalize output ──────────────────────────────────────────────────────────
+
+function normalizeOutput(parsed) {
+  if (!parsed || typeof parsed !== "object") return null;
+  const result = { easy: [], medium: [], hard: [] };
+  for (const diff of ["easy", "medium", "hard"]) {
+    const arr = Array.isArray(parsed[diff]) ? parsed[diff] : [];
+    result[diff] = arr.map((q, i) => ({
+      id: q.id || `${diff}-${i + 1}`,
+      question: q.question || "",
+      options: Array.isArray(q.options) ? q.options : [],
+      correct_answer: q.correct_answer || q.correctAnswer || "",
+    })).filter(q => q.question && q.options.length === 4 && q.correct_answer);
+  }
+  if (!result.easy.length && !result.medium.length && !result.hard.length) return null;
+  return result;
+}
+
+// ─── Provider calls ────────────────────────────────────────────────────────────
+
+async function callGemini(fullPrompt, signal) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contents: [{ parts: [{ text: fullPrompt }] }] }),
+    signal,
+  });
+  if (res.status === 429) throw Object.assign(new Error("Rate limited"), { isRateLimit: true });
+  if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
+  const json = await res.json();
+  const text = json?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  const parsed = safeParseJson(text);
+  if (!parsed) throw Object.assign(new Error("Invalid JSON from Gemini"), { isInvalidJson: true });
+  return parsed;
+}
+
+async function callGroq(fullPrompt, signal) {
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "llama-3.1-8b-instant",
+      messages: [
+        { role: "system", content: "You only output valid JSON for quiz questions." },
+        { role: "user", content: fullPrompt },
+      ],
+      temperature: 0.7,
+    }),
+    signal,
+  });
+  if (res.status === 429) throw Object.assign(new Error("Rate limited"), { isRateLimit: true });
+  if (!res.ok) throw new Error(`Groq HTTP ${res.status}`);
+  const json = await res.json();
+  const text = json?.choices?.[0]?.message?.content || "";
+  const parsed = safeParseJson(text);
+  if (!parsed) throw Object.assign(new Error("Invalid JSON from Groq"), { isInvalidJson: true });
+  return parsed;
+}
+
+async function callCohere(fullPrompt, signal) {
+  const res = await fetch("https://api.cohere.com/v2/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${COHERE_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "command-r7b-12-2024",
+      messages: [{ role: "user", content: fullPrompt }],
+    }),
+    signal,
+  });
+  if (res.status === 429) throw Object.assign(new Error("Rate limited"), { isRateLimit: true });
+  if (!res.ok) throw new Error(`Cohere HTTP ${res.status}`);
+  const json = await res.json();
+  const text = json?.message?.content?.[0]?.text || json?.text || "";
+  const parsed = safeParseJson(text);
+  if (!parsed) throw Object.assign(new Error("Invalid JSON from Cohere"), { isInvalidJson: true });
+  return parsed;
+}
+
+async function callOpenRouter(fullPrompt, signal) {
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+      "HTTP-Referer": process.env.APP_URL || "http://localhost:5173",
+      "X-Title": "Quiz Play AI Question Generator",
+    },
+    body: JSON.stringify({
+      model: "nousresearch/hermes-3-llama-3.1-405b:free",
+      messages: [
+        { role: "system", content: "You only output valid JSON for quiz questions." },
+        { role: "user", content: fullPrompt },
+      ],
+      temperature: 0.7,
+    }),
+    signal,
+  });
+  if (res.status === 429) throw Object.assign(new Error("Rate limited"), { isRateLimit: true });
+  if (!res.ok) throw new Error(`OpenRouter HTTP ${res.status}`);
+  const json = await res.json();
+  const text = json?.choices?.[0]?.message?.content || "";
+  const parsed = safeParseJson(text);
+  if (!parsed) throw Object.assign(new Error("Invalid JSON from OpenRouter"), { isInvalidJson: true });
+  return parsed;
+}
+
+// Provider registry
+const PROVIDERS = [
+  { name: "Gemini",     key: () => GEMINI_API_KEY,     fn: callGemini },
+  { name: "Groq",       key: () => GROQ_API_KEY,       fn: callGroq },
+  { name: "Cohere",     key: () => COHERE_API_KEY,     fn: callCohere },
+  { name: "OpenRouter", key: () => OPENROUTER_API_KEY, fn: callOpenRouter },
+];
+
+// ─── Multi-provider AI call ────────────────────────────────────────────────────
+
+async function generateWithFallback(fullPrompt) {
+  const TOTAL_TIMEOUT_MS = 25000;
+  const PER_PROVIDER_MS = 8000;
+  const startTime = Date.now();
+
+  for (const provider of PROVIDERS) {
+    const elapsed = Date.now() - startTime;
+    if (elapsed >= TOTAL_TIMEOUT_MS) {
+      console.error("[AI Total Duration] Exceeded 25s total, stopping.");
+      break;
+    }
+
+    if (!provider.key()) {
+      console.log(`[AI Provider Skip] ${provider.name} — missing key`);
+      continue;
+    }
+
+    console.log(`[AI Provider Attempt] ${provider.name}`);
+
+    const controller = new AbortController();
+    const timerId = setTimeout(() => controller.abort(), PER_PROVIDER_MS);
+
+    try {
+      const raw = await provider.fn(fullPrompt, controller.signal);
+      clearTimeout(timerId);
+
+      const normalized = normalizeOutput(raw);
+      if (!normalized) {
+        console.error(`[AI Provider InvalidJSON] ${provider.name} — output could not be normalized`);
+        continue;
+      }
+
+      const duration = Date.now() - startTime;
+      console.log(`[AI Provider Success] ${provider.name}`);
+      console.log(`[AI Total Duration] ${duration}ms`);
+      return { ok: true, questions: normalized };
+
+    } catch (err) {
+      clearTimeout(timerId);
+
+      if (err.name === "AbortError") {
+        console.error(`[AI Provider Timeout] ${provider.name}`);
+      } else if (err.isRateLimit) {
+        console.error(`[AI Provider RateLimit] ${provider.name}`);
+      } else if (err.isInvalidJson) {
+        console.error(`[AI Provider InvalidJSON] ${provider.name} — ${err.message}`);
+      } else {
+        console.error(`[AI Provider Error] ${provider.name} — ${err.message}`);
+      }
+    }
+  }
+
+  const duration = Date.now() - startTime;
+  console.log(`[AI Total Duration] ${duration}ms — all providers failed`);
+  return { ok: false };
+}
+
+// ─── Utility helpers (unchanged) ──────────────────────────────────────────────
 
 function buildQuestionPrompt(perDifficultyCount) {
   const n = Math.max(1, Math.floor(Number(perDifficultyCount) || 1));
@@ -114,73 +303,26 @@ Output ONLY the JSON object. Do not include markdown formatting or explanations.
 
 function validateQuestion(question, difficulty) {
   const errors = [];
-  
-  // Check required fields
   if (!question.id) errors.push("Missing id");
   if (!question.question || typeof question.question !== "string") errors.push("Missing or invalid question text");
   if (!Array.isArray(question.options)) errors.push("Missing or invalid options array");
   if (typeof question.correctAnswer !== "number") errors.push("Missing or invalid correctAnswer");
   if (question.difficulty !== difficulty) errors.push("Wrong difficulty");
-  
-  // Check options count
-  if (question.options && question.options.length !== 4) {
-    errors.push("Must have exactly 4 options");
-  }
-  
-  // Check correct answer index
+  if (question.options && question.options.length !== 4) errors.push("Must have exactly 4 options");
   if (question.options && question.correctAnswer >= 0 && question.correctAnswer < 4) {
-    const correctOption = question.options[question.correctAnswer];
-    const distractors = question.options.filter((_, i) => i !== question.correctAnswer);
-    
-    // Check for forbidden phrases
     const forbiddenPhrases = ["all of the above", "none of the above", "both a and b", "both b and c"];
-    const hasForbidden = question.options.some(opt => 
+    const hasForbidden = question.options.some(opt =>
       forbiddenPhrases.some(phrase => opt.toLowerCase().includes(phrase))
     );
     if (hasForbidden) errors.push("Contains forbidden option phrases");
-    
-    // Check option length similarity (correct shouldn't be much longer) - WARNING ONLY
-    const correctLength = correctOption.length;
-    const avgDistractorLength = distractors.reduce((sum, opt) => sum + opt.length, 0) / distractors.length;
-    if (correctLength > avgDistractorLength * 2) console.warn("Question quality: Correct answer much longer than distractors");
-    
-    // Check for obvious wrong answers (very short vs detailed) - WARNING ONLY
-    const minLength = Math.min(...question.options.map(opt => opt.length));
-    const maxLength = Math.max(...question.options.map(opt => opt.length));
-    if (maxLength > minLength * 3) console.warn("Question quality: Options have very different lengths");
   }
-  
   return errors;
-}
-
-function validateAndFilterQuestions(questions) {
-  const validQuestions = { easy: [], medium: [], hard: [] };
-  const invalidQuestions = [];
-  
-  for (const difficulty of ["easy", "medium", "hard"]) {
-    const difficultyQuestions = questions[difficulty] || [];
-    const validDifficultyQuestions = [];
-    
-    for (const question of difficultyQuestions) {
-      const errors = validateQuestion(question, difficulty);
-      if (errors.length === 0) {
-        validDifficultyQuestions.push(question);
-      } else {
-        invalidQuestions.push({ question, errors, difficulty });
-      }
-    }
-    
-    validQuestions[difficulty] = validDifficultyQuestions;
-  }
-  
-  return { validQuestions, invalidQuestions };
 }
 
 function normalizeBankToPerDifficulty(questions, perDifficultyCount) {
   const n = Math.max(1, Math.floor(Number(perDifficultyCount) || 1));
-  const keys = ["easy", "medium", "hard"];
   const out = { easy: [], medium: [], hard: [] };
-  for (const k of keys) {
+  for (const k of ["easy", "medium", "hard"]) {
     const arr = Array.isArray(questions[k]) ? questions[k] : [];
     out[k] = arr.slice(0, n);
   }
@@ -198,9 +340,7 @@ function withTimeout(promise, timeoutMs, timeoutMessage) {
 
 function normalizeMimeType(fileName, mimeType) {
   const raw = (mimeType || "").trim().toLowerCase();
-  if (raw && raw !== "application/octet-stream") {
-    return raw;
-  }
+  if (raw && raw !== "application/octet-stream") return raw;
   const lower = (fileName || "").toLowerCase();
   if (lower.endsWith(".pdf")) return "application/pdf";
   if (lower.endsWith(".png")) return "image/png";
@@ -217,11 +357,7 @@ function normalizeMimeType(fileName, mimeType) {
 
 function decodeBase64ToUtf8(base64) {
   if (!base64) return "";
-  try {
-    return Buffer.from(base64, "base64").toString("utf8");
-  } catch {
-    return "";
-  }
+  try { return Buffer.from(base64, "base64").toString("utf8"); } catch { return ""; }
 }
 
 function cleanBase64Payload(base64) {
@@ -251,14 +387,10 @@ function extractTextTags(xml) {
   const textParts = [];
   const tagPattern = /<(?:[a-zA-Z0-9]+:)?t\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9]+:)?t>/g;
   let match;
-
   while ((match = tagPattern.exec(xml)) !== null) {
     const text = decodeXmlEntities(match[1].replace(/<[^>]+>/g, "")).trim();
-    if (text) {
-      textParts.push(text);
-    }
+    if (text) textParts.push(text);
   }
-
   return textParts.join(" ");
 }
 
@@ -271,15 +403,9 @@ function readZipEntries(buffer) {
   let eocdOffset = -1;
 
   for (let offset = buffer.length - 22; offset >= minEocdOffset; offset -= 1) {
-    if (buffer.readUInt32LE(offset) === eocdSignature) {
-      eocdOffset = offset;
-      break;
-    }
+    if (buffer.readUInt32LE(offset) === eocdSignature) { eocdOffset = offset; break; }
   }
-
-  if (eocdOffset === -1) {
-    throw new Error("Invalid Office document archive.");
-  }
+  if (eocdOffset === -1) throw new Error("Invalid Office document archive.");
 
   const centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16);
   const centralDirectorySize = buffer.readUInt32LE(eocdOffset + 12);
@@ -287,10 +413,7 @@ function readZipEntries(buffer) {
   let offset = centralDirectoryOffset;
 
   while (offset < centralDirectoryEnd) {
-    if (buffer.readUInt32LE(offset) !== centralDirectorySignature) {
-      break;
-    }
-
+    if (buffer.readUInt32LE(offset) !== centralDirectorySignature) break;
     const compressionMethod = buffer.readUInt16LE(offset + 10);
     const compressedSize = buffer.readUInt32LE(offset + 20);
     const fileNameLength = buffer.readUInt16LE(offset + 28);
@@ -298,214 +421,127 @@ function readZipEntries(buffer) {
     const commentLength = buffer.readUInt16LE(offset + 32);
     const localHeaderOffset = buffer.readUInt32LE(offset + 42);
     const fileName = buffer.toString("utf8", offset + 46, offset + 46 + fileNameLength);
-
     if (buffer.readUInt32LE(localHeaderOffset) === localFileSignature) {
       const localNameLength = buffer.readUInt16LE(localHeaderOffset + 26);
       const localExtraLength = buffer.readUInt16LE(localHeaderOffset + 28);
       const dataOffset = localHeaderOffset + 30 + localNameLength + localExtraLength;
       const compressedData = buffer.subarray(dataOffset, dataOffset + compressedSize);
-
-      if (compressionMethod === 0) {
-        entries.set(fileName, compressedData);
-      } else if (compressionMethod === 8) {
-        entries.set(fileName, inflateRawSync(compressedData));
-      }
+      if (compressionMethod === 0) entries.set(fileName, compressedData);
+      else if (compressionMethod === 8) entries.set(fileName, inflateRawSync(compressedData));
     }
-
     offset += 46 + fileNameLength + extraLength + commentLength;
   }
-
   return entries;
 }
 
 function extractDocxText(buffer) {
   const entries = readZipEntries(buffer);
-  const documentParts = [...entries.entries()]
+  return [...entries.entries()]
     .filter(([name]) => /^word\/(?:document|header\d+|footer\d+|footnotes|endnotes)\.xml$/.test(name))
     .map(([, content]) => extractTextTags(content.toString("utf8")))
-    .filter(Boolean);
-
-  return documentParts.join("\n\n").trim();
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
 }
 
 function extractPptxText(buffer) {
   const entries = readZipEntries(buffer);
-  const slideParts = [...entries.entries()]
+  return [...entries.entries()]
     .filter(([name]) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
     .sort(([a], [b]) => {
-      const aNumber = Number(a.match(/slide(\d+)\.xml$/)?.[1] || 0);
-      const bNumber = Number(b.match(/slide(\d+)\.xml$/)?.[1] || 0);
-      return aNumber - bNumber;
+      const aNum = Number(a.match(/slide(\d+)\.xml$/)?.[1] || 0);
+      const bNum = Number(b.match(/slide(\d+)\.xml$/)?.[1] || 0);
+      return aNum - bNum;
     })
     .map(([, content]) => extractTextTags(content.toString("utf8")))
-    .filter(Boolean);
-
-  return slideParts.join("\n\n").trim();
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
 }
 
 async function extractFileText({ fileBase64, fileMimeType, fileName }) {
-  if (!fileBase64) {
-    throw new Error("No file content provided.");
-  }
-
+  if (!fileBase64) throw new Error("No file content provided.");
   const mime = normalizeMimeType(fileName, fileMimeType);
   const cleanBase64 = cleanBase64Payload(fileBase64);
-  
+
   console.log("[File Debug] fileName:", fileName);
   console.log("[File Debug] mimeType:", mime);
   console.log("[File Debug] base64 length:", cleanBase64.length);
-  
-  // Handle PDF files using pdf2json (pure JS, no workers, Vercel-compatible)
+
   if (mime === "application/pdf") {
     const pdfStartTime = Date.now();
     try {
-      const buffer = Buffer.from(cleanBase64, 'base64');
-      console.log("[File Debug] buffer length:", buffer.length);
-      
-      // Use pdf2json for Vercel serverless compatibility (pure JS, no workers)
-      const PDFParser = await import('pdf2json');
+      const buffer = Buffer.from(cleanBase64, "base64");
+      const PDFParser = await import("pdf2json");
       const pdfParser = new PDFParser.default();
-      
-      // Parse PDF from buffer with 8-second timeout
       const pdfData = await withTimeout(
         new Promise((resolve, reject) => {
-          pdfParser.parseBuffer(buffer, (err, pdf) => {
-            if (err) reject(err);
-            else resolve(pdf);
-          });
+          pdfParser.parseBuffer(buffer, (err, pdf) => { if (err) reject(err); else resolve(pdf); });
         }),
         8000,
         "PDF extraction timed out after 8 seconds"
       );
-      
-      console.log("[PDF Debug] PDF parsed successfully");
-      
-      // Extract text from all pages
       let fullText = "";
-      if (pdfData && pdfData.formImage && pdfData.formImage.Pages) {
+      if (pdfData?.formImage?.Pages) {
         for (const page of pdfData.formImage.Pages) {
           if (page.Texts) {
-            const pageText = page.Texts.map(text => text.R && text.R[0] ? text.R[0].T : "").join(" ");
-            fullText += pageText + "\n";
+            fullText += page.Texts.map(t => t.R?.[0] ? t.R[0].T : "").join(" ") + "\n";
           }
         }
       }
-      
-      // Decode URL-encoded text
-      const text = decodeURIComponent(fullText).replace(/\\u[\dA-F]{4}/gi, (match) => 
-        String.fromCharCode(parseInt(match.replace(/\\u/g, ''), 16))
+      const text = decodeURIComponent(fullText).replace(/\\u[\dA-F]{4}/gi, m =>
+        String.fromCharCode(parseInt(m.replace(/\\u/, ""), 16))
       ).trim();
-      
-      const pdfDuration = Date.now() - pdfStartTime;
-      console.log("[PDF Debug] Extracted text length:", text.length);
-      console.log("[PDF Debug] Text preview:", text.substring(0, 200) + (text.length > 200 ? "..." : ""));
-      console.log("[PDF Debug] Extraction duration:", pdfDuration, "ms");
-      
-      if (!text) {
-        console.error("[PDF Error] No text extracted from PDF");
-        throw new Error("Could not read text from this PDF. Please ensure it contains extractable text.");
-      }
-      
+      console.log("[PDF Debug] Extracted text length:", text.length, "in", Date.now() - pdfStartTime, "ms");
+      if (!text) throw new Error("Could not read text from this PDF. Please ensure it contains extractable text.");
       return text;
     } catch (pdfError) {
-      const pdfDuration = Date.now() - pdfStartTime;
-      console.error("[PDF Error Exact Inner]", pdfError?.message || String(pdfError));
-      console.error("[PDF Error Stack Inner]", pdfError?.stack);
-      console.error("[PDF Error] Duration:", pdfDuration, "ms");
-      
-      if (pdfError?.message?.includes("timed out")) {
-        throw new Error("PDF extraction timed out. Please try TXT/DOCX or paste text.");
-      }
-      
-      throw new Error(
-        `Failed to extract text from PDF: ${pdfError?.message || String(pdfError)}`
-      );
+      console.error("[PDF Error]", pdfError?.message);
+      if (pdfError?.message?.includes("timed out")) throw new Error("PDF extraction timed out. Please try TXT/DOCX or paste text.");
+      throw new Error(`Failed to extract text from PDF: ${pdfError?.message || String(pdfError)}`);
     }
   }
 
-  // Handle DOCX files using mammoth (Vercel-compatible pure JS)
   if (isDocxMime(mime)) {
     try {
       const buffer = Buffer.from(cleanBase64, "base64");
-      console.log("[DOCX Debug] buffer length:", buffer.length);
-      
-      const mammoth = await import('mammoth');
-      const result = await mammoth.extractRawText({ buffer: buffer });
+      const mammoth = await import("mammoth");
+      const result = await mammoth.extractRawText({ buffer });
       const text = result.value?.trim() || "";
-      
-      console.log("[DOCX Debug] Extracted text length:", text.length);
-      console.log("[DOCX Debug] Text preview:", text.substring(0, 200) + (text.length > 200 ? "..." : ""));
-      
-      if (!text) {
-        console.error("[DOCX Error] No text extracted from DOCX");
-        throw new Error("No readable text found in this Word document. Please ensure it contains extractable text.");
-      }
-      
+      if (!text) throw new Error("No readable text found in this Word document.");
       return text;
-    } catch (docxError) {
-      console.error("[DOCX Error Exact]", docxError?.message || String(docxError));
-      console.error("[DOCX Error Stack]", docxError?.stack);
-      throw new Error(
-        `Failed to extract text from Word document: ${docxError?.message || String(docxError)}`
-      );
+    } catch (e) {
+      throw new Error(`Failed to extract text from Word document: ${e?.message || String(e)}`);
     }
   }
 
-  // Handle PPTX files using custom ZIP parsing (pure JS, Vercel-compatible)
   if (isPptxMime(mime)) {
     try {
       const buffer = Buffer.from(cleanBase64, "base64");
-      console.log("[PPTX Debug] buffer length:", buffer.length);
-      
       const text = extractPptxText(buffer);
-      
-      console.log("[PPTX Debug] Extracted text length:", text.length);
-      console.log("[PPTX Debug] Text preview:", text.substring(0, 200) + (text.length > 200 ? "..." : ""));
-      
-      if (!text) {
-        console.error("[PPTX Error] No text extracted from PPTX");
-        throw new Error("No readable text found in this PowerPoint file. Please ensure it contains extractable text.");
-      }
-      
+      if (!text) throw new Error("No readable text found in this PowerPoint file.");
       return text;
-    } catch (pptxError) {
-      console.error("[PPTX Error Exact]", pptxError?.message || String(pptxError));
-      console.error("[PPTX Error Stack]", pptxError?.stack);
-      throw new Error(
-        `Failed to extract text from PowerPoint file: ${pptxError?.message || String(pptxError)}`
-      );
+    } catch (e) {
+      throw new Error(`Failed to extract text from PowerPoint file: ${e?.message || String(e)}`);
     }
   }
-  
-  // Handle text-based files
-  if (mime.startsWith("text/") || 
-      mime === "text/plain" || 
-      mime === "text/csv" || 
-      mime === "text/markdown" || 
-      mime === "application/json") {
-    console.log("[Text Debug] Detected text file type:", mime);
+
+  if (mime.startsWith("text/") || mime === "application/json") {
     const text = decodeBase64ToUtf8(cleanBase64);
-    
-    console.log("[Text Debug] Extracted text length:", text.length);
-    console.log("[Text Debug] Text preview:", text.substring(0, 200) + (text.length > 200 ? "..." : ""));
-    
-    if (!text.trim()) {
-      console.error("[Text Error] No text extracted from text file");
-      throw new Error("Could not read text from this file. Please upload a text-based file with content.");
-    }
-    
+    if (!text.trim()) throw new Error("Could not read text from this file.");
     return text;
   }
-  
-  // Unsupported file types
+
   throw new Error("Unsupported file type. Please upload PDF, TXT, CSV, JSON, MD, DOCX, or PPTX.");
 }
+
+// ─── Main handler ──────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
   const requestStartTime = Date.now();
   console.log("=== Handler called ===");
   console.log("[Timing] Request received at", new Date().toISOString());
-  
+
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed. Use POST." });
@@ -515,18 +551,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Supabase service client is not configured." });
   }
 
-  if (!OPENROUTER_API_KEY) {
-    return res.status(500).json({ error: "Missing OpenRouter API key." });
-  }
-
-  const {
-    gameCode,
-    fileName,
-    questionCount,
-    fileBase64,
-    fileMimeType,
-    textContent,
-  } = req.body || {};
+  const { gameCode, fileName, questionCount, fileBase64, fileMimeType, textContent } = req.body || {};
 
   if (!gameCode || !fileName || !questionCount) {
     return res.status(400).json({ error: "gameCode, fileName, and questionCount are required." });
@@ -537,244 +562,63 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "questionCount must be a positive number." });
   }
 
+  // ── Text extraction ──
   let extractedText = "";
-  
-  // If textContent is provided (browser-extracted), use it directly
   if (textContent && typeof textContent === "string" && textContent.trim()) {
-    console.log("[API] Using browser-extracted text content");
-    console.log("[API] Text content length:", textContent.length);
-    console.log("[Timing] textContent received, length:", textContent.length);
+    console.log("[API] Using browser-extracted text content, length:", textContent.length);
     extractedText = textContent.trim();
   } else {
-    // Otherwise, extract text on server (fallback for non-PDF files)
-    console.log("Extracting text from uploaded file...");
-    const extractionStartTime = Date.now();
-    
+    console.log("[API] Extracting text from uploaded file...");
+    const extractionStart = Date.now();
     try {
       extractedText = await withTimeout(
-        extractFileText({
-          fileBase64: fileBase64 ? String(fileBase64) : "",
-          fileMimeType: fileMimeType || "",
-          fileName: fileName || ""
-        }),
+        extractFileText({ fileBase64: fileBase64 ? String(fileBase64) : "", fileMimeType: fileMimeType || "", fileName: fileName || "" }),
         10000,
         "File extraction timed out after 10 seconds"
       );
-      const extractionDuration = Date.now() - extractionStartTime;
-      console.log("[Timing] File extraction completed in", extractionDuration, "ms");
+      console.log("[Timing] File extraction completed in", Date.now() - extractionStart, "ms");
     } catch (extractionError) {
-      const extractionDuration = Date.now() - extractionStartTime;
-      console.error("[PDF Error Exact]", extractionError?.message || String(extractionError));
-      console.error("[PDF Error Stack]", extractionError?.stack);
-      console.error("[Timing] File extraction failed after", extractionDuration, "ms");
-      return res.status(400).json({ 
+      console.error("[PDF Error Exact]", extractionError?.message);
+      return res.status(400).json({
         error: "File text extraction failed",
         details: extractionError?.message || String(extractionError),
-        stack: extractionError?.stack?.split("\n").slice(0, 5).join("\n")
       });
     }
   }
 
-  if (!extractedText || !extractedText.trim()) {
-    return res.status(400).json({ 
-      error: "Could not read text from this file. Please upload a text-based PDF or use manual question creation." 
-    });
+  if (!extractedText?.trim()) {
+    return res.status(400).json({ error: "Could not read text from this file. Please upload a text-based PDF or use manual question creation." });
   }
 
-  console.log("[Timing] Final text length after trim:", extractedText.length);
-
-  // Limit text to safe length for AI processing (reduced to 5000 for faster generation)
+  // Limit text to 5000 characters
   const limitedText = extractedText.substring(0, 5000);
+  console.log("[Timing] Final text length after trim:", limitedText.length);
 
-  const prompt = buildQuestionPrompt(count);
+  // Build prompt — use simple 1/1/1 prompt for speed and reliability
+  const prompt = buildSimplePrompt();
   const fullPrompt = `${prompt}
 
-Use only this document content to generate questions:
+Document content:
 ---
 ${limitedText}
 ---
 
-Questions must be strictly from the extracted document content above. If the document is a multiplication table, generated questions must be multiplication questions only. Do not use outside knowledge.`;
+Return ONLY the JSON object. No markdown. No explanation.`;
 
   console.log("[Timing] Prompt constructed, length:", fullPrompt.length);
 
-  console.log("Calling OpenRouter API with fallback models...");
-  const aiStartTime = Date.now();
-  const totalSafetyTimeout = 25000; // 25 seconds total safety timeout
+  // ── AI generation with multi-provider fallback ──
+  const result = await generateWithFallback(fullPrompt);
 
-  const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-  let lastError = null;
-  let rateLimitedModels = [];
+  const totalDuration = Date.now() - requestStartTime;
+  console.log("[Timing] Total request duration:", totalDuration, "ms");
 
-  for (const model of FALLBACK_MODELS) {
-    // Check total safety timeout
-    const elapsed = Date.now() - aiStartTime;
-    if (elapsed > totalSafetyTimeout) {
-      console.error("[AI Timeout] Total generation exceeded", totalSafetyTimeout, "ms");
-      return res.status(500).json({ 
-        error: "AI generation timed out",
-        details: "Try fewer questions, shorter content, saved questions, or write manually."
-      });
-    }
-
-    console.log("[AI Model Attempt] Trying model:", model);
-    console.log("[Timing] Attempting model:", model, "at", new Date().toISOString());
-    const modelStartTime = Date.now();
-
-    let openrouterResponse;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 seconds per model
-
-    try {
-      openrouterResponse = await fetch(OPENROUTER_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-          "HTTP-Referer": process.env.APP_URL || "http://localhost:5173",
-          "X-Title": "Quiz Play AI Question Generator"
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: "system",
-              content: "You are a helpful assistant that only outputs valid JSON for a quiz question bank."
-            },
-            {
-              role: "user",
-              content: fullPrompt
-            }
-          ],
-          temperature: 0.7,
-          response_format: { type: "json_object" }
-        }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-
-      const modelDuration = Date.now() - modelStartTime;
-      console.log("[AI Model Response] Status:", openrouterResponse.status, "| Duration:", modelDuration, "ms");
-    } catch (fetchError) {
-      clearTimeout(timeoutId);
-      const modelDuration = Date.now() - modelStartTime;
-      console.error("[AI Fetch Error]", fetchError?.message || String(fetchError));
-      console.log("[Timing] Model", model, "failed after", modelDuration, "ms");
-
-      if (fetchError.name === 'AbortError') {
-        console.error("[AI Fetch Error] Model", model, "timed out after 8 seconds");
-        return res.status(500).json({ 
-          error: "AI generation timed out",
-          details: "Try fewer questions, shorter content, saved questions, or write manually."
-        });
-      }
-
-      lastError = { model, reason: "fetch_error", message: fetchError?.message || String(fetchError) };
-      continue;
-    }
-
-    if (!openrouterResponse.ok) {
-      const body = await openrouterResponse.text();
-      console.error("[AI Fetch Error] Status:", openrouterResponse.status);
-      console.error("[AI Fetch Error] Body:", body);
-      
-      // Check for rate limit (429) or rate limit in body
-      if (openrouterResponse.status === 429 || 
-          body.toLowerCase().includes("rate limit") ||
-          body.toLowerCase().includes("free model rate limit")) {
-        console.log("[AI Rate Limit] Model", model, "rate limited (429), trying next model");
-        rateLimitedModels.push(model);
-        lastError = { model, reason: "rate_limit", message: "Rate limited" };
-        continue;
-      }
-      
-      lastError = { model, reason: "api_error", message: `Status ${openrouterResponse.status}: ${body}` };
-      continue;
-    }
-
-    try {
-      const rawContent = await openrouterResponse.text();
-      console.log("[Timing] AI raw response length:", rawContent.length);
-
-      console.log("[Timing] JSON parsing start");
-      const parsed = JSON.parse(rawContent);
-      const content = parsed?.choices?.[0]?.message?.content;
-
-      if (!content) {
-        console.error("[AI Parse Error] No content in AI response");
-        lastError = { model, reason: "no_content", message: "No content in AI response" };
-        continue;
-      }
-
-      console.log("[Timing] JSON parse success");
-      const questionsJson = JSON.parse(content);
-
-      if (!questionsJson || typeof questionsJson !== "object") {
-        console.error("[AI Parse Error] Invalid JSON structure");
-        lastError = { model, reason: "invalid_json", message: "Invalid question structure" };
-        continue;
-      }
-
-      const invalidQuestions = [];
-      const validQuestions = { easy: [], medium: [], hard: [] };
-
-      for (const difficulty of ["easy", "medium", "hard"]) {
-        const arr = Array.isArray(questionsJson[difficulty]) ? questionsJson[difficulty] : [];
-        for (const q of arr) {
-          const validation = validateQuestion(q);
-          if (!validation.valid) {
-            invalidQuestions.push({ difficulty, reason: validation.reason, question: q.question });
-          } else {
-            validQuestions[difficulty].push(q);
-          }
-        }
-      }
-
-      if (invalidQuestions.length > 0) {
-        console.log("[AI Validation] Filtered out", invalidQuestions.length, "invalid questions");
-      }
-
-      // Trim to exact count if we have extra valid questions
-      const trimmed = normalizeBankToPerDifficulty(validQuestions, count);
-
-      const questions = trimmed;
-
-      if (!questions.easy.length && !questions.medium.length && !questions.hard.length) {
-        console.error("[AI Validation Error] No valid questions after quality check");
-        lastError = { model, reason: "empty_questions", message: "No valid questions after quality check" };
-        continue;
-      }
-
-      const aiDuration = Date.now() - aiStartTime;
-      console.log("[AI Success] Model:", model, "(", invalidQuestions.length, "questions filtered out, duration:", aiDuration, "ms)");
-      console.log("[Timing] AI generation completed in", aiDuration, "ms");
-
-      const totalDuration = Date.now() - requestStartTime;
-      console.log("[Timing] Total request duration:", totalDuration, "ms");
-
-      return res.status(200).json({ questions });
-    } catch (parseError) {
-      console.error("[AI Parse Error]", parseError?.message || String(parseError));
-      lastError = { model, reason: "parse_error", message: parseError?.message || String(parseError) };
-      continue;
-    }
-  }
-
-  // All models failed
-  console.error("[AI All Failed] All 3 free models failed");
-  console.error("[AI All Failed] Rate limited models:", rateLimitedModels);
-  console.error("[AI All Failed] Last error:", lastError);
-
-  // If all models were rate limited
-  if (rateLimitedModels.length === FALLBACK_MODELS.length) {
-    return res.status(500).json({ 
-      error: "AI free model rate limit reached",
-      details: "Please wait, use another model, use a paid API key, saved questions, or write manually."
+  if (!result.ok) {
+    return res.status(500).json({
+      error: "Free AI providers are temporarily unavailable",
+      details: "Use saved questions, write manually, or try again later.",
     });
   }
 
-  return res.status(500).json({ 
-    error: "AI generation failed",
-    details: lastError?.message || "Unknown error"
-  });
+  return res.status(200).json({ questions: result.questions });
 }
