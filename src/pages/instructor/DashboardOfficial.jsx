@@ -305,24 +305,41 @@ function DashboardOfficial() {
 
   // Extract text from PDF in the browser using pdfjs-dist
   async function extractPdfText(file) {
+    console.log("[Browser PDF Step] file received");
+    console.log("[Browser PDF] file.name:", file.name);
+    console.log("[Browser PDF] file.type:", file.type);
+    console.log("[Browser PDF] file.size:", file.size);
+    
     try {
+      console.log("[Browser PDF Step] pdfjs import/setup");
       const pdfjsLib = await import('pdfjs-dist');
+      console.log("[Browser PDF] pdfjsLib loaded, version:", pdfjsLib.version);
       
       // Set worker source for browser
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+      const workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+      console.log("[Browser PDF] workerSrc:", workerSrc);
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
       
+      console.log("[Browser PDF Step] arrayBuffer start");
       const arrayBuffer = await file.arrayBuffer();
+      console.log("[Browser PDF] arrayBuffer.byteLength:", arrayBuffer.byteLength);
+      
+      console.log("[Browser PDF Step] getDocument start");
       const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
       const pdfDocument = await loadingTask.promise;
+      console.log("[Browser PDF] PDF loaded, pages:", pdfDocument.numPages);
       
       let fullText = "";
       const totalPages = pdfDocument.numPages;
       
+      console.log("[Browser PDF Step] extracting text from", totalPages, "pages");
       for (let i = 1; i <= totalPages; i++) {
+        console.log("[Browser PDF] extracting page", i);
         const page = await pdfDocument.getPage(i);
         const textContent = await page.getTextContent();
-        const pageText = textContent.items.map(item => item.str).join(' ');
+        const pageText = textContent.items.map(item => item.str || "").join(" ");
         fullText += pageText + "\n";
+        console.log("[Browser PDF] page", i, "text length:", pageText.length);
       }
       
       const text = fullText.trim();
@@ -332,13 +349,16 @@ function DashboardOfficial() {
       console.log("[Browser PDF] Text preview:", text.substring(0, 200) + (text.length > 200 ? "..." : ""));
       
       if (!text) {
-        throw new Error("No text extracted from PDF");
+        console.error("[Browser PDF Error] No text extracted from PDF");
+        throw new Error("No readable text found in this PDF.");
       }
       
       return text;
     } catch (error) {
-      console.error("[Browser PDF] Extraction error:", error?.message || error);
-      throw new Error("Could not read PDF text. Try DOCX/TXT or paste text.");
+      console.error("[Browser PDF Error Exact]", error?.message || String(error));
+      console.error("[Browser PDF Error Stack]", error?.stack);
+      console.error("[Browser PDF Error Object]", error);
+      throw new Error("Could not read PDF text: " + (error?.message || String(error)));
     }
   }
 
