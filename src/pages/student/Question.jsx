@@ -77,7 +77,7 @@ function Question() {
         setResolvedSessionId(session.id);
 
         if (session.status === "round_results") {
-          navigate("/student/round-results", {
+          navigate("/student/waiting-for-others", {
             state: { studentName, playerId, sessionPlayerId: playerId, gameCode, sessionId: session.id, currentRound: session.current_round }
           });
           return;
@@ -153,7 +153,7 @@ function Question() {
             replace: true,
           });
         } else if (full.status === "round_results") {
-          navigate("/student/round-results", {
+          navigate("/student/waiting-for-others", {
             state: {
               studentName,
               playerId,
@@ -363,7 +363,7 @@ function Question() {
       
       if (!targetSessionId || !targetQuestionId) {
         console.error("[QuestionTimeout] missing session or question id");
-        navigate("/student/round-results", {
+        navigate("/student/waiting-for-others", {
           state: {
             ...state,
             studentName,
@@ -422,7 +422,7 @@ function Question() {
 
       if (!realQuestionId) {
         console.error("[QuestionTimeout] no real question id found");
-        navigate("/student/round-results", {
+        navigate("/student/waiting-for-others", {
           state: {
             ...state,
             studentName,
@@ -493,7 +493,7 @@ function Question() {
       localStorage.removeItem(timerKey);
 
       // Navigate to RoundResults
-      navigate("/student/round-results", {
+      navigate("/student/waiting-for-others", {
         state: {
           ...state,
           studentName,
@@ -526,7 +526,7 @@ function Question() {
     } catch (err) {
       console.error("Error handling timeout:", err);
       // Fallback navigation
-      navigate("/student/round-results", {
+      navigate("/student/waiting-for-others", {
         state: {
           ...state,
           studentName,
@@ -575,7 +575,7 @@ function Question() {
         const reachedLimit = answered.length >= maxQuestions;
 
         if (reachedLimit) {
-          navigate("/student/round-results", {
+          navigate("/student/waiting-for-others", {
             state: {
               ...state,
               studentName,
@@ -717,7 +717,7 @@ function Question() {
         {};
 
       if (reachedLimit) {
-        navigate("/student/round-results", {
+        navigate("/student/waiting-for-others", {
           state: {
             ...state,
             studentName,
@@ -738,7 +738,7 @@ function Question() {
           }
         });
       } else {
-        navigate("/student/round-results", {
+        navigate("/student/waiting-for-others", {
           state: {
             ...state,
             studentName,

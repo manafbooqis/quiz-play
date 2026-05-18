@@ -139,10 +139,6 @@ function RoundResults() {
   const [roundResults, setRoundResults] = useState([]);
   const [myResult, setMyResult] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [totalStudents, setTotalStudents] = useState(0);
-  const [answeredStudents, setAnsweredStudents] = useState([]);
-  const [waitingStudents, setWaitingStudents] = useState([]);
-  const [allReady, setAllReady] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [targetTime, setTargetTime] = useState(null);
   const countdownStartedRef = useRef(false);
@@ -295,7 +291,7 @@ function RoundResults() {
     markStudentSeen();
   }, [gameCode, studentName, playerId, sessionId, currentRound, state?.currentQuestionId]);
 
-  // Polling logic for all-students sync
+  // Polling logic for all-students sync target time only
   useEffect(() => {
     if (!gameCode || !studentName || !sessionId || !currentRound) return;
 
@@ -308,7 +304,6 @@ function RoundResults() {
           .eq("session_id", sessionId);
 
         if (playersError) throw playersError;
-        setTotalStudents(players.length);
 
         // Load responses for current round
         const { data: responses, error: responsesError } = await supabase
@@ -319,62 +314,6 @@ function RoundResults() {
 
         if (responsesError) throw responsesError;
 
-        const { data: allResponses, error: allResponsesError } = await supabase
-          .from("responses")
-          .select("*")
-          .eq("session_id", sessionId);
-
-        if (allResponsesError) throw allResponsesError;
-
-        const leaderboard = calculateLeaderboard(
-          players,
-          allResponses || [],
-          Number(sessionData?.question_count || questionCount || 0),
-          sessionData || {}
-        );
-        const scoreById = new Map(
-          leaderboard.map((player) => [String(player.id), player.score])
-        );
-
-        // Determine which students have answered vs seen RoundResults
-        const answered = [];
-        const waiting = [];
-        const seen = [];
-
-        players.forEach(player => {
-          const playerKeys = [player.id, player.student_name].filter(Boolean).map(String);
-          const hasResponse = responses.some(response => 
-            playerKeys.includes(String(response.player_id))
-          );
-          
-          const hasSeenResults = responses.some(response => 
-            playerKeys.includes(String(response.player_id)) &&
-            response.round_results_seen_at !== null
-          );
-          
-          if (hasResponse) {
-            answered.push({
-              playerId: player.id,
-              studentName: player.student_name,
-              score: scoreById.get(String(player.id)) || 0
-            });
-          } else if (hasSeenResults) {
-            seen.push({
-              playerId: player.id,
-              studentName: player.student_name,
-              score: scoreById.get(String(player.id)) || 0
-            });
-          } else {
-            waiting.push({
-              playerId: player.id,
-              studentName: player.student_name,
-              score: scoreById.get(String(player.id)) || 0
-            });
-          }
-        });
-
-        setAnsweredStudents(answered);
-        setWaitingStudents(waiting);
         // Calculate target time when all students are seen
         const seenResponses = responses.filter(r => r.round_results_seen_at !== null);
         const seenPlayers = new Set();
@@ -397,29 +336,6 @@ function RoundResults() {
           const nextTargetTime = latestSeenTime + 8000; // 8 seconds in milliseconds
           setTargetTime(nextTargetTime);
         }
-
-        // Keep old logic for compatibility
-        const newAllReady = players.length > 0 && answered.length >= players.length && waiting.length === 0;
-        console.log("[RoundResultsSeenCheck]", {
-          playersCount: players.length,
-          answeredCount: answered.length,
-          seenCount: seen.length,
-          seenPlayersCount: seenPlayers.size,
-          waitingCount: waiting.length,
-          allReady: newAllReady,
-          currentRound,
-          currentQuestionId: state?.currentQuestionId,
-          latestSeenTime,
-          targetTime
-        });
-        setAllReady(newAllReady);
-
-        console.log("[RoundResults] sync", {
-          currentRound,
-          totalStudents: players.length,
-          answeredStudents: answered.length,
-          allReady: waiting.length === 0
-        });
 
       } catch (err) {
         console.error("Error polling round results:", err);
@@ -469,8 +385,6 @@ function RoundResults() {
                                    Number(sessionData?.time_per_question) ||
                                    10;
         
-        console.log("[TimerFlow] RoundResults -> Difficulty", { sentTimePerQuestion });
-        
         navigate("/student/difficulty", {
           state: {
             studentName,
@@ -488,7 +402,6 @@ function RoundResults() {
     }
   }, [
     countdown,
-    allReady,
     currentRound,
     questionCount,
     navigate,
@@ -712,6 +625,13 @@ function RoundResults() {
               <span className="text-pink-300">•</span>
               <span className="text-cyan-200">Game Code: {gameCode}</span>
             </div>
+            {targetTime && countdown > 0 && (
+              <div className="mt-4 inline-block bg-slate-900/80 border border-emerald-400/40 rounded-full px-6 py-2">
+                <span className="text-emerald-400 font-bold text-lg animate-pulse">
+                  Next round in {countdown}s...
+                </span>
+              </div>
+            )}
           </div>
 
         {/* Main Result Card with Glassmorphism */}
@@ -826,94 +746,6 @@ function RoundResults() {
                   </span>
                 </div>
               ))}
-            </div>
-          </div>
-
-          {/* Phase 2: All Students Sync */}
-          <div className="text-center">
-            <div className={`relative p-4 rounded-2xl border mb-6 backdrop-blur-md overflow-hidden ${
-              allReady 
-                ? "border-emerald-400/60 bg-emerald-900/30 shadow-emerald-400/30" 
-                : "border-slate-600/50 bg-slate-700/40"
-            }`}>
-              {/* Glow effect for ready state */}
-              {allReady && (
-                <div className="absolute inset-0 bg-emerald-400/10 rounded-2xl animate-pulse" style={{ animationDuration: '2s' }} />
-              )}
-              
-              <div className="relative z-10">
-                <p className={`text-xl font-semibold mb-2 ${
-                  allReady ? "text-emerald-300" : "text-slate-300"
-                }`}>
-                  {allReady ? "All students are ready" : "Waiting for students..."}
-                </p>
-                <p className={`text-base ${
-                  allReady ? "text-emerald-400" : "text-slate-400"
-                }`}>
-                  {allReady 
-                    ? countdown > 0 ? `Starting next round in ${countdown}...` : "Starting next round"
-                    : `Answered: ${answeredStudents.length} / ${totalStudents}`
-                  }
-                </p>
-              </div>
-            </div>
-
-            {/* Students Status Section */}
-            <div className="relative">
-              <h3 className="text-xl font-bold mb-4 relative">
-                <span className="bg-gradient-to-r from-cyan-300 to-pink-300 bg-clip-text text-transparent">Students Status</span>
-              </h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Answered Students */}
-                <div className="relative bg-slate-900/60 backdrop-blur-md rounded-2xl p-3 border border-emerald-400/30">
-                  <div className="absolute inset-0 bg-emerald-400/5 rounded-2xl animate-pulse" style={{ animationDuration: '3s' }} />
-                  <div className="relative z-10">
-                    <p className="font-bold text-emerald-300 mb-2 flex items-center gap-2">
-                      <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>
-                      Answered ({answeredStudents.length})
-                    </p>
-                    <div className="max-h-48 overflow-y-auto space-y-2">
-                      {[...answeredStudents, ...waitingStudents]
-                        .sort((a, b) => b.score - a.score)
-                        .filter(student => answeredStudents.some(as => as.playerId === student.playerId))
-                        .map(student => (
-                          <div key={student.playerId || student.studentName} className="flex justify-between p-3 rounded-xl bg-emerald-900/20 border border-emerald-800/50 backdrop-blur-sm">
-                            <span className={(playerId ? student.playerId === playerId : student.studentName === studentName) ? "text-cyan-400 font-semibold" : "text-emerald-300"}>
-                              {student.studentName}
-                              {(playerId ? student.playerId === playerId : student.studentName === studentName) && " (You)"}
-                            </span>
-                            <span className="text-emerald-400 font-bold">{student.score} pts</span>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Waiting Students */}
-                <div className="relative bg-slate-900/60 backdrop-blur-md rounded-2xl p-3 border border-amber-400/30">
-                  <div className="absolute inset-0 bg-amber-400/5 rounded-2xl animate-pulse" style={{ animationDuration: '3s' }} />
-                  <div className="relative z-10">
-                    <p className="font-bold text-amber-300 mb-2 flex items-center gap-2">
-                      <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></span>
-                      Waiting ({waitingStudents.length})
-                    </p>
-                    <div className="max-h-48 overflow-y-auto space-y-2">
-                      {waitingStudents
-                        .sort((a, b) => b.score - a.score)
-                        .map(student => (
-                          <div key={student.playerId || student.studentName} className="flex justify-between p-3 rounded-xl bg-amber-900/20 border border-amber-800/50 backdrop-blur-sm">
-                            <span className={(playerId ? student.playerId === playerId : student.studentName === studentName) ? "text-cyan-400 font-semibold" : "text-amber-300"}>
-                              {student.studentName}
-                              {(playerId ? student.playerId === playerId : student.studentName === studentName) && " (You)"}
-                            </span>
-                            <span className="text-amber-400 font-bold">{student.score} pts</span>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
