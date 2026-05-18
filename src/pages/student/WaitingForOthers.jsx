@@ -164,6 +164,8 @@ function WaitingForOthers() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const allReady = totalStudents > 0 && answeredCount >= totalStudents;
+
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center px-6 py-4 relative overflow-hidden">
       {/* Background styling to match project */}
@@ -174,10 +176,13 @@ function WaitingForOthers() {
 
       <div className="w-full max-w-4xl bg-slate-800/80 backdrop-blur-xl border border-slate-600/50 rounded-3xl shadow-2xl p-6 md:p-8 z-10">
         <div className="mb-6 text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 shadow-lg shadow-cyan-500/30 flex items-center justify-center">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+          <div className="relative w-20 h-20 mx-auto mb-6">
+            <div className="absolute inset-0 bg-emerald-400 rounded-full animate-ping opacity-20" />
+            <div className="relative w-full h-full rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 shadow-lg shadow-emerald-500/40 flex items-center justify-center border-4 border-slate-800">
+              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
           </div>
           <h1 className="game-font text-3xl md:text-4xl text-cyan-300 mb-2 drop-shadow-md">Answer Submitted!</h1>
           <p className="text-slate-300 text-lg md:text-xl">
@@ -185,28 +190,46 @@ function WaitingForOthers() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl p-5 text-center relative overflow-hidden">
-             <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-blue-500/10" />
-            <div className="text-3xl md:text-4xl font-bold text-cyan-300 mb-2 relative z-10">
-              {answeredCount} / {totalStudents}
+        {!allReady ? (
+          <div className={`grid grid-cols-1 ${timeRemaining > 0 ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-6 mb-8`}>
+            <div className="bg-slate-900/60 border border-emerald-400/30 rounded-2xl p-5 text-center relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-teal-500/10" />
+              <div className="text-3xl md:text-4xl font-bold text-emerald-300 mb-2 relative z-10">
+                {answeredCount} / {totalStudents}
+              </div>
+              <p className="text-slate-400 text-sm uppercase tracking-wider font-semibold relative z-10">Answered</p>
             </div>
-            <p className="text-slate-400 text-sm uppercase tracking-wider font-semibold relative z-10">Students Answered</p>
-          </div>
 
-          <div className="bg-slate-900/60 border border-slate-700/50 rounded-2xl p-5 text-center relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 to-amber-500/10" />
-            <div className="text-3xl md:text-4xl font-bold text-yellow-300 mb-2 relative z-10 animate-pulse">
-              {formatTime(timeRemaining)}
+            <div className="bg-slate-900/60 border border-amber-400/30 rounded-2xl p-5 text-center relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-orange-500/10" />
+              <div className="text-3xl md:text-4xl font-bold text-amber-300 mb-2 relative z-10">
+                {waitingStudents.length}
+              </div>
+              <p className="text-slate-400 text-sm uppercase tracking-wider font-semibold relative z-10">Waiting</p>
             </div>
-            <p className="text-slate-400 text-sm uppercase tracking-wider font-semibold relative z-10">Time Remaining</p>
+
+            {timeRemaining > 0 && (
+              <div className="bg-slate-900/60 border border-cyan-400/30 rounded-2xl p-5 text-center relative overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-blue-500/10" />
+                <div className="text-3xl md:text-4xl font-bold text-cyan-300 mb-2 relative z-10 animate-pulse">
+                  {formatTime(timeRemaining)}
+                </div>
+                <p className="text-slate-400 text-sm uppercase tracking-wider font-semibold relative z-10">Time Left</p>
+              </div>
+            )}
           </div>
-        </div>
+        ) : (
+          <div className="bg-emerald-900/40 border border-emerald-400/50 rounded-2xl p-6 text-center mb-8 relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 via-teal-400/20 to-emerald-500/10 animate-pulse" />
+            <h2 className="text-2xl font-bold text-emerald-300 mb-2 relative z-10">All students are ready</h2>
+            <p className="text-emerald-100/80 relative z-10 font-medium">Moving to results...</p>
+          </div>
+        )}
 
         <div className="mb-8">
           <div className="w-full bg-slate-900/80 rounded-full h-4 mb-3 border border-slate-700 overflow-hidden">
             <div 
-              className="bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-400 h-full rounded-full transition-all duration-700 relative"
+              className={`h-full rounded-full transition-all duration-700 relative ${allReady ? 'bg-gradient-to-r from-emerald-500 to-teal-400' : 'bg-gradient-to-r from-cyan-500 via-blue-500 to-cyan-400'}`}
               style={{ width: `${totalStudents > 0 ? (answeredCount / totalStudents) * 100 : 0}%` }}
             >
               <div className="absolute inset-0 bg-white/20 animate-pulse" />
