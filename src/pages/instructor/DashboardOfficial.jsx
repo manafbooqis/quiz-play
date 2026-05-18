@@ -6,6 +6,11 @@ import {
   upsertProfile,
   getSessionsByOwner,
 } from "../../lib/supabase";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
+
+// Set worker once at top-level
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 function DashboardOfficial() {
   const navigate = useNavigate();
@@ -311,22 +316,14 @@ function DashboardOfficial() {
     console.log("[Browser PDF] file.size:", file.size);
     
     try {
-      console.log("[Browser PDF Step] pdfjs import/setup");
-      const pdfjsLib = await import('pdfjs-dist');
-      console.log("[Browser PDF] pdfjsLib loaded, version:", pdfjsLib.version);
-      
-      // Set worker source for browser
-      const workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-      console.log("[Browser PDF] workerSrc:", workerSrc);
-      pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-      
       console.log("[Browser PDF Step] arrayBuffer start");
       const arrayBuffer = await file.arrayBuffer();
       console.log("[Browser PDF] arrayBuffer.byteLength:", arrayBuffer.byteLength);
       
-      console.log("[Browser PDF Step] getDocument start");
-      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-      const pdfDocument = await loadingTask.promise;
+      console.log("[Browser PDF Step] getDocument start with Uint8Array");
+      const pdfDocument = await pdfjsLib.getDocument({
+        data: new Uint8Array(arrayBuffer)
+      }).promise;
       console.log("[Browser PDF] PDF loaded, pages:", pdfDocument.numPages);
       
       let fullText = "";
