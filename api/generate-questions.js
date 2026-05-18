@@ -516,6 +516,7 @@ export default async function handler(req, res) {
     questionCount,
     fileBase64,
     fileMimeType,
+    textContent,
   } = req.body || {};
 
   if (!gameCode || !fileName || !questionCount) {
@@ -527,32 +528,41 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "questionCount must be a positive number." });
   }
 
-  console.log("Extracting text from uploaded file...");
-  const extractionStartTime = Date.now();
-  
   let extractedText = "";
-  try {
-    extractedText = await withTimeout(
-      extractFileText({
-        fileBase64: fileBase64 ? String(fileBase64) : "",
-        fileMimeType: fileMimeType || "",
-        fileName: fileName || ""
-      }),
-      10000,
-      "File extraction timed out after 10 seconds"
-    );
-    const extractionDuration = Date.now() - extractionStartTime;
-    console.log("[Timing] File extraction completed in", extractionDuration, "ms");
-  } catch (extractionError) {
-    const extractionDuration = Date.now() - extractionStartTime;
-    console.error("[PDF Error Exact]", extractionError?.message || String(extractionError));
-    console.error("[PDF Error Stack]", extractionError?.stack);
-    console.error("[Timing] File extraction failed after", extractionDuration, "ms");
-    return res.status(400).json({ 
-      error: "File text extraction failed",
-      details: extractionError?.message || String(extractionError),
-      stack: extractionError?.stack?.split("\n").slice(0, 5).join("\n")
-    });
+  
+  // If textContent is provided (browser-extracted), use it directly
+  if (textContent && typeof textContent === "string" && textContent.trim()) {
+    console.log("[API] Using browser-extracted text content");
+    console.log("[API] Text content length:", textContent.length);
+    extractedText = textContent.trim();
+  } else {
+    // Otherwise, extract text on server (fallback for non-PDF files)
+    console.log("Extracting text from uploaded file...");
+    const extractionStartTime = Date.now();
+    
+    try {
+      extractedText = await withTimeout(
+        extractFileText({
+          fileBase64: fileBase64 ? String(fileBase64) : "",
+          fileMimeType: fileMimeType || "",
+          fileName: fileName || ""
+        }),
+        10000,
+        "File extraction timed out after 10 seconds"
+      );
+      const extractionDuration = Date.now() - extractionStartTime;
+      console.log("[Timing] File extraction completed in", extractionDuration, "ms");
+    } catch (extractionError) {
+      const extractionDuration = Date.now() - extractionStartTime;
+      console.error("[PDF Error Exact]", extractionError?.message || String(extractionError));
+      console.error("[PDF Error Stack]", extractionError?.stack);
+      console.error("[Timing] File extraction failed after", extractionDuration, "ms");
+      return res.status(400).json({ 
+        error: "File text extraction failed",
+        details: extractionError?.message || String(extractionError),
+        stack: extractionError?.stack?.split("\n").slice(0, 5).join("\n")
+      });
+    }
   }
 
   if (!extractedText || !extractedText.trim()) {

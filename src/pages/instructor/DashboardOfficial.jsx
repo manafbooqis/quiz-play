@@ -303,7 +303,46 @@ function DashboardOfficial() {
     });
   }
 
-  async function fetchAiQuestions({ sessionId, sessionGameCode, freshBase64, freshMime, freshFileName }) {
+  // Extract text from PDF in the browser using pdfjs-dist
+  async function extractPdfText(file) {
+    try {
+      const pdfjsLib = await import('pdfjs-dist');
+      
+      // Set worker source for browser
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      const pdfDocument = await loadingTask.promise;
+      
+      let fullText = "";
+      const totalPages = pdfDocument.numPages;
+      
+      for (let i = 1; i <= totalPages; i++) {
+        const page = await pdfDocument.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join(' ');
+        fullText += pageText + "\n";
+      }
+      
+      const text = fullText.trim();
+      
+      console.log("[Browser PDF] fileName:", file.name);
+      console.log("[Browser PDF] Extracted text length:", text.length);
+      console.log("[Browser PDF] Text preview:", text.substring(0, 200) + (text.length > 200 ? "..." : ""));
+      
+      if (!text) {
+        throw new Error("No text extracted from PDF");
+      }
+      
+      return text;
+    } catch (error) {
+      console.error("[Browser PDF] Extraction error:", error?.message || error);
+      throw new Error("Could not read PDF text. Try DOCX/TXT or paste text.");
+    }
+  }
+
+  async function fetchAiQuestions({ sessionId, sessionGameCode, freshBase64, freshMime, freshFileName, textContent }) {
     const url = "/api/generate-questions";
 
     // freshBase64/freshMime are passed directly from the handleGoToSession caller
@@ -318,12 +357,13 @@ function DashboardOfficial() {
       fileName,
       fileBase64: base64,
       fileMimeType: mimeType,
+      textContent: textContent || undefined,
       questionCount,
       timePerQuestion,
     };
 
     console.log("[AI] Sending request to", url);
-    console.log("[AI] fileName:", fileName, "| mimeType:", mimeType, "| base64 length:", base64.length);
+    console.log("[AI] fileName:", fileName, "| mimeType:", mimeType, "| base64 length:", base64.length, "| textContent length:", textContent?.length || 0);
 
     const response = await fetch(url, {
       method: "POST",
@@ -386,6 +426,7 @@ function DashboardOfficial() {
       let freshBase64 = "";
       let freshMime = "";
       let freshFileName = "";
+      let textContent = "";
 
       if (!fromExistingBank && selectedFile) {
         setInfoMessage("Reading uploaded file...");
@@ -394,6 +435,20 @@ function DashboardOfficial() {
           freshMime = selectedFile.type || "application/octet-stream";
           freshFileName = selectedFile.name;
           console.log("[File] Read OK:", freshFileName, "|", freshMime, "| base64 length:", freshBase64.length);
+          
+          // Extract PDF text in browser to avoid Vercel serverless timeouts
+          if (freshMime === "application/pdf" || freshFileName.toLowerCase().endsWith(".pdf")) {
+            setInfoMessage("Extracting text from PDF...");
+            try {
+              textContent = await extractPdfText(selectedFile);
+              console.log("[File] PDF text extracted in browser, length:", textContent.length);
+            } catch (pdfError) {
+              console.error("[File] PDF extraction failed:", pdfError.message);
+              setError(pdfError.message || "Could not read PDF text. Try DOCX/TXT or paste text.");
+              setIsCreatingSession(false);
+              return;
+            }
+          }
         } catch (readErr) {
           console.warn("[File] Could not read file content:", readErr.message);
         }
@@ -435,6 +490,7 @@ function DashboardOfficial() {
               freshBase64,
               freshMime,
               freshFileName,
+              textContent,
             });
 
             if (aiQuestions && typeof aiQuestions === "object") {
