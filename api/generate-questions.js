@@ -496,7 +496,10 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
 }
 
 export default async function handler(req, res) {
+  const requestStartTime = Date.now();
   console.log("=== Handler called ===");
+  console.log("[Timing] Request received at", new Date().toISOString());
+  
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed. Use POST." });
@@ -534,6 +537,7 @@ export default async function handler(req, res) {
   if (textContent && typeof textContent === "string" && textContent.trim()) {
     console.log("[API] Using browser-extracted text content");
     console.log("[API] Text content length:", textContent.length);
+    console.log("[Timing] textContent received, length:", textContent.length);
     extractedText = textContent.trim();
   } else {
     // Otherwise, extract text on server (fallback for non-PDF files)
@@ -571,8 +575,10 @@ export default async function handler(req, res) {
     });
   }
 
-  // Limit text to safe length for AI processing
-  const limitedText = extractedText.substring(0, 12000);
+  console.log("[Timing] Final text length after trim:", extractedText.length);
+
+  // Limit text to safe length for AI processing (reduced to 5000 for faster generation)
+  const limitedText = extractedText.substring(0, 5000);
 
   const prompt = buildQuestionPrompt(count);
   const fullPrompt = `${prompt}
@@ -584,147 +590,150 @@ ${limitedText}
 
 Questions must be strictly from the extracted document content above. If the document is a multiplication table, generated questions must be multiplication questions only. Do not use outside knowledge.`;
 
-  console.log("Calling OpenRouter API with fallback models...");
+  console.log("[Timing] Prompt constructed, length:", fullPrompt.length);
+
+  console.log("Calling OpenRouter API with single model...");
   const aiStartTime = Date.now();
 
   const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-  let lastError = null;
+  const model = OPENROUTER_MODELS[0]; // Use first model only
 
-  for (const model of OPENROUTER_MODELS) {
-    console.log(`Trying model: ${model}`);
-    
-    let openrouterResponse;
-    try {
-      openrouterResponse = await withTimeout(
-        fetch(OPENROUTER_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-            "HTTP-Referer": process.env.APP_URL || "http://localhost:5173",
-            "X-Title": "Quiz Play AI Question Generator"
+  console.log("[Timing] AI fetch start, model:", model);
+  console.log("[Timing] Attempting model:", model, "at", new Date().toISOString());
+
+  let openrouterResponse;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+  try {
+    openrouterResponse = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "HTTP-Referer": process.env.APP_URL || "http://localhost:5173",
+        "X-Title": "Quiz Play AI Question Generator"
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful assistant that only outputs valid JSON for a quiz question bank."
           },
-          body: JSON.stringify({
-            model: model,
-            messages: [
-              {
-                role: "system",
-                content: "You are a helpful assistant that only outputs valid JSON for a quiz question bank."
-              },
-              {
-                role: "user",
-                content: fullPrompt
-              }
-            ],
-            temperature: 0.7,
-            response_format: { type: "json_object" }
-          }),
-        }),
-        20000,
-        "AI generation timed out after 20 seconds"
-      );
-    } catch (fetchError) {
-      console.error(`Model ${model} fetch error:`, fetchError.message);
-      if (fetchError?.message?.includes("timed out")) {
-        console.error(`Model ${model} timed out after 20 seconds`);
-        lastError = { model, reason: "timeout", message: "AI generation timed out. Try fewer questions or shorter content." };
-        continue;
-      }
-      lastError = { model, reason: "fetch_error", message: fetchError.message };
-      continue;
+          {
+            role: "user",
+            content: fullPrompt
+          }
+        ],
+        temperature: 0.7,
+        response_format: { type: "json_object" }
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    console.log("[Timing] AI fetch response status:", openrouterResponse.status);
+  } catch (fetchError) {
+    clearTimeout(timeoutId);
+    console.error("[AI Fetch Error]", fetchError?.message || String(fetchError));
+
+    if (fetchError.name === 'AbortError') {
+      console.error("[AI Fetch Error] Aborted after 12 seconds");
+      return res.status(500).json({ 
+        error: "AI generation timed out",
+        details: "Try fewer questions or shorter content."
+      });
     }
 
-    if (!openrouterResponse.ok) {
-      const body = await openrouterResponse.text();
-      console.error(`Model ${model} error status:`, openrouterResponse.status);
-      console.error(`Model ${model} error body:`, body);
-      
-      lastError = { 
-        model, 
-        reason: "api_error", 
-        status: openrouterResponse.status,
-        message: body 
-      };
-      
-      // Skip to next model for rate limit, busy, or provider errors
-      continue;
-    }
-
-    const openrouterData = await openrouterResponse.json();
-    const rawContent = openrouterData?.choices?.[0]?.message?.content || "";
-    
-    // Robust JSON parsing with markdown fence handling
-    let parsed = safeParseJson(rawContent);
-    if (!parsed || typeof parsed !== "object") {
-      // Try to extract from markdown fences
-      const jsonMatch = rawContent.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        parsed = safeParseJson(jsonMatch[1]);
-      }
-    }
-    
-    // Handle both { easy, medium, hard } and { questions: { easy, medium, hard } } formats
-    if (parsed && typeof parsed === "object") {
-      if (parsed.questions && typeof parsed.questions === "object") {
-        parsed = parsed.questions;
-      }
-    }
-    
-    // Validate required structure
-    if (parsed && 
-        typeof parsed === "object" && 
-        Array.isArray(parsed.easy) && 
-        Array.isArray(parsed.medium) && 
-        Array.isArray(parsed.hard)) {
-      console.log(`Model ${model} returned valid structure, validating quality...`);
-      
-      // Validate and filter questions for quality
-      const { validQuestions, invalidQuestions } = validateAndFilterQuestions(parsed, count);
-      
-      // Check if we have enough valid questions for each difficulty
-      let hasEnoughValid = true;
-      for (const difficulty of ["easy", "medium", "hard"]) {
-        if (validQuestions[difficulty].length < count) {
-          hasEnoughValid = false;
-          lastError = { 
-            model, 
-            reason: "insufficient_valid_questions", 
-            message: `Only ${validQuestions[difficulty].length} valid "${difficulty}" questions (need ${count})`,
-            invalidCount: invalidQuestions.filter(q => q.difficulty === difficulty).length
-          };
-          break;
-        }
-      }
-      
-      if (hasEnoughValid) {
-        // Trim to exact count if we have extra valid questions
-        const trimmed = normalizeBankToPerDifficulty(validQuestions, count);
-        
-        const questions = trimmed;
-
-        if (!questions.easy.length && !questions.medium.length && !questions.hard.length) {
-          lastError = { model, reason: "empty_questions", message: "No valid questions after quality check" };
-          continue;
-        }
-
-        console.log(`Success with model: ${model} (${invalidQuestions.length} questions filtered out)`);
-        const aiDuration = Date.now() - aiStartTime;
-        console.log("[Timing] AI generation completed in", aiDuration, "ms");
-        return res.status(200).json({ questions });
-      } else {
-        console.log(`Model ${model} failed quality validation, trying next model...`);
-        continue;
-      }
-    } else {
-      console.error(`Model ${model} returned invalid JSON structure:`, rawContent);
-      lastError = { model, reason: "invalid_json", message: "Invalid question structure" };
-      continue;
-    }
+    return res.status(500).json({ 
+      error: "AI generation failed",
+      details: fetchError?.message || String(fetchError)
+    });
   }
 
-  // All models failed
-  console.error("All models failed. Last error:", lastError);
-  return res.status(500).json({ 
-    error: `AI generated invalid questions. Required ${count} questions per difficulty, but validation failed. Common issues: missing options, incorrect format, "All of the above" options, or poor question quality. Please try again or use manual question creation.` 
-  });
+  if (!openrouterResponse.ok) {
+    const body = await openrouterResponse.text();
+    console.error("[AI Fetch Error] Status:", openrouterResponse.status);
+    console.error("[AI Fetch Error] Body:", body);
+    return res.status(500).json({ 
+      error: "OpenRouter API error",
+      details: `Status ${openrouterResponse.status}: ${body}`
+    });
+  }
+
+  try {
+    const rawContent = await openrouterResponse.text();
+    console.log("[Timing] AI raw response length:", rawContent.length);
+
+    console.log("[Timing] JSON parsing start");
+    const parsed = JSON.parse(rawContent);
+    const content = parsed?.choices?.[0]?.message?.content;
+
+    if (!content) {
+      console.error("[AI Parse Error] No content in AI response");
+      return res.status(500).json({ 
+        error: "AI generation failed",
+        details: "No content in AI response"
+      });
+    }
+
+    console.log("[Timing] JSON parse success");
+    const questionsJson = JSON.parse(content);
+
+    if (!questionsJson || typeof questionsJson !== "object") {
+      console.error("[AI Parse Error] Invalid JSON structure");
+      return res.status(500).json({ 
+        error: "AI generation failed",
+        details: "Invalid question structure"
+      });
+    }
+
+    const invalidQuestions = [];
+    const validQuestions = { easy: [], medium: [], hard: [] };
+
+    for (const difficulty of ["easy", "medium", "hard"]) {
+      const arr = Array.isArray(questionsJson[difficulty]) ? questionsJson[difficulty] : [];
+      for (const q of arr) {
+        const validation = validateQuestion(q);
+        if (!validation.valid) {
+          invalidQuestions.push({ difficulty, reason: validation.reason, question: q.question });
+        } else {
+          validQuestions[difficulty].push(q);
+        }
+      }
+    }
+
+    if (invalidQuestions.length > 0) {
+      console.log("[AI Validation] Filtered out", invalidQuestions.length, "invalid questions");
+    }
+
+    // Trim to exact count if we have extra valid questions
+    const trimmed = normalizeBankToPerDifficulty(validQuestions, count);
+
+    const questions = trimmed;
+
+    if (!questions.easy.length && !questions.medium.length && !questions.hard.length) {
+      console.error("[AI Validation Error] No valid questions after quality check");
+      return res.status(500).json({ 
+        error: "AI generation failed",
+        details: "No valid questions after quality check"
+      });
+    }
+
+    console.log("[AI Success] Model:", model, "(", invalidQuestions.length, "questions filtered out)");
+    const aiDuration = Date.now() - aiStartTime;
+    console.log("[Timing] AI generation completed in", aiDuration, "ms");
+
+    const totalDuration = Date.now() - requestStartTime;
+    console.log("[Timing] Total request duration:", totalDuration, "ms");
+
+    return res.status(200).json({ questions });
+  } catch (parseError) {
+    console.error("[AI Parse Error]", parseError?.message || String(parseError));
+    return res.status(500).json({ 
+      error: "AI generation failed",
+      details: "Failed to parse AI response"
+    });
+  }
 }
