@@ -41,6 +41,25 @@ function isFinalSessionStatus(session) {
   return session?.status === "finished" || session?.current_phase === "final_results";
 }
 
+function getResolvedQuestionText(state, currentQuestion) {
+  const q = currentQuestion || {};
+  const s = state || {};
+  
+  let text = q.question || q.question_text || q.questionText;
+  if (text && typeof text === 'string' && text.trim()) return text.trim();
+
+  const sq = s.question;
+  if (sq && typeof sq === 'object') {
+    text = sq.question || sq.question_text || sq.questionText;
+    if (text && typeof text === 'string' && text.trim()) return text.trim();
+  }
+  
+  text = s.question || s.question_text || s.questionText || s.currentQuestionText;
+  if (text && typeof text === 'string' && text.trim()) return text.trim();
+  
+  return "Question text unavailable";
+}
+
 function getOptionLetter(value) {
   if (value === null || value === undefined || value === "") {
     return "";
@@ -134,6 +153,7 @@ function RoundResults() {
   const questionCount = state?.questionCount ?? 1;
   const selectedOptionLetter = getOptionLetter(selectedAnswer);
   const correctOptionLetter = getCorrectOptionLetter(currentQuestion);
+  const resolvedQuestionText = getResolvedQuestionText(state, currentQuestion);
   
   const [sessionData, setSessionData] = useState(null);
   const [roundResults, setRoundResults] = useState([]);
@@ -675,27 +695,25 @@ function RoundResults() {
               </div>
               
               {/* Question Details */}
-              {currentQuestion && (
-                <div className="text-left bg-slate-900/60 backdrop-blur-md rounded-2xl p-6 border border-cyan-400/30">
-                  <p className="text-lg font-semibold mb-3 text-cyan-200">Question:</p>
-                  <p className="text-white mb-4 leading-relaxed">{currentQuestion.question_text || currentQuestion.questionText}</p>
-                  
-                  <div className="grid grid-cols-2 gap-6">
-                    <div>
-                      <p className="font-semibold text-cyan-200 mb-2">Your Answer:</p>
-                      <p className="text-white text-lg font-medium">
-                        {selectedOptionLetter || "-"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-emerald-200 mb-2">Correct Answer:</p>
-                      <p className="text-white text-lg font-medium">
-                        {correctOptionLetter || "Correct answer is not available"}
-                      </p>
-                    </div>
+              <div className="text-left bg-slate-900/60 backdrop-blur-md rounded-2xl p-6 border border-cyan-400/30">
+                <p className="text-lg font-semibold mb-3 text-cyan-200">Question:</p>
+                <p className="text-white mb-4 leading-relaxed">{resolvedQuestionText}</p>
+                
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <p className="font-semibold text-cyan-200 mb-2">Your Answer:</p>
+                    <p className="text-white text-lg font-medium">
+                      {selectedOptionLetter || "-"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-emerald-200 mb-2">Correct Answer:</p>
+                    <p className="text-white text-lg font-medium">
+                      {correctOptionLetter || "Correct answer is not available"}
+                    </p>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           </div>
 
