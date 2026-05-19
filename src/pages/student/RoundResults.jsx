@@ -127,6 +127,8 @@ function RoundResults() {
   
   // Get result data from navigation state (Phase 1)
   const pointsAwarded = state?.pointsAwarded ?? 0;
+  const streakBonus = Number(state?.streakBonus || 0);
+  const hasStreakBonus = Boolean(state?.isCorrect) && streakBonus > 0;
   const isCorrect = state?.isCorrect ?? false;
   const selectedAnswer = state?.selectedAnswer ?? null;
   const currentDifficulty = state?.currentDifficulty ?? "";
@@ -746,6 +748,11 @@ function RoundResults() {
                 <div className="text-center">
                   <p className="text-4xl font-bold text-cyan-300">{pointsAwarded}</p>
                   <p className="text-cyan-100 text-sm mt-1">Points earned</p>
+                  {hasStreakBonus && (
+                    <p className="mt-2 text-amber-300 text-sm font-semibold">
+                      🔥 Streak Bonus +{streakBonus}
+                    </p>
+                  )}
                 </div>
                 <div className="w-px h-16 bg-gradient-to-b from-transparent via-cyan-400 to-transparent"></div>
                 <div className="text-center">

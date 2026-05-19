@@ -3,8 +3,46 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { getDifficultyPoints } from "../../utils/leaderboard";
 
+const STREAK_BONUS_INTERVAL = 3;
+const STREAK_BONUS_POINTS = 5;
+
 function isFinalSessionStatus(session) {
   return session?.status === "finished" || session?.current_phase === "final_results";
+}
+
+function getResponseTimestamp(response) {
+  const rawTimestamp = response?.answered_at || response?.created_at || "";
+  const timestamp = rawTimestamp ? new Date(rawTimestamp).getTime() : 0;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function sortResponsesForStreak(a, b) {
+  const roundDifference = Number(a?.round_number || 0) - Number(b?.round_number || 0);
+  if (roundDifference !== 0) {
+    return roundDifference;
+  }
+
+  return getResponseTimestamp(a) - getResponseTimestamp(b);
+}
+
+function getConsecutiveCorrectCount(responses) {
+  const latestResponseByQuestion = new Map();
+
+  (responses || []).forEach((response) => {
+    const questionId = String(response?.question_id ?? "");
+    if (!questionId) {
+      return;
+    }
+
+    const existing = latestResponseByQuestion.get(questionId);
+    if (!existing || sortResponsesForStreak(existing, response) <= 0) {
+      latestResponseByQuestion.set(questionId, response);
+    }
+  });
+
+  return [...latestResponseByQuestion.values()]
+    .sort(sortResponsesForStreak)
+    .reduce((count, response) => (response.is_correct ? count + 1 : 0), 0);
 }
 
 function Question() {
@@ -641,9 +679,13 @@ function Question() {
         currentDifficulty ||
         sessionData?.current_difficulty;
       const difficultyPoints = getDifficultyPoints(questionDifficulty);
-      const pointsAwarded = isCorrect ? difficultyPoints : 0;
 
-      const targetQuestionId = currentQuestion.id || currentQuestionId || sessionData?.current_question_id;
+      const targetQuestionId =
+        currentQuestion.id ||
+        currentQuestion.question_id ||
+        currentQuestion.qid ||
+        currentQuestionId ||
+        sessionData?.current_question_id;
       const targetSessionId = targetSessionIdPre;
       const { data: playerRow } = await supabase
         .from("session_players")
@@ -653,6 +695,24 @@ function Question() {
         .maybeSingle();
       const resolvedPlayerId = playerRow?.id || playerId || studentName;
       const responsePlayerIds = [resolvedPlayerId, studentName].filter(Boolean);
+      const currentQuestionKey = String(targetQuestionId ?? "");
+
+      const { data: previousResponses, error: previousResponsesError } = await supabase
+        .from("responses")
+        .select("question_id, is_correct, round_number, answered_at, created_at")
+        .eq("session_id", targetSessionId)
+        .in("player_id", responsePlayerIds)
+        .neq("question_id", currentQuestionKey);
+
+      if (previousResponsesError) throw previousResponsesError;
+
+      const previousCorrectStreak = getConsecutiveCorrectCount(previousResponses || []);
+      const currentStreak = isCorrect ? previousCorrectStreak + 1 : 0;
+      const streakBonus =
+        isCorrect && currentStreak > 0 && currentStreak % STREAK_BONUS_INTERVAL === 0
+          ? STREAK_BONUS_POINTS
+          : 0;
+      const pointsAwarded = isCorrect ? difficultyPoints + streakBonus : 0;
 
       // Calculate actual round number based on student's previous responses
       const { data: existingResponses } = await supabase
@@ -731,6 +791,7 @@ function Question() {
             currentDifficulty,
             timePerQuestion: roundTimerDuration || 30,
             pointsAwarded,
+            streakBonus,
             isCorrect,
             selectedAnswer: answerToSubmit,
             currentQuestion,
@@ -752,6 +813,7 @@ function Question() {
             questionCount: maxQuestions,
             timePerQuestion: roundTimerDuration || 30,
             pointsAwarded,
+            streakBonus,
             isCorrect,
             selectedAnswer: answerToSubmit,
             currentQuestion,
