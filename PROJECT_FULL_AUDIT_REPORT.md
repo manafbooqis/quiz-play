@@ -116,6 +116,10 @@ Quiz flow:
 - `src/pages/instructor/InstructorLiveQuiz.jsx` has `finishQuiz()` and writes `sessions.status = "finished"`.
 - `nextRound()` calls `finishQuiz()` when the next round exceeds `question_count`.
 - Student pages including Lobby, Difficulty, Question, RoundResults, WaitingForOthers, and FinalResults preserve or recover `playerId` / `sessionPlayerId`.
+- `src/pages/student/Question.jsx` now keeps students on the Question page after answer submission, disables choices, and shows a neutral waiting message.
+- Result details are revealed only after the shared session transitions to `round_results` and the student reaches `RoundResults.jsx`.
+- `Question.jsx` and `WaitingForOthers.jsx` now detect `round_results` through realtime session updates plus a polling fallback.
+- Student navigation treats `status === "round_results"`, `current_phase === "round_results"`, or `show_round_results === true` as the Round Results phase.
 - `src/pages/student/WaitingForOthers.jsx` preserves `playerId` / `sessionPlayerId` when navigating.
 - `src/pages/student/RoundResults.jsx` displays the selected answer and correct answer using `getOptionLetter(...)` and `getCorrectOptionLetter(...)`.
 
@@ -251,9 +255,31 @@ Implemented:
 - Lobby listens for session status and navigates to Difficulty, Final Results, or other states.
 - Difficulty selection uses `getDifficultyPoints(...)` for display.
 - Question submission writes `responses.points_awarded`.
+- After a student answers, `Question.jsx` saves the response but does not navigate directly to Round Results.
+- `Question.jsx` disables the answer buttons and shows `Answer submitted! Waiting for other students...` without revealing correctness, correct answer, points, or streak bonus.
+- `Question.jsx` preserves submitted result state and uses the shared session `round_results` status to navigate to `RoundResults.jsx`.
+- `Question.jsx` polls the shared session row every 1.5 seconds as a fallback when Supabase realtime does not deliver the phase-change event.
+- `WaitingForOthers.jsx` also uses realtime plus a 1.5 second polling fallback for `round_results` and `final_results`.
+- `WaitingForOthers.jsx` no longer navigates to Round Results solely because the local timer reaches zero; it waits for the shared session phase.
+- `WaitingForOthers.jsx` is still imported and routed in `src/App.jsx`, but no current student page navigates to `/student/waiting-for-others`.
+- The current after-answer flow uses `Question.jsx` as the waiting page, so `WaitingForOthers.jsx` is not used for the main answer-submission path.
 - Timeout handling writes a zero-point incorrect response when no prior response exists.
 - Round Results marks `round_results_seen_at` and waits for all players.
 - Final Results loads real players/responses and calculates leaderboard from `calculateLeaderboard(...)`.
+
+WaitingForOthers usage review:
+
+- `git grep -n "WaitingForOthers"` found only `src/App.jsx`, `src/pages/student/WaitingForOthers.jsx`, and this audit report.
+- `git grep -n "waiting-for-others"` found only the route in `src/App.jsx` and this audit report.
+- `git grep -n "/student/waiting"` found only the route in `src/App.jsx` and this audit report.
+- `src/App.jsx` still imports `WaitingForOthers` and routes `/student/waiting-for-others`.
+- No current app code calls `navigate("/student/waiting-for-others")`.
+- Current student pages checked: `Question.jsx`, `Difficulty.jsx`, `RoundResults.jsx`, `Lobby.jsx`, and `FinalResults.jsx`.
+- No current main-flow path navigates to `WaitingForOthers.jsx`.
+- Current role: old/dead route or direct-URL fallback only.
+- Recommendation: Option B for now: keep the file but stop using it in the after-answer flow. This is already the current behavior.
+- Do not delete it yet unless `src/App.jsx` import/route and any external bookmarks/docs are intentionally removed in the same cleanup. Deleting the file now while the route remains would break the app build.
+- If removed later, first remove the import and route from `src/App.jsx`, then run lint/build and manually verify no direct URL or deployment fallback depends on it.
 
 Risks:
 
@@ -563,22 +589,33 @@ Flow:
 24. Instructor clicks End Quiz while students are in Round Results; students reach Final Results.
 25. Last round completion moves all students to Final Results.
 26. Timeout creates exactly one zero-point response.
+27. Student selects an answer and remains on `Question.jsx`.
+28. After answering, all answer choices are disabled.
+29. After answering, Question page shows only the neutral waiting message.
+30. After answering, Question page does not show correct/wrong status, correct answer, points, or streak bonus.
+31. When the shared session status becomes `round_results`, the student navigates to `RoundResults.jsx`.
+32. `RoundResults.jsx` reveals selected answer, correct answer, correct/wrong status, points earned, and streak bonus if awarded.
+33. Instructor End Quiz still sends students from Question page to Final Results.
+34. Disable or miss a Supabase realtime event, then verify `Question.jsx` still navigates to Round Results through the polling fallback within a few seconds.
+35. Verify `Question.jsx` navigates to Round Results when `show_round_results = true` even if `status` is not refreshed locally.
+36. Verify `Question.jsx` navigates to Round Results when `current_phase = "round_results"` if that convention is used.
+37. Verify `WaitingForOthers.jsx` navigates to Final Results when `status = "finished"` or `current_phase = "final_results"`.
 
 AI generation:
 
-27. Upload TXT and generate valid easy/medium/hard banks.
-28. Upload PDF with extractable text and generate valid banks.
-29. Upload CSV and generate valid banks.
-30. Upload JSON and generate valid banks.
-31. Upload MD and generate valid banks.
-32. Upload DOCX and generate valid banks.
-33. Upload PPTX directly if UI support is added, or verify API behavior separately.
+38. Upload TXT and generate valid easy/medium/hard banks.
+39. Upload PDF with extractable text and generate valid banks.
+40. Upload CSV and generate valid banks.
+41. Upload JSON and generate valid banks.
+42. Upload MD and generate valid banks.
+43. Upload DOCX and generate valid banks.
+44. Upload PPTX directly if UI support is added, or verify API behavior separately.
 
 RLS/schema:
 
-34. Student response insert succeeds when `responses.player_id` is a `session_players.id`.
-35. `round_results_seen_at` update succeeds.
-36. Students can read sessions in `waiting`, `choosing_difficulty`, `active`, `round_results`, and `finished`.
+45. Student response insert succeeds when `responses.player_id` is a `session_players.id`.
+46. `round_results_seen_at` update succeeds.
+47. Students can read sessions in `waiting`, `choosing_difficulty`, `active`, `round_results`, and `finished`.
 
 ## 18. Quick Wins
 

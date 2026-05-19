@@ -1,9 +1,17 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 
 function isFinalSessionStatus(session) {
   return session?.status === "finished" || session?.current_phase === "final_results";
+}
+
+function isRoundResultsSessionStatus(session) {
+  return (
+    session?.status === "round_results" ||
+    session?.current_phase === "round_results" ||
+    session?.show_round_results === true
+  );
 }
 
 function WaitingForOthers() {
@@ -29,6 +37,16 @@ function WaitingForOthers() {
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [answeredCount, setAnsweredCount] = useState(0);
   const [totalStudents, setTotalStudents] = useState(0);
+
+  const buildRoundResultsState = useCallback((session) => ({
+    ...state,
+    studentName,
+    playerId,
+    sessionPlayerId: playerId,
+    gameCode: session?.game_code || gameCode,
+    sessionId: session?.id || sessionId,
+    currentRound: session?.current_round || currentRound,
+  }), [state, studentName, playerId, gameCode, sessionId, currentRound]);
 
   useEffect(() => {
     if (!gameCode || !studentName) {
@@ -58,6 +76,13 @@ function WaitingForOthers() {
               sessionId: session.id,
             },
             replace: true,
+          });
+          return;
+        }
+
+        if (isRoundResultsSessionStatus(session)) {
+          navigate("/student/round-results", {
+            state: buildRoundResultsState(session),
           });
           return;
         }
@@ -112,16 +137,9 @@ function WaitingForOthers() {
             },
             replace: true,
           });
-        } else if (updatedSession.status === "round_results") {
+        } else if (isRoundResultsSessionStatus(updatedSession)) {
           navigate("/student/round-results", {
-            state: {
-              studentName,
-              playerId,
-              sessionPlayerId: playerId,
-              gameCode,
-              sessionId: updatedSession.id,
-              currentRound: updatedSession.current_round
-            }
+            state: buildRoundResultsState(updatedSession)
           });
         }
       })
@@ -140,7 +158,54 @@ function WaitingForOthers() {
     return () => {
       supabase.removeChannel(subscription);
     };
-  }, [gameCode, studentName, sessionId, navigate, playerId]);
+  }, [gameCode, studentName, sessionId, navigate, playerId, buildRoundResultsState]);
+
+  useEffect(() => {
+    if (!gameCode || !studentName) return undefined;
+
+    const pollSessionPhase = async () => {
+      const { data: session, error: sessionError } = await supabase
+        .from("sessions")
+        .select("*")
+        .eq("game_code", gameCode)
+        .maybeSingle();
+
+      if (sessionError || !session) {
+        return;
+      }
+
+      setSessionData(session);
+
+      if (isFinalSessionStatus(session)) {
+        navigate("/student/final-results", {
+          state: {
+            studentName,
+            playerId,
+            sessionPlayerId: playerId,
+            gameCode: session.game_code || gameCode,
+            sessionId: session.id,
+          },
+          replace: true,
+        });
+        return;
+      }
+
+      if (isRoundResultsSessionStatus(session)) {
+        navigate("/student/round-results", {
+          state: buildRoundResultsState(session),
+        });
+      }
+    };
+
+    const interval = setInterval(pollSessionPhase, 1500);
+    return () => clearInterval(interval);
+  }, [
+    gameCode,
+    studentName,
+    playerId,
+    navigate,
+    buildRoundResultsState,
+  ]);
 
   // Update timer
   useEffect(() => {
@@ -151,19 +216,6 @@ function WaitingForOthers() {
         const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
         setTimeRemaining(remaining);
 
-        if (remaining === 0 && sessionData.status === "active") {
-          // Time's up, navigate to round results
-          navigate("/student/round-results", {
-            state: {
-              studentName,
-              playerId,
-              sessionPlayerId: playerId,
-              gameCode,
-              sessionId: sessionData.id,
-              currentRound: sessionData.current_round
-            }
-          });
-        }
       }, 1000);
 
       return () => clearInterval(interval);

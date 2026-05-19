@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { getDifficultyPoints } from "../../utils/leaderboard";
@@ -8,6 +8,14 @@ const STREAK_BONUS_POINTS = 5;
 
 function isFinalSessionStatus(session) {
   return session?.status === "finished" || session?.current_phase === "final_results";
+}
+
+function isRoundResultsSessionStatus(session) {
+  return (
+    session?.status === "round_results" ||
+    session?.current_phase === "round_results" ||
+    session?.show_round_results === true
+  );
 }
 
 function getResponseTimestamp(response) {
@@ -43,6 +51,16 @@ function getConsecutiveCorrectCount(responses) {
   return [...latestResponseByQuestion.values()]
     .sort(sortResponsesForStreak)
     .reduce((count, response) => (response.is_correct ? count + 1 : 0), 0);
+}
+
+function getQuestionId(question, fallbackId) {
+  return (
+    question?.id ||
+    question?.question_id ||
+    question?.qid ||
+    fallbackId ||
+    ""
+  );
 }
 
 function Question() {
@@ -83,6 +101,8 @@ function Question() {
   const timeoutHandledRef = useRef(false);
   const handleTimeoutRef = useRef(null);
   const checkIfAlreadyAnsweredRef = useRef(null);
+  const pendingResultRef = useRef(null);
+  const currentQuestionRef = useRef(null);
 
   // Shared round timer from Difficulty screen
   const roundTimerStartedAt = state?.roundTimerStartedAt;
@@ -94,6 +114,51 @@ function Question() {
     Number(sessionData?.questionCount) ||
     Number(state?.maxQuestions) ||
     1;
+
+  // Safe fallback for current round
+  const safeCurrentRound =
+    Number(sessionData?.current_round) ||
+    Number(state?.currentRound) ||
+    Number(state?.roundNumber) ||
+    1;
+
+  const buildRoundResultsState = useCallback((session, result = pendingResultRef.current) => ({
+    ...state,
+    ...result,
+    studentName,
+    playerId: result?.playerId || playerId,
+    sessionPlayerId: result?.sessionPlayerId || result?.playerId || playerId,
+    gameCode: session?.game_code || gameCode,
+    sessionId: session?.id || result?.sessionId || resolvedSessionId || sessionId,
+    currentRound:
+      result?.currentRound ||
+      session?.current_round ||
+      safeCurrentRound,
+    questionCount:
+      result?.questionCount ||
+      Number(session?.question_count) ||
+      Number(maxQuestions) ||
+      1,
+    currentQuestionId:
+      result?.currentQuestionId ||
+      getQuestionId(currentQuestionRef.current, session?.current_question_id || currentQuestionId),
+    currentQuestion: result?.currentQuestion || currentQuestionRef.current,
+    currentDifficulty:
+      result?.currentDifficulty ||
+      session?.current_difficulty ||
+      currentDifficulty,
+  }), [
+    state,
+    studentName,
+    playerId,
+    gameCode,
+    resolvedSessionId,
+    sessionId,
+    safeCurrentRound,
+    maxQuestions,
+    currentQuestionId,
+    currentDifficulty,
+  ]);
 
   useEffect(() => {
     if (!gameCode || !studentName) {
@@ -114,17 +179,17 @@ function Question() {
         // Always use the real session UUID from the DB
         setResolvedSessionId(session.id);
 
-        if (session.status === "round_results") {
-          navigate("/student/round-results", {
-            state: { studentName, playerId, sessionPlayerId: playerId, gameCode, sessionId: session.id, currentRound: session.current_round }
-          });
-          return;
-        }
-
         if (isFinalSessionStatus(session)) {
           navigate("/student/final-results", {
             state: { studentName, playerId, sessionPlayerId: playerId, gameCode: session.game_code || gameCode, sessionId: session.id },
             replace: true,
+          });
+          return;
+        }
+
+        if (isRoundResultsSessionStatus(session)) {
+          navigate("/student/round-results", {
+            state: buildRoundResultsState(session)
           });
           return;
         }
@@ -190,16 +255,9 @@ function Question() {
             state: { studentName, playerId, sessionPlayerId: playerId, gameCode: full.game_code || gameCode, sessionId: full.id },
             replace: true,
           });
-        } else if (full.status === "round_results") {
+        } else if (isRoundResultsSessionStatus(full)) {
           navigate("/student/round-results", {
-            state: {
-              studentName,
-              playerId,
-              sessionPlayerId: playerId,
-              gameCode,
-              sessionId: full.id,
-              currentRound: full.current_round,
-            },
+            state: buildRoundResultsState(full),
           });
         } else if (full.status === "waiting") {
           navigate("/student/lobby", {
@@ -232,12 +290,65 @@ function Question() {
     sessionId,
     currentRound,
     currentQuestionId,
+    buildRoundResultsState,
     navigate,
   ]);
 
   useEffect(() => {
     hasAnsweredRef.current = hasAnswered;
   }, [hasAnswered]);
+
+  useEffect(() => {
+    currentQuestionRef.current = currentQuestion;
+  }, [currentQuestion]);
+
+  useEffect(() => {
+    if (!gameCode || !studentName) return undefined;
+
+    const pollSessionPhase = async () => {
+      const { data: session, error: sessionError } = await supabase
+        .from("sessions")
+        .select("*")
+        .eq("game_code", gameCode)
+        .maybeSingle();
+
+      if (sessionError || !session) {
+        return;
+      }
+
+      setSessionData(session);
+      setResolvedSessionId(session.id);
+
+      if (isFinalSessionStatus(session)) {
+        navigate("/student/final-results", {
+          state: {
+            studentName,
+            playerId,
+            sessionPlayerId: playerId,
+            gameCode: session.game_code || gameCode,
+            sessionId: session.id,
+          },
+          replace: true,
+        });
+        return;
+      }
+
+      if (isRoundResultsSessionStatus(session)) {
+        navigate("/student/round-results", {
+          state: buildRoundResultsState(session),
+        });
+      }
+    };
+
+    const interval = setInterval(pollSessionPhase, 1500);
+    return () => clearInterval(interval);
+  }, [
+    gameCode,
+    studentName,
+    playerId,
+    navigate,
+    buildRoundResultsState,
+  ]);
 
   useEffect(() => {
     const isActive = sessionData?.status === "active" && sessionData?.current_question_id;
@@ -249,6 +360,7 @@ function Question() {
     setSelectedAnswer(null);
     setIsSubmitting(false);
     setError("");
+    pendingResultRef.current = null;
   }, [sessionData?.current_question_id, sessionData?.status, currentQuestionId]);
 
   useEffect(() => {
@@ -257,6 +369,7 @@ function Question() {
     setHasAnswered(false);
     setSelectedAnswer(null);
     setIsSubmitting(false);
+    pendingResultRef.current = null;
   }, [currentQuestionId, sessionData?.current_question_id]);
 
   useEffect(() => {
@@ -320,14 +433,6 @@ function Question() {
     gameCode,
   ]);
 
-  // Safe fallback for current round
-  const safeCurrentRound =
-    Number(sessionData?.current_round) ||
-    Number(state?.currentRound) ||
-    Number(state?.roundNumber) ||
-    1;
-
-  
   // Shared round timer continuation from Difficulty screen
   useEffect(() => {
     // Clear any existing timer
@@ -602,33 +707,43 @@ function Question() {
         setHasAnswered(true);
         setSelectedAnswer(existingResponse.selected_answer);
 
+        const questionDifficulty =
+          currentQuestionRef.current?.difficulty ||
+          currentQuestionRef.current?.level ||
+          currentDifficulty ||
+          sessionData?.current_difficulty;
+        const basePoints = getDifficultyPoints(questionDifficulty);
+        const existingPoints = Number(existingResponse.points_awarded || 0);
+        const existingStreakBonus =
+          existingResponse.is_correct && existingPoints > basePoints
+            ? existingPoints - basePoints
+            : 0;
+        pendingResultRef.current = {
+          playerId,
+          sessionPlayerId: playerId,
+          sessionId: targetSessionId,
+          currentQuestionId: targetQuestionId,
+          currentDifficulty: questionDifficulty,
+          currentRound: existingResponse.round_number || safeCurrentRound,
+          questionCount: maxQuestions,
+          pointsAwarded: existingPoints,
+          streakBonus: existingStreakBonus,
+          isCorrect: existingResponse.is_correct,
+          selectedAnswer: existingResponse.selected_answer,
+          currentQuestion: currentQuestionRef.current,
+          questionsByDifficulty:
+            state?.questionsByDifficulty ||
+            state?.questions_by_difficulty ||
+            sessionData?.questions_by_difficulty ||
+            {},
+        };
+
         const localKey = `quizplay_answered_questions_${gameCode}_${playerId}`;
         const stored = localStorage.getItem(localKey);
         const answered = stored ? JSON.parse(stored) : [];
         if (!answered.includes(targetQuestionId)) {
           answered.push(targetQuestionId);
           localStorage.setItem(localKey, JSON.stringify(answered));
-        }
-
-        const reachedLimit = answered.length >= maxQuestions;
-
-        if (reachedLimit) {
-          navigate("/student/round-results", {
-            state: {
-              ...state,
-              studentName,
-              playerId,
-              sessionPlayerId: playerId,
-              gameCode,
-              sessionId: targetSessionId,
-              currentRound: safeCurrentRound,
-              questionCount: maxQuestions,
-            },
-          });
-        } else {
-          navigate("/student/difficulty", {
-            state: { ...state, studentName, playerId, sessionPlayerId: playerId, gameCode, sessionId: targetSessionId, currentRound: safeCurrentRound, questionCount: maxQuestions }
-          });
         }
       }
     } catch {
@@ -754,8 +869,6 @@ function Question() {
 
       if (upsertError) throw upsertError;
 
-      setHasAnswered(true);
-
       // Add to local storage
       const localKey = `quizplay_answered_questions_${gameCode}_${playerId}`;
       const stored = localStorage.getItem(localKey);
@@ -769,58 +882,32 @@ function Question() {
       const timerKey = `quizplay_round_timer_${gameCode}_${playerId}`;
       localStorage.removeItem(timerKey);
 
-      const reachedLimit = answered.length >= maxQuestions;
       const resolvedQuestionsByDifficulty =
         state?.questionsByDifficulty ||
         state?.questions_by_difficulty ||
         sessionData?.questions_by_difficulty ||
         {};
 
-      if (reachedLimit) {
-        navigate("/student/round-results", {
-          state: {
-            ...state,
-            studentName,
-            playerId: resolvedPlayerId,
-            sessionPlayerId: resolvedPlayerId,
-            gameCode,
-            sessionId: targetSessionId,
-            currentRound: sessionData?.current_round,
-            questionCount: maxQuestions,
-            currentQuestionId: targetQuestionId,
-            currentDifficulty,
-            timePerQuestion: roundTimerDuration || 30,
-            pointsAwarded,
-            streakBonus,
-            isCorrect,
-            selectedAnswer: answerToSubmit,
-            currentQuestion,
-            questionsByDifficulty: resolvedQuestionsByDifficulty,
-          }
-        });
-      } else {
-        navigate("/student/round-results", {
-          state: {
-            ...state,
-            studentName,
-            playerId: resolvedPlayerId,
-            sessionPlayerId: resolvedPlayerId,
-            gameCode,
-            sessionId: targetSessionId,
-            currentQuestionId: targetQuestionId,
-            currentDifficulty,
-            currentRound: actualRoundNumber,
-            questionCount: maxQuestions,
-            timePerQuestion: roundTimerDuration || 30,
-            pointsAwarded,
-            streakBonus,
-            isCorrect,
-            selectedAnswer: answerToSubmit,
-            currentQuestion,
-            questionsByDifficulty: resolvedQuestionsByDifficulty
-          }
-        });
-      }
+      pendingResultRef.current = {
+        playerId: resolvedPlayerId,
+        sessionPlayerId: resolvedPlayerId,
+        gameCode,
+        sessionId: targetSessionId,
+        currentQuestionId: targetQuestionId,
+        currentDifficulty: questionDifficulty,
+        currentRound: actualRoundNumber,
+        questionCount: maxQuestions,
+        timePerQuestion: roundTimerDuration || 30,
+        pointsAwarded,
+        streakBonus,
+        isCorrect,
+        selectedAnswer: answerToSubmit,
+        currentQuestion,
+        questionsByDifficulty: resolvedQuestionsByDifficulty,
+      };
+
+      setHasAnswered(true);
+      setIsSubmitting(false);
 
     } catch (err) {
       console.error("Error submitting answer:", err);
