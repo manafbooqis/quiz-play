@@ -143,6 +143,7 @@ Removed:
 - `vercel.json` was removed by commit `74422bb Remove Vercel configuration`.
 - `vercel.json` does not exist as a tracked file.
 - `netlify.toml` is not tracked.
+- Render deployment preparation has been added with a Node/Express web service entrypoint at `server.js`.
 
 Currently missing or incomplete:
 
@@ -321,6 +322,7 @@ Main files:
 
 - `src/pages/instructor/DashboardOfficial.jsx`
 - `api/generate-questions.js`
+- `server.js`
 - `package.json`
 
 Current support:
@@ -345,9 +347,27 @@ Environment dependencies:
 - Supabase service configuration for `supabaseAdmin`
 - Optional `APP_URL` for OpenRouter headers.
 
+Render deployment preparation:
+
+- `server.js` uses Express and listens on `process.env.PORT || 3000`.
+- `server.js` serves the built Vite frontend from `dist`.
+- `server.js` serves Vite's `/quiz-play/` base path by mounting `dist` at `/quiz-play`, including `/quiz-play/assets/*`.
+- `server.js` exposes `POST /api/generate-questions`.
+- The Express route reuses the existing default handler from `api/generate-questions.js`, preserving the request body and response JSON shape expected by `DashboardOfficial.jsx`.
+- Non-API routes fall back to `dist/index.html`, so React Router deep links continue to work.
+- The SPA fallback now avoids asset-like URLs, preventing `/quiz-play/assets/*.js` requests from receiving `index.html` with `text/html`.
+- Correct local Render-style preview URL: `http://localhost:3000/quiz-play/`.
+- `package.json` now includes `"start": "node server.js"`.
+- `express` is installed as a production dependency.
+- `dotenv` is installed so local `npm start` can load server-side values from `.env`.
+
 Risks:
 
-- API route `/api/generate-questions` may not deploy automatically without Vercel or equivalent serverless routing.
+- On Render, `/api/generate-questions` is served by the Express web service instead of relying on Vercel serverless routing.
+- Render must run `npm run build` before `npm start` so `dist/index.html` exists.
+- Render environment variables must include `VITE_SUPABASE_URL` or `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `OPENROUTER_API_KEY`.
+- `SUPABASE_SERVICE_ROLE_KEY` and `OPENROUTER_API_KEY` remain server-side because they are read by `api/generate-questions.js` through the Node/Express route.
+- Previous Express static routing could return `dist/index.html` for `/quiz-play/assets/*.js`, causing the browser MIME error: expected module script but received `text/html`. The `/quiz-play` static mount fixes real built assets, and the asset 404 guard prevents fallback HTML for missing assets.
 - Text is truncated to 15,000 characters, which may omit important content from long files.
 - AI validation is stronger than before, but still depends on model output quality.
 
@@ -460,6 +480,7 @@ Environment variables and services:
 
 - Frontend uses Supabase client configuration in `src/lib/supabase.js`.
 - API generation requires Supabase service configuration and `OPENROUTER_API_KEY`.
+- Render deployment uses `server.js` to serve both the frontend and the AI API from one Node Web Service.
 - `.env` is open in the IDE but was not inspected in this audit report output.
 
 Risks:
@@ -467,7 +488,8 @@ Risks:
 - Student clients directly update some global session state.
 - RLS policies in the repo appear incomplete for the current stable-player-ID model.
 - API route uses server-side service credentials and must only run server-side.
-- Removing Vercel config means deployment must be revalidated so `/api/generate-questions` is not exposed incorrectly or missing.
+- Removing Vercel config means deployment must be revalidated, but Render now has an Express route for `/api/generate-questions`.
+- Render must not expose `SUPABASE_SERVICE_ROLE_KEY` or `OPENROUTER_API_KEY` to the Vite client; keep them only as server environment variables.
 - `localStorage` stores session/player identity and can be edited by a user; DB/RLS must be the source of truth.
 
 ## 15. Build and Lint Status
@@ -535,8 +557,9 @@ Some chunks are larger than 500 kB after minification.
    - Keep `responses.points_awarded` as the final score source.
 
 5. Clarify deployment.
-   - Since `vercel.json` is removed, verify how `/api/generate-questions` is served.
-   - Document the chosen deployment provider and API routing.
+   - Render Node Web Service deployment is now prepared through `server.js`.
+   - Verify Render build command `npm run build` and start command `npm start`.
+   - Verify `/api/generate-questions` works on Render with server-side env vars.
 
 6. Align AI upload support.
    - Add PPTX to the upload accept list if PPTX should be user-selectable.
