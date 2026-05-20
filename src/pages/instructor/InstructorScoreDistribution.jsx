@@ -344,6 +344,8 @@ function InstructorScoreDistribution() {
   const [sessionQuestionCount, setSessionQuestionCount] = useState(0);
   const [sessionScoringConfig, setSessionScoringConfig] = useState({});
   const [mostMissedResult, setMostMissedResult] = useState(null);
+  const [showReviewInsights, setShowReviewInsights] = useState(false);
+  const [showImproveInsights, setShowImproveInsights] = useState(false);
 
   // Always fetch fresh data from database
   useEffect(() => {
@@ -679,34 +681,52 @@ function InstructorScoreDistribution() {
             </div>
           )}
 
-          {/* Question Quality Insights */}
+          {/* Smart Review Insights */}
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200">
             <div className="flex items-start justify-between gap-4 mb-6">
               <div>
                 <p className="text-xs font-bold text-cyan-600 uppercase tracking-widest mb-2">
-                  Question Quality Insights
+                  Smart Review Insights
                 </p>
                 <h2 className="text-2xl font-bold text-slate-800">
-                  Questions that may need reteaching or improvement
+                  Questions that may need reteaching or difficulty improvement
                 </h2>
               </div>
               <div className="grid grid-cols-2 gap-2 text-center">
-                <div className="rounded-2xl bg-cyan-50 border border-cyan-100 px-4 py-3">
+                <button
+                  type="button"
+                  onClick={() => setShowReviewInsights((value) => !value)}
+                  className="rounded-2xl bg-cyan-50 border border-cyan-100 px-4 py-3 transition hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400"
+                  aria-expanded={showReviewInsights}
+                >
                   <p className="text-2xl font-bold text-cyan-700">
                     {needsReviewItems.length}
                   </p>
                   <p className="text-xs font-semibold text-cyan-600">review</p>
-                </div>
-                <div className="rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3">
+                  <p className="mt-1 text-[11px] font-semibold text-cyan-500">
+                    {showReviewInsights ? "Hide details" : "Click to view"}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowImproveInsights((value) => !value)}
+                  className="rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  aria-expanded={showImproveInsights}
+                >
                   <p className="text-2xl font-bold text-amber-700">
                     {tooEasyItems.length}
                   </p>
                   <p className="text-xs font-semibold text-amber-600">improve</p>
-                </div>
+                  <p className="mt-1 text-[11px] font-semibold text-amber-500">
+                    {showImproveInsights ? "Hide details" : "Click to view"}
+                  </p>
+                </button>
               </div>
             </div>
 
+            {(showReviewInsights || showImproveInsights) && (
             <div className="space-y-8">
+              {showReviewInsights && (
               <section>
                 <h3 className="text-lg font-bold text-slate-800 mb-4">Needs Review</h3>
                 {needsReviewItems.length === 0 ? (
@@ -778,7 +798,9 @@ function InstructorScoreDistribution() {
                   </div>
                 )}
               </section>
+              )}
 
+              {showImproveInsights && (
               <section>
                 <h3 className="text-lg font-bold text-slate-800 mb-4">
                   Too Easy / Improve Difficulty
@@ -833,7 +855,9 @@ function InstructorScoreDistribution() {
                   </div>
                 )}
               </section>
+              )}
             </div>
+            )}
           </div>
 
           {/* Bar Chart */}
