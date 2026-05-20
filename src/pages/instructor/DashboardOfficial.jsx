@@ -91,6 +91,8 @@ function DashboardOfficial() {
   const MIN_TIME = 10;
   const MAX_TIME = 120;
   const TIME_STEP = 10;
+  const isGuestUser =
+    currentUser?.is_anonymous || currentUser?.user_metadata?.is_guest === true;
 
   useEffect(() => {
     let isMounted = true;
@@ -185,6 +187,13 @@ function DashboardOfficial() {
   useEffect(() => {
     if (!currentUser?.id) return;
 
+    if (isGuestUser) {
+      setTeacherSessions([]);
+      setSavedQuestionBanks([]);
+      setIsLoadingSessions(false);
+      return;
+    }
+
     async function loadSessions() {
       setIsLoadingSessions(true);
 
@@ -247,7 +256,15 @@ function DashboardOfficial() {
 
     loadSessions();
     loadSavedQuestionBanks();
-  }, [currentUser?.id]);
+  }, [currentUser?.id, isGuestUser]);
+
+  useEffect(() => {
+    if (!isGuestUser || selectedSource !== "saved") return;
+
+    setSelectedSource(null);
+    setUseExistingBank(false);
+    setSelectedQuestionBank(null);
+  }, [isGuestUser, selectedSource]);
 
   function increaseQuestions() {
     setQuestionCount((prev) => Math.min(prev + 1, MAX_QUESTIONS));
@@ -579,9 +596,6 @@ function DashboardOfficial() {
   const displayName = teacherName || "Instructor";
   const initials = displayName.trim().charAt(0).toUpperCase();
 
-  const isGuestUser =
-    currentUser?.is_anonymous || currentUser?.user_metadata?.is_guest === true;
-
   const displayEmail = isGuestUser ? "Guest Account" : teacherEmail || "";
 
   // Helper functions for manual questions
@@ -727,25 +741,27 @@ function DashboardOfficial() {
               {/* 1. Choose Source */}
               <div className="mb-8">
                 <h3 className="text-xl font-bold mb-3">1. Choose Source</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className={`grid grid-cols-1 gap-3 ${isGuestUser ? "md:grid-cols-2" : "md:grid-cols-3"}`}>
                   {/* Saved Questions */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedSource('saved');
-                      setUseExistingBank(true);
-                      setSelectedQuestionBank(null);
-                      setSelectedFile(null);
-                    }}
-                    className={`p-4 rounded-lg border-2 transition-all text-left ${
-                      selectedSource === 'saved'
-                        ? 'border-cyan-500 bg-cyan-50 text-cyan-700'
-                        : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="text-lg font-semibold mb-1">📚 Saved Questions</div>
-                    <div className="text-sm text-slate-600">Use existing question bank</div>
-                  </button>
+                  {!isGuestUser && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedSource('saved');
+                        setUseExistingBank(true);
+                        setSelectedQuestionBank(null);
+                        setSelectedFile(null);
+                      }}
+                      className={`p-4 rounded-lg border-2 transition-all text-left ${
+                        selectedSource === 'saved'
+                          ? 'border-cyan-500 bg-cyan-50 text-cyan-700'
+                          : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="text-lg font-semibold mb-1">📚 Saved Questions</div>
+                      <div className="text-sm text-slate-600">Use existing question bank</div>
+                    </button>
+                  )}
 
                   {/* Upload File */}
                   <button
@@ -784,6 +800,11 @@ function DashboardOfficial() {
                     <div className="text-xs text-slate-500 mt-1">Write {questionCount * 3} questions manually.</div>
                   </button>
                 </div>
+                {isGuestUser && (
+                  <p className="mt-3 text-sm text-slate-500">
+                    Sign in to access saved question banks and recent sessions.
+                  </p>
+                )}
               </div>
 
               {/* 2. Settings */}
@@ -1322,8 +1343,9 @@ function DashboardOfficial() {
         </div>
 
         {/* Recent Sessions */}
-        <div className="mt-12">
-          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+        {!isGuestUser && (
+          <div className="mt-12">
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-2xl font-bold">Recent Sessions</h2>
               <div className="flex items-center gap-2 text-sm text-slate-600">
@@ -1465,8 +1487,9 @@ function DashboardOfficial() {
                 ))}
               </div>
             )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Delete Confirmation Modal */}
