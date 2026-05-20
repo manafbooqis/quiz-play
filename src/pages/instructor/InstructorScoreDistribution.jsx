@@ -129,6 +129,53 @@ function getFlattenedQuestionsById(questionsByDifficulty = {}) {
   }, {});
 }
 
+function getFlattenedQuestions(questionsByDifficulty = {}) {
+  return Object.entries(questionsByDifficulty || {}).flatMap(
+    ([difficulty, questionsForDifficulty]) =>
+      Array.isArray(questionsForDifficulty)
+        ? questionsForDifficulty.map((question, index) => ({
+            ...question,
+            __difficulty: getQuestionDifficulty(question, difficulty),
+            __questionNumber: question?.question_number || question?.number || index + 1,
+            __difficultyIndex: index + 1,
+          }))
+        : []
+  );
+}
+
+function getPossibleQuestionIds(question, fallbackDifficulty = "", fallbackIndex = 0) {
+  const rawDifficulty = normalizeAnswerValue(
+    question?.__difficulty || getQuestionDifficulty(question, fallbackDifficulty)
+  );
+  const difficulty = normalizeDifficulty(rawDifficulty);
+  const questionNumber = Number(question?.__difficultyIndex || fallbackIndex + 1) || 1;
+  const rawIds = [
+    question?.id,
+    question?.question_id,
+    question?.qid,
+    rawDifficulty ? `${rawDifficulty}-${questionNumber}` : "",
+    difficulty ? `${difficulty}-${questionNumber}` : "",
+    String(questionNumber),
+  ];
+
+  return [...new Set(rawIds.map(normalizeAnswerValue).filter(Boolean))];
+}
+
+function getResponseMatchKey(response) {
+  return (
+    response?.id ||
+    [
+      response?.session_id,
+      response?.player_id,
+      response?.question_id,
+      response?.answered_at,
+      response?.created_at,
+    ]
+      .map(normalizeAnswerValue)
+      .join("|")
+  );
+}
+
 function getMostCommonWrongAnswer(incorrectResponses, question) {
   const counts = incorrectResponses.reduce((acc, response) => {
     const answerKey = normalizeAnswerValue(response.selected_answer);
@@ -143,30 +190,31 @@ function getMostCommonWrongAnswer(incorrectResponses, question) {
   return mapAnswerToText(mostCommonAnswer[0], question);
 }
 
-function buildAutoReviewQueue(questionsByDifficulty, responses) {
-  const questionById = getFlattenedQuestionsById(questionsByDifficulty);
+function buildQuestionQualityInsights(questionsByDifficulty = {}, responses = []) {
+  const safeResponses = Array.isArray(responses) ? responses : [];
+  const questions = getFlattenedQuestions(questionsByDifficulty || {});
+  const matchedResponseIds = new Set();
 
-  const grouped = responses
-    .filter((response) => response.question_id)
-    .reduce((acc, response) => {
-      const questionId = String(response.question_id);
-      if (!acc[questionId]) acc[questionId] = [];
-      acc[questionId].push(response);
-      return acc;
-    }, {});
-
-  return Object.entries(grouped)
-    .map(([questionId, questionResponses], index) => {
-      const question = questionById[questionId];
+  const buildInsightItem = (question, questionResponses, index, questionId) => {
       const incorrectResponses = questionResponses.filter(
         (response) => response.is_correct !== true
       );
       const totalResponses = questionResponses.length;
       const incorrectCount = incorrectResponses.length;
       const incorrectRate = totalResponses > 0 ? incorrectCount / totalResponses : 0;
+      const correctCount = questionResponses.filter(
+        (response) => response.is_correct === true
+      ).length;
+      const correctRate = totalResponses > 0 ? correctCount / totalResponses : 0;
       const difficulty = getQuestionDifficulty(question);
       const normalizedDifficulty = normalizeDifficulty(difficulty);
-      const threshold = normalizedDifficulty === "easy" ? 0.3 : 0.5;
+      const reviewThreshold = normalizedDifficulty === "easy" ? 0.3 : 0.5;
+      const tooEasyThreshold =
+        normalizedDifficulty === "medium"
+          ? 0.85
+          : normalizedDifficulty === "hard"
+          ? 0.75
+          : null;
 
       return {
         questionId,
@@ -180,18 +228,105 @@ function buildAutoReviewQueue(questionsByDifficulty, responses) {
         correctAnswer: getCorrectAnswerText(question),
         incorrectRate,
         incorrectRatePercent: Math.round(incorrectRate * 100),
+        correctRate,
+        correctRatePercent: Math.round(correctRate * 100),
         incorrectCount,
         totalResponses,
         mostCommonWrongAnswer: getMostCommonWrongAnswer(incorrectResponses, question),
-        needsReview: totalResponses > 0 && incorrectRate >= threshold,
+        suggestion:
+          normalizedDifficulty === "hard"
+            ? "This hard question may be too easy; add deeper reasoning or stronger distractors."
+            : "Consider making this question more challenging.",
+        highPriority: normalizedDifficulty !== "easy" && correctRate === 1,
+        needsReview: totalResponses > 0 && incorrectRate >= reviewThreshold,
+        tooEasy:
+          totalResponses > 0 &&
+          tooEasyThreshold !== null &&
+          correctRate >= tooEasyThreshold,
       };
-    })
+  };
+
+  const items = questions.map((question, index) => {
+    const possibleIds = getPossibleQuestionIds(question, question.__difficulty, index);
+    const possibleIdSet = new Set(possibleIds);
+    const possibleLowerIdSet = new Set(possibleIds.map((id) => id.toLowerCase()));
+    const questionResponses = safeResponses.filter((response) => {
+      const responseQuestionId = normalizeAnswerValue(response.question_id);
+      return (
+        responseQuestionId &&
+        (possibleIdSet.has(responseQuestionId) ||
+          possibleLowerIdSet.has(responseQuestionId.toLowerCase()))
+      );
+    });
+
+    questionResponses.forEach((response) => {
+      matchedResponseIds.add(getResponseMatchKey(response));
+    });
+
+    console.log("[QQI Debug]", {
+      questionLabel: `Question ${question.__questionNumber}`,
+      possibleIds,
+      matchedResponsesCount: questionResponses.length,
+    });
+
+    return buildInsightItem(
+      question,
+      questionResponses,
+      index,
+      possibleIds[0] || getQuestionId(question) || String(index + 1)
+    );
+  });
+
+  const fallbackGroupedResponses = safeResponses.reduce((acc, response) => {
+    const responseQuestionId = normalizeAnswerValue(response.question_id);
+    if (!responseQuestionId || matchedResponseIds.has(getResponseMatchKey(response))) {
+      return acc;
+    }
+    if (!acc[responseQuestionId]) acc[responseQuestionId] = [];
+    acc[responseQuestionId].push(response);
+    return acc;
+  }, {});
+
+  Object.entries(fallbackGroupedResponses).forEach(([questionId, questionResponses], index) => {
+    console.log("[QQI Debug]", {
+      questionLabel: `Question ID: ${questionId}`,
+      possibleIds: [questionId],
+      matchedResponsesCount: questionResponses.length,
+    });
+
+    items.push(buildInsightItem(undefined, questionResponses, questions.length + index, questionId));
+  });
+
+  const sortByQuestionOrder = (a, b) => {
+    const questionNumberDifference = Number(a.questionNumber) - Number(b.questionNumber);
+    if (Number.isFinite(questionNumberDifference) && questionNumberDifference !== 0) {
+      return questionNumberDifference;
+    }
+    return String(a.questionId).localeCompare(String(b.questionId));
+  };
+
+  const needsReview = items
     .filter((item) => item.needsReview)
     .sort((a, b) => {
       if (b.incorrectRate !== a.incorrectRate) return b.incorrectRate - a.incorrectRate;
       if (b.incorrectCount !== a.incorrectCount) return b.incorrectCount - a.incorrectCount;
-      return Number(a.questionNumber) - Number(b.questionNumber);
+      return sortByQuestionOrder(a, b);
     });
+
+  const tooEasy = items
+    .filter((item) => item.tooEasy)
+    .sort((a, b) => {
+      if (Number(b.highPriority) !== Number(a.highPriority)) {
+        return Number(b.highPriority) - Number(a.highPriority);
+      }
+      if (b.correctRate !== a.correctRate) return b.correctRate - a.correctRate;
+      return sortByQuestionOrder(a, b);
+    });
+
+  return {
+    needsReview: Array.isArray(needsReview) ? needsReview : [],
+    tooEasy: Array.isArray(tooEasy) ? tooEasy : [],
+  };
 }
 
 function InstructorScoreDistribution() {
@@ -317,14 +452,23 @@ function InstructorScoreDistribution() {
   }, [scores, maxPossibleScore]);
 
   const maxBucketCount = Math.max(...buckets.counts, 1);
-  const autoReviewQueue = useMemo(
-    () => buildAutoReviewQueue(questionsByDifficulty, responses),
+  const questionQualityInsights = useMemo(
+    () => buildQuestionQualityInsights(questionsByDifficulty, responses),
     [questionsByDifficulty, responses]
   );
+  const needsReviewItems = Array.isArray(questionQualityInsights?.needsReview)
+    ? questionQualityInsights.needsReview
+    : [];
+  const tooEasyItems = Array.isArray(questionQualityInsights?.tooEasy)
+    ? questionQualityInsights.tooEasy
+    : [];
 
   useEffect(() => {
-    console.log("[Auto Review Queue] items count", autoReviewQueue.length);
-  }, [autoReviewQueue.length]);
+    console.log(
+      "[Auto Review Queue] items count",
+      needsReviewItems.length
+    );
+  }, [needsReviewItems.length]);
 
   const handleShowMostMissedQuestion = () => {
     const responsesWithQuestion = responses.filter((response) => response.question_id);
@@ -535,91 +679,161 @@ function InstructorScoreDistribution() {
             </div>
           )}
 
-          {/* Auto Review Queue */}
+          {/* Question Quality Insights */}
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200">
             <div className="flex items-start justify-between gap-4 mb-6">
               <div>
                 <p className="text-xs font-bold text-cyan-600 uppercase tracking-widest mb-2">
-                  Auto Review Queue
+                  Question Quality Insights
                 </p>
                 <h2 className="text-2xl font-bold text-slate-800">
-                  Questions that may need reteaching
+                  Questions that may need reteaching or improvement
                 </h2>
               </div>
-              <div className="rounded-2xl bg-cyan-50 border border-cyan-100 px-4 py-3 text-center">
-                <p className="text-2xl font-bold text-cyan-700">{autoReviewQueue.length}</p>
-                <p className="text-xs font-semibold text-cyan-600">items</p>
+              <div className="grid grid-cols-2 gap-2 text-center">
+                <div className="rounded-2xl bg-cyan-50 border border-cyan-100 px-4 py-3">
+                  <p className="text-2xl font-bold text-cyan-700">
+                    {needsReviewItems.length}
+                  </p>
+                  <p className="text-xs font-semibold text-cyan-600">review</p>
+                </div>
+                <div className="rounded-2xl bg-amber-50 border border-amber-100 px-4 py-3">
+                  <p className="text-2xl font-bold text-amber-700">
+                    {tooEasyItems.length}
+                  </p>
+                  <p className="text-xs font-semibold text-amber-600">improve</p>
+                </div>
               </div>
             </div>
 
-            {autoReviewQueue.length === 0 ? (
-              <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-5">
-                <p className="font-semibold text-emerald-800">
-                  No review needed. Students performed well.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {autoReviewQueue.map((item) => (
-                  <div
-                    key={item.questionId}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
-                  >
-                    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2 mb-3">
-                          <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-bold text-white">
-                            Question {item.questionNumber}
-                          </span>
-                          <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-bold capitalize text-cyan-700">
-                            {item.difficulty}
-                          </span>
-                          <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-700">
-                            {item.incorrectRatePercent}% incorrect
-                          </span>
-                        </div>
-                        <p className="text-lg font-bold text-slate-800 leading-snug">
-                          {item.questionText}
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 text-center md:min-w-48">
-                        <div className="rounded-xl bg-white border border-slate-100 p-3">
-                          <p className="text-xl font-bold text-rose-700">
-                            {item.incorrectCount}
-                          </p>
-                          <p className="text-xs text-slate-500">incorrect</p>
-                        </div>
-                        <div className="rounded-xl bg-white border border-slate-100 p-3">
-                          <p className="text-xl font-bold text-slate-800">
-                            {item.totalResponses}
-                          </p>
-                          <p className="text-xs text-slate-500">responses</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="rounded-xl bg-white border border-slate-100 p-4">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
-                          Correct Answer
-                        </p>
-                        <p className="font-semibold text-slate-800">{item.correctAnswer}</p>
-                      </div>
-                      {item.mostCommonWrongAnswer && (
-                        <div className="rounded-xl bg-amber-50 border border-amber-100 p-4">
-                          <p className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-2">
-                            Most Common Wrong Answer
-                          </p>
-                          <p className="font-semibold text-amber-800">
-                            {item.mostCommonWrongAnswer}
-                          </p>
-                        </div>
-                      )}
-                    </div>
+            <div className="space-y-8">
+              <section>
+                <h3 className="text-lg font-bold text-slate-800 mb-4">Needs Review</h3>
+                {needsReviewItems.length === 0 ? (
+                  <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-5">
+                    <p className="font-semibold text-emerald-800">
+                      No review needed. Students performed well.
+                    </p>
                   </div>
-                ))}
-              </div>
-            )}
+                ) : (
+                  <div className="space-y-4">
+                    {needsReviewItems.map((item) => (
+                      <div
+                        key={item.questionId}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
+                      >
+                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2 mb-3">
+                              <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-bold text-white">
+                                Question {item.questionNumber}
+                              </span>
+                              <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-bold capitalize text-cyan-700">
+                                {item.difficulty}
+                              </span>
+                              <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-700">
+                                {item.incorrectRatePercent}% incorrect
+                              </span>
+                            </div>
+                            <p className="text-lg font-bold text-slate-800 leading-snug">
+                              {item.questionText}
+                            </p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 text-center md:min-w-48">
+                            <div className="rounded-xl bg-white border border-slate-100 p-3">
+                              <p className="text-xl font-bold text-rose-700">
+                                {item.incorrectCount}
+                              </p>
+                              <p className="text-xs text-slate-500">incorrect</p>
+                            </div>
+                            <div className="rounded-xl bg-white border border-slate-100 p-3">
+                              <p className="text-xl font-bold text-slate-800">
+                                {item.totalResponses}
+                              </p>
+                              <p className="text-xs text-slate-500">responses</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="rounded-xl bg-white border border-slate-100 p-4">
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
+                              Correct Answer
+                            </p>
+                            <p className="font-semibold text-slate-800">{item.correctAnswer}</p>
+                          </div>
+                          {item.mostCommonWrongAnswer && (
+                            <div className="rounded-xl bg-amber-50 border border-amber-100 p-4">
+                              <p className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-2">
+                                Most Common Wrong Answer
+                              </p>
+                              <p className="font-semibold text-amber-800">
+                                {item.mostCommonWrongAnswer}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section>
+                <h3 className="text-lg font-bold text-slate-800 mb-4">
+                  Too Easy / Improve Difficulty
+                </h3>
+                {tooEasyItems.length === 0 ? (
+                  <div className="rounded-2xl bg-slate-50 border border-slate-100 p-5">
+                    <p className="font-semibold text-slate-600">
+                      No questions appear too easy.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {tooEasyItems.map((item) => (
+                      <div
+                        key={item.questionId}
+                        className="rounded-2xl border border-amber-100 bg-amber-50/70 p-5"
+                      >
+                        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2 mb-3">
+                              <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-bold text-white">
+                                Question {item.questionNumber}
+                              </span>
+                              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold capitalize text-amber-700">
+                                {item.difficulty}
+                              </span>
+                              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
+                                {item.correctRatePercent}% correct
+                              </span>
+                              {item.highPriority && (
+                                <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-700">
+                                  High priority
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-lg font-bold text-slate-800 leading-snug mb-3">
+                              {item.questionText}
+                            </p>
+                            <p className="text-sm font-semibold text-amber-800">
+                              {item.suggestion}
+                            </p>
+                          </div>
+                          <div className="rounded-xl bg-white border border-amber-100 p-3 text-center md:min-w-28">
+                            <p className="text-xl font-bold text-slate-800">
+                              {item.totalResponses}
+                            </p>
+                            <p className="text-xs text-slate-500">responses</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
           </div>
 
           {/* Bar Chart */}
