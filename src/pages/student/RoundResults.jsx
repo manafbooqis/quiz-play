@@ -538,7 +538,7 @@ function RoundResults() {
           return;
         }
 
-        // Load current round responses for ranking
+        // Load current round responses for the current question result.
         const { data: responses, error: responsesError } = await supabase
           .from("responses")
           .select("*")
@@ -555,6 +555,14 @@ function RoundResults() {
 
         if (playersError) throw playersError;
 
+        // Load all responses in this session for the cumulative leaderboard.
+        const { data: allResponses, error: allResponsesError } = await supabase
+          .from("responses")
+          .select("*")
+          .eq("session_id", session.id);
+
+        if (allResponsesError) throw allResponsesError;
+
         // Create student name mapping
         const studentMap = {};
         players.forEach(player => {
@@ -562,13 +570,24 @@ function RoundResults() {
           studentMap[player.student_name] = getStudentName(player, 0);
         });
 
-        // Process results with names and rankings
+        // Process current-round results for the current student's own response.
         const processedResults = responses.map(response => ({
           ...response,
           studentName: studentMap[response.player_id] || response.player_id
         })).sort((a, b) => b.points_awarded - a.points_awarded);
 
-        setRoundResults(processedResults);
+        const cumulativeResults = calculateLeaderboard(
+          players,
+          allResponses || [],
+          Number(session.question_count || questionCount || 0),
+          session
+        ).map((result) => ({
+          ...result,
+          player_id: result.id,
+          studentName: result.name,
+        }));
+
+        setRoundResults(cumulativeResults);
 
         // Find my result
         const myResponse = processedResults.find(r => 
@@ -829,7 +848,7 @@ function RoundResults() {
                   <span className={`font-bold text-lg relative z-10 ${
                     result.player_id === myResult?.player_id ? "text-cyan-300" : "text-pink-300"
                   }`}>
-                    {result.points_awarded} pts
+                    {result.score} pts
                   </span>
                 </div>
               ))}
