@@ -21,6 +21,9 @@ const OPENROUTER_MODELS = [
   "nvidia/nemotron-nano-12b-v2-vl:free"
 ];
 
+const UNREADABLE_PDF_ERROR =
+  "This PDF does not contain readable text. Please upload a text-based PDF or use manual entry.";
+
 console.log("=== API Route: generate-questions ===");
 console.log("SUPABASE_URL:", SUPABASE_URL ? "set" : "MISSING");
 console.log("SUPABASE_SERVICE_ROLE_KEY:", SUPABASE_SERVICE_ROLE_KEY ? "set" : "MISSING");
@@ -444,17 +447,17 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
       console.log("[PDF Extraction] Text preview:", text.substring(0, 200) + "...");
       
       if (!text) {
-        console.error("[PDF Extraction Error] No text extracted from PDF");
-        throw new Error("Could not read text from this PDF. Please ensure it contains extractable text.");
+        console.warn("[PDF Extraction] No readable text extracted from PDF.");
+        throw new Error(UNREADABLE_PDF_ERROR);
       }
       
       return text;
     } catch (error) {
       console.error("[PDF Extraction Error]", error?.message || error);
-      if (error.message && error.message.includes("Could not read text")) {
+      if (error?.message === UNREADABLE_PDF_ERROR) {
         throw error;
       }
-      throw new Error("Failed to extract text from PDF. Please ensure it's a valid text-based PDF.");
+      throw new Error(UNREADABLE_PDF_ERROR);
     }
   }
 
@@ -550,7 +553,7 @@ export default async function handler(req, res) {
 
   if (!extractedText || !extractedText.trim()) {
     return res.status(400).json({ 
-      error: "Could not read text from this file. Please upload a text-based PDF or use manual question creation." 
+      error: "Could not read text from this file. Please upload a text-based PDF, use a TXT file, or write questions manually." 
     });
   }
 

@@ -94,6 +94,13 @@ function DashboardOfficial() {
   const MIN_TIME = 10;
   const MAX_TIME = 120;
   const TIME_STEP = 10;
+  const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+  const READABLE_PDF_MESSAGE =
+    "This PDF does not contain readable text. Please upload a text-based PDF, use a TXT file, or write questions manually.";
+  const SUPPORTED_UPLOAD_TYPES = [
+    "application/pdf",
+    "text/plain",
+  ];
   const isGuestUser =
     currentUser?.is_anonymous || currentUser?.user_metadata?.is_guest === true;
 
@@ -334,6 +341,77 @@ function DashboardOfficial() {
     });
   }
 
+  // Resolves browser MIME quirks by checking both MIME type and file extension.
+  function getUploadFileType(file) {
+    const fileName = file?.name?.toLowerCase() || "";
+    const mimeType = file?.type || "";
+
+    if (mimeType === "application/pdf" || fileName.endsWith(".pdf")) {
+      return "application/pdf";
+    }
+
+    if (mimeType === "text/plain" || fileName.endsWith(".txt")) {
+      return "text/plain";
+    }
+
+    return mimeType || "application/octet-stream";
+  }
+
+  // Validates upload files before sending them to the question-generation API.
+  function validateUploadFile(file) {
+    if (!file) {
+      return "Please upload a file before creating a session.";
+    }
+
+    const normalizedType = getUploadFileType(file);
+
+    if (!SUPPORTED_UPLOAD_TYPES.includes(normalizedType)) {
+      return "Unsupported file type. Please upload a PDF or TXT file, or write questions manually.";
+    }
+
+    if (file.size <= 0) {
+      return "This file appears to be empty. Please upload a file with readable content.";
+    }
+
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      return "This file is too large. Please upload a PDF or TXT file smaller than 10 MB.";
+    }
+
+    return "";
+  }
+
+  // Converts API and network failures into messages suitable for the dashboard.
+  function getFriendlyAiErrorMessage(errorValue) {
+    const rawMessage =
+      typeof errorValue === "string"
+        ? errorValue
+        : errorValue?.message || "AI generation failed.";
+
+    try {
+      const parsed = JSON.parse(rawMessage);
+      if (parsed?.error) {
+        return getFriendlyAiErrorMessage(parsed.error);
+      }
+    } catch {
+      // The message was already plain text.
+    }
+
+    if (
+      rawMessage.includes("does not contain readable text") ||
+      rawMessage.includes("Failed to extract text from PDF") ||
+      rawMessage.includes("valid text-based PDF") ||
+      rawMessage.includes("Could not read text from this PDF")
+    ) {
+      return READABLE_PDF_MESSAGE;
+    }
+
+    if (rawMessage.includes("Unsupported file type")) {
+      return "Unsupported file type. Please upload a PDF or TXT file, or write questions manually.";
+    }
+
+    return rawMessage;
+  }
+
   // Requests AI-generated questions for the uploaded session material.
   async function fetchAiQuestions({ sessionId, sessionGameCode, freshBase64, freshMime, freshFileName }) {
     const url = "/api/generate-questions";
@@ -368,7 +446,7 @@ function DashboardOfficial() {
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[AI] Request failed:", response.status, errorText);
-      throw new Error(errorText || `AI request failed with status ${response.status}`);
+      throw new Error(getFriendlyAiErrorMessage(errorText || `AI request failed with status ${response.status}`));
     }
 
     const json = await response.json();
@@ -400,6 +478,12 @@ function DashboardOfficial() {
         setError("Please upload a file before creating a session.");
         return;
       }
+
+      const fileValidationError = validateUploadFile(selectedFile);
+      if (fileValidationError) {
+        setError(fileValidationError);
+        return;
+      }
     }
 
     if (!currentUser) {
@@ -424,7 +508,7 @@ function DashboardOfficial() {
         setInfoMessage("Reading uploaded file...");
         try {
           freshBase64 = await readFileAsBase64(selectedFile);
-          freshMime = selectedFile.type || "application/octet-stream";
+          freshMime = getUploadFileType(selectedFile);
           freshFileName = selectedFile.name;
           console.log("[File] Read OK:", freshFileName, "|", freshMime, "| base64 length:", freshBase64.length);
         } catch (readErr) {
@@ -506,7 +590,7 @@ function DashboardOfficial() {
             } else if (isBusy) {
               setInfoMessage("AI is temporarily busy. Please try again in a few minutes, use a saved question bank, or add questions manually.");
             } else {
-              setInfoMessage(`AI generation failed: ${aiError.message}. Please try again, use a saved question bank, or add questions manually.`);
+              setInfoMessage(getFriendlyAiErrorMessage(aiError));
             }
             
             setIsCreatingSession(false);
@@ -658,10 +742,13 @@ function DashboardOfficial() {
     return getCompletedManualQuestionsCount() === totalQuestions;
   };
 
+  const selectedUploadFileError =
+    selectedSource === "upload" && selectedFile ? validateUploadFile(selectedFile) : "";
+
   const canCreateSession =
     !isCreatingSession &&
     ((selectedSource === 'saved' && selectedQuestionBank) ||
-     (selectedSource === 'upload' && selectedFile) ||
+     (selectedSource === 'upload' && selectedFile && !selectedUploadFileError) ||
      (selectedSource === 'manual' && isManualModeComplete()));
 
   if (isCheckingAuth) {
@@ -1059,14 +1146,13 @@ function DashboardOfficial() {
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".txt,.md,.doc,.docx,.pdf,.csv,.json,.html"
+                        accept=".pdf,.txt,application/pdf,text/plain"
                         className="hidden"
                         onChange={(event) => {
                           const file = event.target.files?.[0] ?? null;
-                          setSelectedFile(file);
-
                           setInfoMessage("");
-                          setError("");
+                          setError(file ? validateUploadFile(file) : "");
+                          setSelectedFile(file);
 
                           // Disable "Use Existing Bank" when a new file is chosen
                           setUseExistingBank(false);
@@ -1090,7 +1176,7 @@ function DashboardOfficial() {
                         <div className="text-center py-4">
                           <div className="text-2xl mb-2 text-cyan-600">📁</div>
                           <p className="font-semibold text-slate-900 mb-2">Choose File</p>
-                          <p className="text-sm text-slate-600 mb-4">or drag and drop your PDF, DOCX, TXT, CSV, JSON, or HTML file</p>
+                          <p className="text-sm text-slate-600 mb-4">or drag and drop your PDF or TXT file</p>
                           <button
                             type="button"
                             className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-lg transition"
@@ -1123,7 +1209,10 @@ function DashboardOfficial() {
                         <div className="text-sm text-slate-600">
                           <p>Questions: {questionCount}</p>
                           <p>Time: {timePerQuestion}s per question</p>
-                          <p>Type: {selectedFile.type}</p>
+                          <p>Type: {getUploadFileType(selectedFile)}</p>
+                          {selectedUploadFileError && (
+                            <p className="mt-2 text-red-600">{selectedUploadFileError}</p>
+                          )}
                         </div>
                       </div>
                     )}
