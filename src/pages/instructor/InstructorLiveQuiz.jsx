@@ -3,12 +3,14 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { calculateLeaderboard } from "../../utils/leaderboard";
 
+// Gives instructors a live view of quiz progress and controls.
 function InstructorLiveQuiz() {
   const navigate = useNavigate();
   const { state } = useLocation();
   
   const gameCode = state?.gameCode ?? "";
   const sessionId = state?.sessionId ?? "";
+  // Memoizes the question bank passed from session setup.
   const questionsByDifficulty = useMemo(
     () => state?.questionsByDifficulty ?? { easy: [], medium: [], hard: [] },
     [state?.questionsByDifficulty]
@@ -33,12 +35,13 @@ function InstructorLiveQuiz() {
   const [liveRanking, setLiveRanking] = useState([]);
   const [previewQuestion, setPreviewQuestion] = useState(null);
 
-  // Helper functions for different question shapes
+  // Reads question text from generated or stored question shapes.
   const getQuestionText = (q) => {
     if (!q) return "";
     return q.question || q.question_text || q.text || q.prompt || "";
   };
 
+  // Reads answer options from generated or stored question shapes.
   const getOptions = (q) => {
     if (!q) return [];
     if (Array.isArray(q.options)) return q.options;
@@ -55,6 +58,7 @@ function InstructorLiveQuiz() {
     return [];
   };
 
+  // Resolves the correct answer text for the instructor preview.
   const getCorrectAnswer = (q) => {
     if (!q) return "No correct answer found";
     
@@ -98,14 +102,14 @@ function InstructorLiveQuiz() {
   const endRoundRef = useRef(null);
   const nextRoundRef = useRef(null);
 
-  // Calculate total questions
+  // Calculates total available questions across all difficulties.
   const totalQuestions = useMemo(() => {
     return (questionsByDifficulty?.easy?.length || 0) +
            (questionsByDifficulty?.medium?.length || 0) +
            (questionsByDifficulty?.hard?.length || 0);
   }, [questionsByDifficulty]);
 
-  // Used question ids for this difficulty's bank (responses do not store difficulty)
+  // Lists used question IDs for the selected difficulty's bank.
   const getUsedQuestions = (difficulty) => {
     const questions = questionsByDifficulty[difficulty] || [];
     const idSet = new Set(
@@ -118,6 +122,7 @@ function InstructorLiveQuiz() {
       .map((r) => r.question_id);
   };
 
+  // Finds the next unused question for a difficulty.
   const getNextQuestion = (difficulty) => {
     const questions = questionsByDifficulty[difficulty] || [];
     const usedIds = getUsedQuestions(difficulty);
@@ -127,13 +132,14 @@ function InstructorLiveQuiz() {
     });
   };
 
-  // Load session data and setup real-time subscription
+  // Loads live quiz data and subscribes to session/response changes.
   useEffect(() => {
     if (!sessionId) {
       navigate("/instructor/session-official");
       return;
     }
 
+    // Fetches session, players, and responses for the live dashboard.
     async function loadSession() {
       try {
         const { data: session, error: sessionError } = await supabase
@@ -216,7 +222,7 @@ function InstructorLiveQuiz() {
     };
   }, [sessionId, navigate, questionsByDifficulty]);
 
-  // Same per-question window as students: current_question_ends_at − now (full time each question).
+  // Keeps the instructor timer aligned with the session question end time.
   useEffect(() => {
     if (
       sessionData?.status !== "active" ||
@@ -227,6 +233,7 @@ function InstructorLiveQuiz() {
       return undefined;
     }
 
+    // Recomputes remaining question time from the shared end timestamp.
     function tick() {
       const end = new Date(sessionData.current_question_ends_at).getTime();
       setInstructorTimeLeft(Math.max(0, Math.floor((end - Date.now()) / 1000)));
@@ -241,7 +248,7 @@ function InstructorLiveQuiz() {
     sessionData?.current_question_id,
   ]);
 
-  // Polling-based completion check — runs every 2 seconds
+  // Polls completion status and moves to final results when everyone is done.
   useEffect(() => {
     if (!sessionId || !sessionData) return;
 
@@ -322,7 +329,7 @@ function InstructorLiveQuiz() {
     Boolean(sessionData?.current_question_id) &&
     Boolean(sessionData?.current_difficulty);
 
-  // Start round with selected difficulty
+  // Starts a round using the currently selected difficulty.
   const startRound = async () => {
         
     const availableQuestions = questionsByDifficulty?.[selectedDifficulty] || [];
@@ -450,7 +457,7 @@ function InstructorLiveQuiz() {
     }
   };
 
-  // End current round and show results
+  // Ends the active round and exposes round results to students.
   const endRound = async () => {
     try {
       const { error: updateError } = await supabase
@@ -474,7 +481,7 @@ function InstructorLiveQuiz() {
     }
   };
 
-  // Move to next round
+  // Advances the shared session to the next difficulty-selection round.
   const nextRound = async () => {
     const nextRoundNumber = (sessionData?.current_round || 1) + 1;
     const maxRounds = Number(
@@ -514,7 +521,7 @@ function InstructorLiveQuiz() {
     }
   };
 
-  // Finish quiz manually
+  // Marks the quiz finished and opens the instructor results view.
   const finishQuiz = async () => {
     try {
       const { error: updateError } = await supabase
@@ -548,7 +555,7 @@ function InstructorLiveQuiz() {
     }
   };
 
-  // Phase 3: Monitoring calculations
+  // Recalculates monitoring stats from the latest students and responses.
   useEffect(() => {
     if (!sessionData || !students || !responses) return;
 
@@ -584,12 +591,12 @@ function InstructorLiveQuiz() {
 
   }, [sessionData, students, responses]);
 
-  // Reset the end round ref when a new question starts
+  // Allows auto-ending again when a new question starts.
   useEffect(() => {
     hasEndedCurrentQuestionRef.current = false;
   }, [sessionData?.current_question_id]);
 
-  // Auto end round when everyone has answered
+  // Auto-ends the round when every joined student has answered.
   useEffect(() => {
     if (
       sessionData?.status === "active" &&
@@ -614,7 +621,7 @@ function InstructorLiveQuiz() {
     sessionData?.current_question_id,
   ]);
 
-  // Automatic progression to next question
+  // Schedules automatic movement from round results to the next round.
   useEffect(() => {
     if (
       sessionData?.status === "round_results" &&
@@ -641,7 +648,7 @@ function InstructorLiveQuiz() {
   endRoundRef.current = endRound;
   nextRoundRef.current = nextRound;
 
-  // Reset the automatic progression ref when entering choosing_difficulty or a new active question
+  // Resets the automatic progression guard for a new round phase.
   useEffect(() => {
     if (
       sessionData?.status === "choosing_difficulty" ||
@@ -651,7 +658,7 @@ function InstructorLiveQuiz() {
     }
   }, [sessionData?.status, sessionData?.current_question_id]);
 
-  // Simple polling for instructor data refresh
+  // Polls instructor data so the dashboard remains fresh.
   useEffect(() => {
     if (!sessionId) return;
 
@@ -690,7 +697,7 @@ function InstructorLiveQuiz() {
     return () => clearInterval(interval);
   }, [sessionId]);
 
-  // Update preview question when session data changes
+  // Updates the monitor preview when round or difficulty changes.
   useEffect(() => {
     const questionIndex = Math.max(0, Number(currentRound || 1) - 1);
     const bank =

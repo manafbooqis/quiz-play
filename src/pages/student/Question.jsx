@@ -6,10 +6,20 @@ import { getDifficultyPoints } from "../../utils/leaderboard";
 const STREAK_BONUS_INTERVAL = 3;
 const STREAK_BONUS_POINTS = 5;
 
+/**
+ * Checks whether a session should route students to final results.
+ * @param {object} session - Session row from Supabase.
+ * @returns {boolean} True when the quiz is finished.
+ */
 function isFinalSessionStatus(session) {
   return session?.status === "finished" || session?.current_phase === "final_results";
 }
 
+/**
+ * Checks whether the current phase should show round results.
+ * @param {object} session - Session row from Supabase.
+ * @returns {boolean} True when round results are visible.
+ */
 function isRoundResultsSessionStatus(session) {
   return (
     session?.status === "round_results" ||
@@ -18,12 +28,23 @@ function isRoundResultsSessionStatus(session) {
   );
 }
 
+/**
+ * Reads a comparable timestamp from a response row.
+ * @param {object} response - Response row from Supabase.
+ * @returns {number} Milliseconds since epoch, or zero when missing.
+ */
 function getResponseTimestamp(response) {
   const rawTimestamp = response?.answered_at || response?.created_at || "";
   const timestamp = rawTimestamp ? new Date(rawTimestamp).getTime() : 0;
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
+/**
+ * Sorts responses in quiz order for streak calculations.
+ * @param {object} a - First response row.
+ * @param {object} b - Second response row.
+ * @returns {number} Sort comparison result.
+ */
 function sortResponsesForStreak(a, b) {
   const roundDifference = Number(a?.round_number || 0) - Number(b?.round_number || 0);
   if (roundDifference !== 0) {
@@ -33,6 +54,11 @@ function sortResponsesForStreak(a, b) {
   return getResponseTimestamp(a) - getResponseTimestamp(b);
 }
 
+/**
+ * Counts consecutive correct answers using the latest response per question.
+ * @param {Array<object>} responses - Previous response rows for a player.
+ * @returns {number} Current correct-answer streak length.
+ */
 function getConsecutiveCorrectCount(responses) {
   const latestResponseByQuestion = new Map();
 
@@ -53,6 +79,12 @@ function getConsecutiveCorrectCount(responses) {
     .reduce((count, response) => (response.is_correct ? count + 1 : 0), 0);
 }
 
+/**
+ * Resolves a question identifier across generated and stored question shapes.
+ * @param {object} question - Question object from the bank.
+ * @param {string} fallbackId - Fallback ID from session state.
+ * @returns {string} Question identifier or an empty string.
+ */
 function getQuestionId(question, fallbackId) {
   return (
     question?.id ||
@@ -63,6 +95,7 @@ function getQuestionId(question, fallbackId) {
   );
 }
 
+// Displays the active student question and records answers or timeouts.
 function Question() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -122,6 +155,7 @@ function Question() {
     Number(state?.roundNumber) ||
     1;
 
+  // Builds the navigation payload needed by RoundResults from session and pending answer data.
   const buildRoundResultsState = useCallback((session, result = pendingResultRef.current) => ({
     ...state,
     ...result,
@@ -160,12 +194,14 @@ function Question() {
     currentDifficulty,
   ]);
 
+  // Loads the active session and subscribes to phase changes from the instructor.
   useEffect(() => {
     if (!gameCode || !studentName) {
       navigate("/student/join");
       return;
     }
 
+    // Loads the session once and redirects if the student is on the wrong phase.
     async function loadSessionAndQuestion() {
       try {
         const { data: session, error: sessionError } = await supabase
@@ -294,17 +330,21 @@ function Question() {
     navigate,
   ]);
 
+  // Mirrors answer state into a ref for timer callbacks.
   useEffect(() => {
     hasAnsweredRef.current = hasAnswered;
   }, [hasAnswered]);
 
+  // Mirrors the current question into a ref for async result builders.
   useEffect(() => {
     currentQuestionRef.current = currentQuestion;
   }, [currentQuestion]);
 
+  // Polls session phase as a fallback when realtime events are delayed.
   useEffect(() => {
     if (!gameCode || !studentName) return undefined;
 
+    // Refreshes session phase and redirects to results pages when needed.
     const pollSessionPhase = async () => {
       const { data: session, error: sessionError } = await supabase
         .from("sessions")
@@ -350,6 +390,7 @@ function Question() {
     buildRoundResultsState,
   ]);
 
+  // Resets local answer state whenever a new active question starts.
   useEffect(() => {
     const isActive = sessionData?.status === "active" && sessionData?.current_question_id;
     const isChoosing = sessionData?.status === "choosing_difficulty" && currentQuestionId;
@@ -363,6 +404,7 @@ function Question() {
     pendingResultRef.current = null;
   }, [sessionData?.current_question_id, sessionData?.status, currentQuestionId]);
 
+  // Clears selected answer state when the target question ID changes.
   useEffect(() => {
     const targetQuestionId = currentQuestionId || sessionData?.current_question_id;
     if (!targetQuestionId) return;
@@ -372,6 +414,7 @@ function Question() {
     pendingResultRef.current = null;
   }, [currentQuestionId, sessionData?.current_question_id]);
 
+  // Resolves the current question object from session or cached question banks.
   useEffect(() => {
     // Allow question loading when:
     // - status is "active" and session has a current_question_id, OR
@@ -392,6 +435,7 @@ function Question() {
     const raw = localStorage.getItem(localKey);
     const config = raw ? JSON.parse(raw) : null;
 
+    // Checks that a question bank has at least one difficulty with questions.
     const isValidBank = (b) =>
       b &&
       Object.keys(b).length > 0 &&
@@ -433,7 +477,7 @@ function Question() {
     gameCode,
   ]);
 
-  // Shared round timer continuation from Difficulty screen
+  // Continues the shared round timer from Difficulty and triggers timeout once.
   useEffect(() => {
     // Clear any existing timer
     if (timerStartRef.current) {
@@ -450,6 +494,7 @@ function Question() {
     console.log("[Timer] Question continuing from round timer:", roundTimerStartedAt, roundTimerDuration);
     
     // Calculate remaining time from shared round timer
+    // Recomputes remaining time from the original round start timestamp.
     const tick = () => {
       const elapsed = Math.floor((Date.now() - new Date(roundTimerStartedAt)) / 1000);
       const remaining = Math.max(0, roundTimerDuration - elapsed);
@@ -489,6 +534,7 @@ function Question() {
     maxQuestions
   ]);
 
+  // Resets timeout handling for new questions and checks for existing answers.
   useEffect(() => {
     // Reset timeout ref when a new question loads
     timeoutHandledRef.current = false;
@@ -498,6 +544,7 @@ function Question() {
     }
   }, [sessionId, sessionData?.current_question_id, currentQuestionId]);
 
+  // Saves a timeout response and navigates to round results.
   const handleTimeout = async () => {
     try {
       // Resolve session ID safely
@@ -689,6 +736,7 @@ function Question() {
     }
   };
 
+  // Restores an existing response so refreshes do not create duplicate answers.
   const checkIfAlreadyAnswered = async () => {
     try {
       const targetSessionId = resolvedSessionId || sessionId;
@@ -754,6 +802,7 @@ function Question() {
   handleTimeoutRef.current = handleTimeout;
   checkIfAlreadyAnsweredRef.current = checkIfAlreadyAnswered;
 
+  // Submits the selected answer, awards points, and caches the round result.
   const handleSubmit = async (answerOverride = null) => {
     if (isSubmitting || hasAnswered) return;
 
@@ -916,6 +965,7 @@ function Question() {
     }
   };
 
+  // Formats remaining seconds for the question timer display.
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;

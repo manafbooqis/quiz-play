@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase, getSessionPlayers } from "../../lib/supabase";
 
+/**
+ * Converts supported primitive values into display text.
+ * @param {unknown} value - Candidate value from a player record.
+ * @returns {string} Trimmed text or an empty string.
+ */
 function getTextValue(value) {
   if (typeof value === "string" && value.trim()) {
     return value.trim();
@@ -14,6 +19,12 @@ function getTextValue(value) {
   return "";
 }
 
+/**
+ * Resolves a stable student display name from several supported row shapes.
+ * @param {string|object} student - Player value or session player record.
+ * @param {number} index - Fallback position for anonymous players.
+ * @returns {string} Display name for the lobby.
+ */
 function getStudentName(student, index) {
   if (!student) {
     return `Student ${index + 1}`;
@@ -43,10 +54,16 @@ function getStudentName(student, index) {
   return `Student ${index + 1}`;
 }
 
+/**
+ * Checks whether a session should show final results.
+ * @param {object} session - Session row from Supabase.
+ * @returns {boolean} True when the session is in a final state.
+ */
 function isFinalSessionStatus(session) {
   return session?.status === "finished" || session?.current_phase === "final_results";
 }
 
+// Shows the waiting room and reacts to instructor-driven session changes.
 function Lobby() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -63,7 +80,7 @@ function Lobby() {
   const [, setSessionData] = useState(null);
   const [livePlayers, setLivePlayers] = useState(null);
 
-  // Clear any existing round timers when entering lobby
+  // Clears any existing round timer when a student returns to the lobby.
   useEffect(() => {
     if (studentName && gameCode) {
       const timerKey = `quizplay_round_timer_${gameCode}_${studentName}`;
@@ -71,11 +88,11 @@ function Lobby() {
     }
   }, [studentName, gameCode]);
 
-  // Setup real-time session monitoring
+  // Watches the shared session status and moves students into the active quiz flow.
   useEffect(() => {
     if (!gameCode) return;
 
-    // Load initial session data
+    // Loads the current session once before real-time updates arrive.
     async function loadSession() {
       try {
         const { data: session, error: sessionError } = await supabase
@@ -264,11 +281,11 @@ function Lobby() {
     };
   }, [gameCode, studentName, playerId, navigate]);
 
-  // Poll session_players for live updates
+  // Polls session players so the waiting room stays current for late joins.
   useEffect(() => {
     if (!gameCode) return;
 
-    // Initial fetch
+    // Loads the first player list for the lobby roster.
     async function loadPlayers() {
       try {
         const { data: players, error } = await getSessionPlayers(gameCode);
@@ -324,6 +341,7 @@ function Lobby() {
   const timePerQuestion =
     config?.timePerQuestion ?? config?.time_per_question ?? 15;
 
+  // Converts live player rows into names for the lobby roster.
   const normalizePlayers = (playersArray) => {
     if (!Array.isArray(playersArray)) return [];
     return playersArray.map((player, index) => getStudentName(player, index));

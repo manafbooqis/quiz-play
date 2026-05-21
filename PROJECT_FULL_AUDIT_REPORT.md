@@ -4,6 +4,13 @@ Audit date: 2026-05-20
 
 Scope: current local `quiz-play` project state, including Git state, student flow, instructor flow, AI question generation, scoring, leaderboard, Round Results, Final Results, Score Distribution, Supabase schema/RLS, routing, storage usage, UI/UX, security, build/lint, and old or unused files.
 
+Documentation update on 2026-05-21:
+
+- Added function-level comments across the main student flow, instructor flow, shared leaderboard helpers, AI question-generation API, and Express server entrypoint.
+- Documented reusable helpers with short JSDoc where appropriate and added concise comments for page-local handlers plus major `useEffect`, `useMemo`, and `useCallback` blocks.
+- Main files documented: `src/pages/student/JoinGame.jsx`, `src/pages/student/Lobby.jsx`, `src/pages/student/Difficulty.jsx`, `src/pages/student/Question.jsx`, `src/pages/student/RoundResults.jsx`, `src/pages/student/FinalResults.jsx`, `src/pages/student/WaitingForOthers.jsx`, `src/pages/instructor/DashboardOfficial.jsx`, `src/pages/instructor/SessionOfficial.jsx`, `src/pages/instructor/InstructorLiveQuiz.jsx`, `src/pages/instructor/InstructorFinalResults.jsx`, `src/pages/instructor/InstructorScoreDistribution.jsx`, `src/utils/leaderboard.js`, `api/generate-questions.js`, and `server.js`.
+- No behavior, UI design, scoring logic, routing, Supabase schema/RLS, or AI generation behavior was changed.
+
 ## 1. Executive Summary
 
 The project is on `main` at commit `74422bb Remove Vercel configuration`, one commit after `bf8a78c Fix instructor live quiz hook warnings`. The branch reports as up to date with `origin/main`, but the working tree is not clean.

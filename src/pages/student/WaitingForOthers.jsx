@@ -2,10 +2,20 @@ import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 
+/**
+ * Checks whether a session should show final results.
+ * @param {object} session - Session row from Supabase.
+ * @returns {boolean} True when the quiz has finished.
+ */
 function isFinalSessionStatus(session) {
   return session?.status === "finished" || session?.current_phase === "final_results";
 }
 
+/**
+ * Checks whether a session should show round results.
+ * @param {object} session - Session row from Supabase.
+ * @returns {boolean} True when round results are active.
+ */
 function isRoundResultsSessionStatus(session) {
   return (
     session?.status === "round_results" ||
@@ -14,6 +24,7 @@ function isRoundResultsSessionStatus(session) {
   );
 }
 
+// Keeps a student on a waiting screen after submitting an answer.
 function WaitingForOthers() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -38,6 +49,7 @@ function WaitingForOthers() {
   const [answeredCount, setAnsweredCount] = useState(0);
   const [totalStudents, setTotalStudents] = useState(0);
 
+  // Builds the navigation payload for the shared round-results page.
   const buildRoundResultsState = useCallback((session) => ({
     ...state,
     studentName,
@@ -48,13 +60,14 @@ function WaitingForOthers() {
     currentRound: session?.current_round || currentRound,
   }), [state, studentName, playerId, gameCode, sessionId, currentRound]);
 
+  // Loads session progress and subscribes to phase and response changes.
   useEffect(() => {
     if (!gameCode || !studentName) {
       navigate("/student/join");
       return;
     }
 
-    // Load initial session data
+    // Loads initial session data plus current response counts.
     async function loadSession() {
       try {
         const { data: session, error: sessionError } = await supabase
@@ -160,9 +173,11 @@ function WaitingForOthers() {
     };
   }, [gameCode, studentName, sessionId, navigate, playerId, buildRoundResultsState]);
 
+  // Polls session phase as a fallback when realtime updates lag.
   useEffect(() => {
     if (!gameCode || !studentName) return undefined;
 
+    // Refreshes session phase and redirects when results become available.
     const pollSessionPhase = async () => {
       const { data: session, error: sessionError } = await supabase
         .from("sessions")
@@ -207,7 +222,7 @@ function WaitingForOthers() {
     buildRoundResultsState,
   ]);
 
-  // Update timer
+  // Updates the remaining question time while the student waits.
   useEffect(() => {
     if (sessionData?.current_question_ends_at) {
       const interval = setInterval(() => {
@@ -231,6 +246,7 @@ function WaitingForOthers() {
     playerId,
   ]);
 
+  // Formats remaining seconds for the waiting timer display.
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;

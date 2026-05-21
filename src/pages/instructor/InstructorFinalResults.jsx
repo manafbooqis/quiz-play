@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 
+// Shows instructor question analysis after a quiz finishes.
 function InstructorFinalResults() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -17,6 +18,7 @@ function InstructorFinalResults() {
     () => Number(state?.questionCount) || 0
   );
 
+  // Loads fallback final-results data when navigation state is incomplete.
   useEffect(() => {
     if (!sessionId) {
       setLoading(false);
@@ -28,7 +30,7 @@ function InstructorFinalResults() {
       return;
     }
 
-    // Also load students if missing
+    // Loads students if they were not included in navigation state.
     async function loadStudents() {
       try {
         const { data: playersData } = await supabase
@@ -42,6 +44,7 @@ function InstructorFinalResults() {
     }
     loadStudents();
 
+    // Fetches session questions and responses directly from Supabase.
     async function loadFallbackData() {
       try {
         const { data: sessionData } = await supabase
@@ -80,6 +83,7 @@ function InstructorFinalResults() {
   }, [sessionId, state]);
   
 
+  // Resolves the number of question slots available for analysis.
   const quizN = useMemo(
     () => Math.max(0, Number(state?.questionCount) || quizRoundCap || 0),
     [state?.questionCount, quizRoundCap]
@@ -88,18 +92,21 @@ function InstructorFinalResults() {
   const [selectedQuestionIndex, setSelectedQuestionIndex] = useState(0);
   const [analysisDifficulty, setAnalysisDifficulty] = useState("easy");
 
+  // Keeps the selected question index inside the available range.
   useEffect(() => {
     setSelectedQuestionIndex((i) =>
       quizN > 0 ? Math.min(Math.max(0, i), quizN - 1) : 0
     );
   }, [quizN]);
 
+  // Resolves the selected question for the active difficulty and index.
   const selectedQuestion = useMemo(() => {
     if (quizN <= 0) return null;
     const bank = questionsByDifficulty[analysisDifficulty] || [];
     return bank[selectedQuestionIndex] ?? null;
   }, [questionsByDifficulty, analysisDifficulty, selectedQuestionIndex, quizN]);
 
+  // Computes response distribution, correctness, and average time for a question.
   const analytics = useMemo(() => {
     if (!selectedQuestion) {
       const emptyDist = [0, 1, 2, 3].map((index) => ({
@@ -163,10 +170,12 @@ function InstructorFinalResults() {
     };
   }, [selectedQuestion, responses]);
 
+  // Reads display text from supported question shapes.
   const getQuestionText = (q) => {
     return q.question || q.q || q.question_text || "Unknown Question";
   };
 
+  // Resolves the numeric correct option index for highlighting.
   const getCorrectOptionIndex = (q) => {
     return Number(q.correctAnswer ?? q.correct_answer ?? q.correct_option ?? 0);
   };

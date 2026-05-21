@@ -6,10 +6,16 @@ import {
   insertSessionPlayer,
 } from "../../lib/supabase";
 
+/**
+ * Normalizes a display name so duplicate checks are case-insensitive.
+ * @param {string} name - Name entered by a student or loaded from a player row.
+ * @returns {string} Trimmed lowercase name used for comparisons.
+ */
 function normalizeDisplayName(name) {
   return String(name || "").trim().toLowerCase();
 }
 
+// Renders the student join form and creates or restores the session player.
 function JoinGame() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -19,6 +25,7 @@ function JoinGame() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Reads a shared game code from the join URL so students can join from links.
   useEffect(() => {
     const codeFromUrl = searchParams.get("code")?.trim().toUpperCase() || "";
 
@@ -27,6 +34,7 @@ function JoinGame() {
     }
   }, [searchParams]);
 
+  // Validates join details, creates a player when needed, and opens the lobby.
   const handleJoin = async (e) => {
     e.preventDefault();
     setError("");

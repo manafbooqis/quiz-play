@@ -8,6 +8,7 @@ import {
   getSessionPlayers,
 } from "../../lib/supabase";
 
+// Shows the instructor's session lobby, join link, QR code, and start controls.
 function SessionOfficial() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -26,6 +27,7 @@ function SessionOfficial() {
   const [authError, setAuthError] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Resolves session data from navigation state or local cache while fresh data loads.
   const fallbackSession = useMemo(() => {
     // Fresh navigation state must beat localStorage so a new upload never inherits an old cached bank.
     if (state && gameCode && (state.gameCode === gameCode || !state.gameCode)) {
@@ -75,9 +77,11 @@ function SessionOfficial() {
     };
   }, [gameCode, localSessionKey, state]);
 
+  // Loads instructor auth/profile details for the session header.
   useEffect(() => {
     let isMounted = true;
 
+    // Applies auth state changes to display name and account state.
     async function handleUserState(user) {
       if (!isMounted) {
         return;
@@ -123,6 +127,7 @@ function SessionOfficial() {
       }
     }
 
+    // Reads the current Supabase auth session.
     async function loadAuth() {
       const {
         data: { session },
@@ -145,9 +150,11 @@ function SessionOfficial() {
     };
   }, []);
 
+  // Loads the session from route state, local cache, or Supabase.
   useEffect(() => {
     let isMounted = true;
 
+    // Resolves the session row used by the session dashboard.
     async function loadSessionData() {
       if (!gameCode) {
         setLoading(false);
@@ -219,6 +226,7 @@ function SessionOfficial() {
     };
   }, [fallbackSession, gameCode, state]);
 
+  // Polls joined students so the instructor sees new players.
   useEffect(() => {
     if (!gameCode || sessionData?.localOnly || fallbackSession?.localOnly) {
       return;
@@ -226,6 +234,7 @@ function SessionOfficial() {
 
     let isMounted = true;
 
+    // Loads the current session player list.
     async function loadPlayers() {
       try {
         const { data: players, error: playersError } =
@@ -257,6 +266,7 @@ function SessionOfficial() {
     };
   }, [gameCode, sessionData?.localOnly, fallbackSession?.localOnly]);
 
+  // Mirrors the latest session data into localStorage for route fallbacks.
   useEffect(() => {
     if (!gameCode || !sessionData) {
       return;
@@ -281,6 +291,7 @@ function SessionOfficial() {
     }
   }, [gameCode, sessionData]);
 
+  // Converts supported primitive values into display text.
   function getTextValue(value) {
     if (typeof value === "string" && value.trim()) {
       return value.trim();
@@ -293,6 +304,7 @@ function SessionOfficial() {
     return "";
   }
 
+  // Resolves a student display name from several supported row shapes.
   function getStudentName(student, index) {
     if (!student) {
       return `Student ${index + 1}`;
@@ -325,11 +337,13 @@ function SessionOfficial() {
     return `Student ${index + 1}`;
   }
 
+  // Returns the first display-name character for student avatars.
   function getStudentInitial(student, index) {
     const name = getStudentName(student, index).trim();
     return name ? name.charAt(0).toUpperCase() : "?";
   }
 
+  // Normalizes legacy and database player shapes for the lobby roster.
   function normalizeStudent(student, index) {
     if (student && typeof student === "object" && !Array.isArray(student)) {
       return {
@@ -444,6 +458,7 @@ function SessionOfficial() {
   const displayName = teacherName || "Guest";
   const initials = displayName.trim().charAt(0).toUpperCase();
 
+  // Copies the student join link to the clipboard.
   async function handleCopyLink() {
     try {
       await navigator.clipboard.writeText(joinUrl);
@@ -456,6 +471,7 @@ function SessionOfficial() {
     }
   }
 
+  // Signs out the instructor from the session page.
   async function handleLogout() {
     try {
       const { error } = await supabase.auth.signOut();
@@ -472,6 +488,7 @@ function SessionOfficial() {
     }
   }
 
+  // Starts the quiz with the first available question.
   async function handleStartQuiz() {
     if (students.length === 0) return;
 
@@ -554,6 +571,7 @@ function SessionOfficial() {
     }
   }
 
+  // Opens the question preview/editor for this session.
   function handleManageQuestions() {
     navigate("/instructor/questions-preview", {
       state: {

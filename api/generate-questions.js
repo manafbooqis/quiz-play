@@ -34,6 +34,11 @@ const supabaseAdmin = SUPABASE_URL
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
   : null;
 
+/**
+ * Parses JSON from raw model output, including text that wraps a JSON object.
+ * @param {string} value - Raw text returned by the AI model.
+ * @returns {object|null} Parsed JSON object or null when parsing fails.
+ */
 function safeParseJson(value) {
   if (!value) return null;
   try {
@@ -51,6 +56,11 @@ function safeParseJson(value) {
   }
 }
 
+/**
+ * Builds the AI prompt for a fixed number of questions per difficulty.
+ * @param {number} perDifficultyCount - Required question count for each difficulty.
+ * @returns {string} Prompt sent to the AI provider.
+ */
 function buildQuestionPrompt(perDifficultyCount) {
   const n = Math.max(1, Math.floor(Number(perDifficultyCount) || 1));
   const total = n * 3;
@@ -106,6 +116,12 @@ Each question object must include exactly these 5 properties:
 Output ONLY the JSON object. Do not include markdown formatting or explanations.`;
 }
 
+/**
+ * Validates one generated question against the required schema and quality rules.
+ * @param {object} question - Generated question object.
+ * @param {string} difficulty - Difficulty bucket being validated.
+ * @returns {Array<string>} Validation error messages.
+ */
 function validateQuestion(question, difficulty) {
   const errors = [];
   
@@ -147,6 +163,11 @@ function validateQuestion(question, difficulty) {
   return errors;
 }
 
+/**
+ * Splits generated questions into valid banks and invalid-question diagnostics.
+ * @param {object} questions - AI output grouped by difficulty.
+ * @returns {{validQuestions: object, invalidQuestions: Array<object>}} Validation result.
+ */
 function validateAndFilterQuestions(questions) {
   const validQuestions = { easy: [], medium: [], hard: [] };
   const invalidQuestions = [];
@@ -170,6 +191,12 @@ function validateAndFilterQuestions(questions) {
   return { validQuestions, invalidQuestions };
 }
 
+/**
+ * Trims each difficulty bank to the requested per-difficulty count.
+ * @param {object} questions - Valid question bank grouped by difficulty.
+ * @param {number} perDifficultyCount - Maximum questions to keep per difficulty.
+ * @returns {object} Normalized question bank.
+ */
 function normalizeBankToPerDifficulty(questions, perDifficultyCount) {
   const n = Math.max(1, Math.floor(Number(perDifficultyCount) || 1));
   const keys = ["easy", "medium", "hard"];
@@ -181,6 +208,12 @@ function normalizeBankToPerDifficulty(questions, perDifficultyCount) {
   return out;
 }
 
+/**
+ * Resolves a useful MIME type from upload metadata and file extension.
+ * @param {string} fileName - Uploaded file name.
+ * @param {string} mimeType - Browser-provided MIME type.
+ * @returns {string} Normalized MIME type.
+ */
 function normalizeMimeType(fileName, mimeType) {
   const raw = (mimeType || "").trim().toLowerCase();
   if (raw && raw !== "application/octet-stream") {
@@ -200,6 +233,11 @@ function normalizeMimeType(fileName, mimeType) {
   return mimeType || "application/octet-stream";
 }
 
+/**
+ * Decodes base64 text payloads into UTF-8.
+ * @param {string} base64 - Base64 encoded file content.
+ * @returns {string} Decoded UTF-8 text, or an empty string on failure.
+ */
 function decodeBase64ToUtf8(base64) {
   if (!base64) return "";
   try {
@@ -209,18 +247,38 @@ function decodeBase64ToUtf8(base64) {
   }
 }
 
+/**
+ * Removes a data URL prefix from base64 content when present.
+ * @param {string} base64 - Raw base64 or data URL content.
+ * @returns {string} Base64 payload without metadata.
+ */
 function cleanBase64Payload(base64) {
   return base64.includes(",") ? base64.split(",")[1] : base64;
 }
 
+/**
+ * Checks whether a MIME type represents a DOCX file.
+ * @param {string} mimeType - Normalized MIME type.
+ * @returns {boolean} True for DOCX uploads.
+ */
 function isDocxMime(mimeType) {
   return mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 }
 
+/**
+ * Checks whether a MIME type represents a PPTX file.
+ * @param {string} mimeType - Normalized MIME type.
+ * @returns {boolean} True for PPTX uploads.
+ */
 function isPptxMime(mimeType) {
   return mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 }
 
+/**
+ * Decodes common XML entities found in Office document text nodes.
+ * @param {string} value - XML text content.
+ * @returns {string} Decoded text.
+ */
 function decodeXmlEntities(value) {
   return value
     .replace(/&lt;/g, "<")
@@ -232,6 +290,11 @@ function decodeXmlEntities(value) {
     .replace(/&#x([\da-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));
 }
 
+/**
+ * Extracts visible text nodes from Office XML content.
+ * @param {string} xml - XML document content.
+ * @returns {string} Plain text joined from text tags.
+ */
 function extractTextTags(xml) {
   const textParts = [];
   const tagPattern = /<(?:[a-zA-Z0-9]+:)?t\b[^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9]+:)?t>/g;
@@ -247,6 +310,11 @@ function extractTextTags(xml) {
   return textParts.join(" ");
 }
 
+/**
+ * Reads file entries from a simple ZIP archive buffer.
+ * @param {Buffer} buffer - DOCX or PPTX archive buffer.
+ * @returns {Map<string, Buffer>} Decompressed entries keyed by path.
+ */
 function readZipEntries(buffer) {
   const entries = new Map();
   const eocdSignature = 0x06054b50;
@@ -303,6 +371,11 @@ function readZipEntries(buffer) {
   return entries;
 }
 
+/**
+ * Extracts readable text from DOCX document XML parts.
+ * @param {Buffer} buffer - DOCX archive buffer.
+ * @returns {string} Extracted document text.
+ */
 function extractDocxText(buffer) {
   const entries = readZipEntries(buffer);
   const documentParts = [...entries.entries()]
@@ -313,6 +386,11 @@ function extractDocxText(buffer) {
   return documentParts.join("\n\n").trim();
 }
 
+/**
+ * Extracts readable text from PPTX slide XML parts.
+ * @param {Buffer} buffer - PPTX archive buffer.
+ * @returns {string} Extracted slide text.
+ */
 function extractPptxText(buffer) {
   const entries = readZipEntries(buffer);
   const slideParts = [...entries.entries()]
@@ -328,6 +406,14 @@ function extractPptxText(buffer) {
   return slideParts.join("\n\n").trim();
 }
 
+/**
+ * Extracts text from supported upload types before AI question generation.
+ * @param {object} params - Upload metadata and base64 content.
+ * @param {string} params.fileBase64 - Base64 encoded file content.
+ * @param {string} params.fileMimeType - Browser-provided MIME type.
+ * @param {string} params.fileName - Uploaded file name.
+ * @returns {Promise<string>} Extracted plain text.
+ */
 async function extractFileText({ fileBase64, fileMimeType, fileName }) {
   if (!fileBase64) {
     throw new Error("No file content provided.");
@@ -413,6 +499,7 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
   throw new Error("Unsupported file type. Please upload PDF, TXT, CSV, JSON, MD, DOCX, or PPTX.");
 }
 
+// Handles AI question generation requests for uploaded instructional material.
 export default async function handler(req, res) {
   console.log("=== Handler called ===");
   if (req.method !== "POST") {

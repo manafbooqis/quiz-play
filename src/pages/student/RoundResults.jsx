@@ -3,6 +3,11 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { calculateLeaderboard } from "../../utils/leaderboard";
 
+/**
+ * Converts supported primitive values into display text.
+ * @param {unknown} value - Candidate value from a player record.
+ * @returns {string} Trimmed text or an empty string.
+ */
 function getTextValue(value) {
   if (typeof value === "string" && value.trim()) {
     return value.trim();
@@ -13,6 +18,12 @@ function getTextValue(value) {
   return "";
 }
 
+/**
+ * Resolves a student display name from supported player shapes.
+ * @param {string|object} student - Player value or session player record.
+ * @param {number} index - Fallback position for anonymous players.
+ * @returns {string} Display name for result rows.
+ */
 function getStudentName(student, index) {
   if (!student) {
     return `Student ${index + 1}`;
@@ -37,10 +48,20 @@ function getStudentName(student, index) {
   return `Student ${index + 1}`;
 }
 
+/**
+ * Checks whether the session has reached final results.
+ * @param {object} session - Session row from Supabase.
+ * @returns {boolean} True when the quiz is finished.
+ */
 function isFinalSessionStatus(session) {
   return session?.status === "finished" || session?.current_phase === "final_results";
 }
 
+/**
+ * Converts an answer value into an A-D option label.
+ * @param {string|number} value - Stored selected or correct answer value.
+ * @returns {string} Option letter, or an empty string when unknown.
+ */
 function getOptionLetter(value) {
   if (value === null || value === undefined || value === "") {
     return "";
@@ -64,6 +85,11 @@ function getOptionLetter(value) {
   return letterMatch ? letterMatch[0].toUpperCase() : "";
 }
 
+/**
+ * Reads answer options from generated or database question shapes.
+ * @param {object} question - Question object shown for the round.
+ * @returns {Array<string>} Question options in display order.
+ */
 function getQuestionOptions(question) {
   if (!question) {
     return [];
@@ -80,6 +106,11 @@ function getQuestionOptions(question) {
   return [question.option_a, question.option_b, question.option_c, question.option_d];
 }
 
+/**
+ * Resolves the correct answer letter for display in round results.
+ * @param {object} question - Question object with answer metadata.
+ * @returns {string} Correct option letter, or an empty string when unavailable.
+ */
 function getCorrectOptionLetter(question) {
   if (!question) {
     return "";
@@ -108,6 +139,7 @@ function getCorrectOptionLetter(question) {
   return optionIndex >= 0 && optionIndex <= 3 ? getOptionLetter(optionIndex) : "";
 }
 
+// Shows the student's round result and waits until the group is ready to continue.
 function RoundResults() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -152,6 +184,7 @@ function RoundResults() {
   const previousRoundRef = useRef(currentRound);
   const finalNavigationDoneRef = useRef(false);
 
+  // Navigates once to final results when the session is finished.
   const goToFinalResults = useCallback((session) => {
     if (finalNavigationDoneRef.current) return;
     finalNavigationDoneRef.current = true;
@@ -168,6 +201,7 @@ function RoundResults() {
     });
   }, [gameCode, navigate, sessionId, studentName, playerId]);
 
+  // Marks the shared session finished after the last round completes.
   const markSessionFinished = useCallback(async () => {
     const targetSessionId = sessionData?.id || sessionId;
     if (!targetSessionId || finalNavigationDoneRef.current) return;
@@ -191,11 +225,13 @@ function RoundResults() {
     }
   }, [goToFinalResults, sessionData?.id, sessionId]);
 
+  // Watches the session so final-state changes take students to final results.
   useEffect(() => {
     if (!gameCode && !sessionId) return undefined;
 
     let isMounted = true;
 
+    // Loads the shared session before the realtime subscription is ready.
     async function loadAndWatchSession() {
       const query = supabase.from("sessions").select("*");
       const { data: session, error } = sessionId
@@ -248,10 +284,11 @@ function RoundResults() {
     };
   }, [gameCode, goToFinalResults, sessionId]);
 
-  // Mark when current student reaches RoundResults
+  // Marks when the current student reaches RoundResults for group synchronization.
   useEffect(() => {
     if (!gameCode || !studentName || !sessionId || !currentRound) return;
 
+    // Updates the current response row with a results-seen timestamp.
     const markStudentSeen = async () => {
       try {
         // Update existing response with round_results_seen_at
@@ -297,7 +334,7 @@ function RoundResults() {
     markStudentSeen();
   }, [gameCode, studentName, playerId, sessionId, currentRound, state?.currentQuestionId]);
 
-  // Polling logic for all-students sync
+  // Polls players and responses to decide when the whole group can continue.
   useEffect(() => {
     if (!gameCode || !studentName || !sessionId || !currentRound) return;
 
@@ -440,7 +477,7 @@ function RoundResults() {
     questionCount,
   ]);
 
-  // Update countdown based on target time
+  // Updates the visible countdown from the shared target time.
   useEffect(() => {
     if (!targetTime) return;
     
@@ -457,7 +494,7 @@ function RoundResults() {
     return () => clearInterval(updateInterval);
   }, [targetTime]);
 
-  // Navigation after target time reached
+  // Advances to the next round or final results once the countdown finishes.
   useEffect(() => {
     if (targetTime && new Date().getTime() >= targetTime && !countdownNavigationDoneRef.current) {
       countdownNavigationDoneRef.current = true;
@@ -505,7 +542,7 @@ function RoundResults() {
     sessionData?.time_per_question,
   ]);
 
-  // Reset refs when currentRound changes
+  // Resets countdown refs when the current round changes.
   useEffect(() => {
     if (previousRoundRef.current !== currentRound) {
       countdownStartedRef.current = false;
@@ -515,12 +552,14 @@ function RoundResults() {
     }
   }, [currentRound]);
 
+  // Loads the current round and cumulative leaderboard data for display.
   useEffect(() => {
     if (!gameCode || !studentName) {
       navigate("/student/join");
       return;
     }
 
+    // Fetches session, players, and responses needed for result cards.
     async function loadData() {
       try {
         // Load session data

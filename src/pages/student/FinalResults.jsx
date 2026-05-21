@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { calculateLeaderboard } from "../../utils/leaderboard";
 
+// Shows the student's final score, rank, and answer summary.
 function FinalResults() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -26,12 +27,14 @@ function FinalResults() {
   const [sessionScoringConfig, setSessionScoringConfig] = useState({});
   const [loading, setLoading] = useState(true);
 
+  // Loads final players, responses, and scoring config for the completed quiz.
   useEffect(() => {
     if (!sessionId && !initialGameCode) {
       setLoading(false);
       return;
     }
 
+    // Resolves the session and fetches data needed to build the final leaderboard.
     async function loadResults() {
       try {
         let resolvedSessionId = "";

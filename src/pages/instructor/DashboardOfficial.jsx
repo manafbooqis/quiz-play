@@ -7,12 +7,15 @@ import {
   getSessionsByOwner,
 } from "../../lib/supabase";
 
+// Provides the instructor dashboard for creating and managing quiz sessions.
 function DashboardOfficial() {
   const navigate = useNavigate();
 
+  // Generates a readable one-time game code for the next session.
   const gameCode = useMemo(() => {
     const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     const nums = "23456789";
+    // Picks one random character from the allowed code alphabet.
     const pick = (s) => s[Math.floor(Math.random() * s.length)];
     return `${pick(letters)}${pick(letters)}${pick(nums)}${pick(nums)}`;
   }, []);
@@ -51,7 +54,7 @@ function DashboardOfficial() {
   // File input ref for programmatic clicking
   const fileInputRef = useRef(null);
 
-  // Initialize manual questions when questionCount changes or manual mode is selected
+  // Initializes manual question slots when question count or source changes.
   useEffect(() => {
     if (selectedSource === 'manual') {
       setManualQuestions(prev => {
@@ -94,9 +97,11 @@ function DashboardOfficial() {
   const isGuestUser =
     currentUser?.is_anonymous || currentUser?.user_metadata?.is_guest === true;
 
+  // Verifies instructor authentication and loads profile details.
   useEffect(() => {
     let isMounted = true;
 
+    // Loads the current auth session and ensures the profile exists.
     async function checkAuthAndLoadUser() {
       try {
         const {
@@ -184,6 +189,7 @@ function DashboardOfficial() {
     };
   }, [navigate]);
 
+  // Loads the instructor's prior sessions and saved question banks.
   useEffect(() => {
     if (!currentUser?.id) return;
 
@@ -194,6 +200,7 @@ function DashboardOfficial() {
       return;
     }
 
+    // Fetches session history for the signed-in instructor.
     async function loadSessions() {
       setIsLoadingSessions(true);
 
@@ -217,6 +224,7 @@ function DashboardOfficial() {
       }
     }
 
+    // Fetches reusable question banks from previous sessions.
     async function loadSavedQuestionBanks() {
       try {
         const { data, error } = await supabase
@@ -258,6 +266,7 @@ function DashboardOfficial() {
     loadSavedQuestionBanks();
   }, [currentUser?.id, isGuestUser]);
 
+  // Prevents guest instructors from using saved question banks.
   useEffect(() => {
     if (!isGuestUser || selectedSource !== "saved") return;
 
@@ -266,23 +275,27 @@ function DashboardOfficial() {
     setSelectedQuestionBank(null);
   }, [isGuestUser, selectedSource]);
 
+  // Increases the number of questions within the configured limit.
   function increaseQuestions() {
     setQuestionCount((prev) => Math.min(prev + 1, MAX_QUESTIONS));
   }
 
+  // Decreases the number of questions within the configured limit.
   function decreaseQuestions() {
     setQuestionCount((prev) => Math.max(prev - 1, MIN_QUESTIONS));
   }
 
+  // Increases per-question time within the configured limit.
   function increaseTime() {
     setTimePerQuestion((prev) => Math.min(prev + TIME_STEP, MAX_TIME));
   }
 
+  // Decreases per-question time within the configured limit.
   function decreaseTime() {
     setTimePerQuestion((prev) => Math.max(prev - TIME_STEP, MIN_TIME));
   }
 
-  // Toggle bank selection for deletion
+  // Toggles whether a saved question bank is selected for deletion.
   const toggleBankSelectionForDeletion = (bankId) => {
     setSelectedBanksForDeletion(prev => {
       const newSet = new Set(prev);
@@ -295,17 +308,18 @@ function DashboardOfficial() {
     });
   };
 
-  // Select all banks for deletion
+  // Selects every saved question bank for deletion.
   const selectAllBanksForDeletion = () => {
     setSelectedBanksForDeletion(new Set(savedQuestionBanks.map(bank => bank.id)));
   };
 
   // Empty placeholder used while AI is generating — avoids hardcoded unrelated questions
+  // Returns an empty question-bank structure when generation is unavailable.
   function emptyQuestionBanks() {
     return { easy: [], medium: [], hard: [] };
   }
 
-  // Read a file as base64 (works for PDFs, images, and text files)
+  // Reads an uploaded file as base64 for the question-generation API.
   function readFileAsBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -320,6 +334,7 @@ function DashboardOfficial() {
     });
   }
 
+  // Requests AI-generated questions for the uploaded session material.
   async function fetchAiQuestions({ sessionId, sessionGameCode, freshBase64, freshMime, freshFileName }) {
     const url = "/api/generate-questions";
 
@@ -365,6 +380,7 @@ function DashboardOfficial() {
     return json.questions;
   }
 
+  // Creates a quiz session from upload, saved bank, or manual questions.
   async function handleGoToSession() {
     // Define source type variables at the top
     const fromExistingBank = selectedSource === "bank" || useExistingBank;
@@ -577,6 +593,7 @@ function DashboardOfficial() {
     }
   }
 
+  // Signs out the instructor and returns to the login screen.
   async function handleLogout() {
     try {
       const { error: signOutError } = await supabase.auth.signOut();
@@ -598,7 +615,7 @@ function DashboardOfficial() {
 
   const displayEmail = isGuestUser ? "Guest Account" : teacherEmail || "";
 
-  // Helper functions for manual questions
+  // Updates a single field in the manual question editor.
   const updateManualQuestion = (difficulty, questionIndex, field, value) => {
     setManualQuestions(prev => {
       const newQuestions = { ...prev };
@@ -618,6 +635,7 @@ function DashboardOfficial() {
     });
   };
 
+  // Counts manual questions that have full text, options, and a correct answer.
   const getCompletedManualQuestionsCount = () => {
     let count = 0;
     Object.values(manualQuestions).forEach((questions) => {
@@ -634,6 +652,7 @@ function DashboardOfficial() {
     return count;
   };
 
+  // Checks whether all required manual questions are complete.
   const isManualModeComplete = () => {
     const totalQuestions = questionCount * 3;
     return getCompletedManualQuestionsCount() === totalQuestions;

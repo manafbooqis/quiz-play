@@ -6,18 +6,39 @@ import {
   getScoreDistributionBuckets,
 } from "../../utils/leaderboard";
 
+/**
+ * Resolves a question ID across generated and stored shapes.
+ * @param {object} question - Question object from a bank.
+ * @returns {string} Question identifier or an empty string.
+ */
 function getQuestionId(question) {
   return question?.id || question?.question_id || question?.qid || "";
 }
 
+/**
+ * Normalizes answer values for comparisons.
+ * @param {unknown} value - Raw answer or ID value.
+ * @returns {string} Trimmed string value.
+ */
 function normalizeAnswerValue(value) {
   return String(value ?? "").trim();
 }
 
+/**
+ * Normalizes difficulty labels for threshold rules.
+ * @param {string} value - Raw difficulty label.
+ * @returns {string} Lowercase difficulty label.
+ */
 function normalizeDifficulty(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+/**
+ * Reads a question's difficulty from supported properties.
+ * @param {object} question - Question object from a bank.
+ * @param {string} fallbackDifficulty - Difficulty from the surrounding bank.
+ * @returns {string} Difficulty label.
+ */
 function getQuestionDifficulty(question, fallbackDifficulty = "") {
   return (
     question?.difficulty ||
@@ -29,6 +50,12 @@ function getQuestionDifficulty(question, fallbackDifficulty = "") {
   );
 }
 
+/**
+ * Reads human-readable question text.
+ * @param {object} question - Question object from a bank.
+ * @param {string} questionId - Fallback question identifier.
+ * @returns {string} Text shown in insight cards.
+ */
 function getQuestionText(question, questionId) {
   return (
     question?.question ||
@@ -39,6 +66,11 @@ function getQuestionText(question, questionId) {
   );
 }
 
+/**
+ * Reads answer options from supported question shapes.
+ * @param {object} question - Question object from a bank.
+ * @returns {Array<string>} Non-empty option values.
+ */
 function getQuestionOptions(question) {
   const options =
     question?.options ||
@@ -60,6 +92,11 @@ function getQuestionOptions(question) {
     : [];
 }
 
+/**
+ * Converts stored answer values into zero-based option indexes.
+ * @param {string|number} value - Stored answer value.
+ * @returns {number} Option index, or -1 when unknown.
+ */
 function getOptionIndex(value) {
   const text = normalizeAnswerValue(value);
   if (!text) return -1;
@@ -80,6 +117,12 @@ function getOptionIndex(value) {
   return -1;
 }
 
+/**
+ * Converts an answer value into display text using question options when possible.
+ * @param {string|number} value - Stored answer value.
+ * @param {object} question - Question object used for option lookup.
+ * @returns {string} Display answer text.
+ */
 function mapAnswerToText(value, question) {
   const text = normalizeAnswerValue(value);
   const options = getQuestionOptions(question);
@@ -92,6 +135,11 @@ function mapAnswerToText(value, question) {
   return text || "Answer unavailable";
 }
 
+/**
+ * Resolves the correct answer text for insight cards.
+ * @param {object} question - Question object from a bank.
+ * @returns {string} Correct answer text or a fallback message.
+ */
 function getCorrectAnswerText(question) {
   if (!question) return "Correct answer unavailable";
 
@@ -105,6 +153,12 @@ function getCorrectAnswerText(question) {
   return mapAnswerToText(correctAnswer, question);
 }
 
+/**
+ * Flattens a difficulty-grouped question bank into an ID lookup.
+ * @param {object} questionsByDifficulty - Questions grouped by difficulty.
+ * @returns {object} Question objects keyed by ID.
+ */
+// eslint-disable-next-line no-unused-vars -- Kept for question lookup diagnostics and future analysis views.
 function getFlattenedQuestionsById(questionsByDifficulty = {}) {
   const questions = Object.entries(questionsByDifficulty || {}).flatMap(
     ([difficulty, questionsForDifficulty]) =>
@@ -129,6 +183,11 @@ function getFlattenedQuestionsById(questionsByDifficulty = {}) {
   }, {});
 }
 
+/**
+ * Flattens a difficulty-grouped question bank into an ordered list.
+ * @param {object} questionsByDifficulty - Questions grouped by difficulty.
+ * @returns {Array<object>} Questions with analysis metadata.
+ */
 function getFlattenedQuestions(questionsByDifficulty = {}) {
   return Object.entries(questionsByDifficulty || {}).flatMap(
     ([difficulty, questionsForDifficulty]) =>
@@ -143,6 +202,13 @@ function getFlattenedQuestions(questionsByDifficulty = {}) {
   );
 }
 
+/**
+ * Builds possible IDs for matching questions to response rows.
+ * @param {object} question - Question object from a bank.
+ * @param {string} fallbackDifficulty - Difficulty from the surrounding bank.
+ * @param {number} fallbackIndex - Position inside the difficulty bank.
+ * @returns {Array<string>} Candidate IDs.
+ */
 function getPossibleQuestionIds(question, fallbackDifficulty = "", fallbackIndex = 0) {
   const rawDifficulty = normalizeAnswerValue(
     question?.__difficulty || getQuestionDifficulty(question, fallbackDifficulty)
@@ -161,6 +227,11 @@ function getPossibleQuestionIds(question, fallbackDifficulty = "", fallbackIndex
   return [...new Set(rawIds.map(normalizeAnswerValue).filter(Boolean))];
 }
 
+/**
+ * Builds a stable key so response rows are not counted twice.
+ * @param {object} response - Response row from Supabase.
+ * @returns {string} Unique-ish response key.
+ */
 function getResponseMatchKey(response) {
   return (
     response?.id ||
@@ -176,6 +247,12 @@ function getResponseMatchKey(response) {
   );
 }
 
+/**
+ * Finds the most common wrong answer for a question.
+ * @param {Array<object>} incorrectResponses - Incorrect response rows.
+ * @param {object} question - Question object used for option labels.
+ * @returns {string} Most common wrong answer text.
+ */
 function getMostCommonWrongAnswer(incorrectResponses, question) {
   const counts = incorrectResponses.reduce((acc, response) => {
     const answerKey = normalizeAnswerValue(response.selected_answer);
@@ -190,11 +267,18 @@ function getMostCommonWrongAnswer(incorrectResponses, question) {
   return mapAnswerToText(mostCommonAnswer[0], question);
 }
 
+/**
+ * Builds review and improvement insight lists from question accuracy.
+ * @param {object} questionsByDifficulty - Questions grouped by difficulty.
+ * @param {Array<object>} responses - Response rows for the session.
+ * @returns {{needsReview: Array<object>, tooEasy: Array<object>}} Insight groups.
+ */
 function buildQuestionQualityInsights(questionsByDifficulty = {}, responses = []) {
   const safeResponses = Array.isArray(responses) ? responses : [];
   const questions = getFlattenedQuestions(questionsByDifficulty || {});
   const matchedResponseIds = new Set();
 
+  // Builds one insight row from a question and its matched responses.
   const buildInsightItem = (question, questionResponses, index, questionId) => {
       const incorrectResponses = questionResponses.filter(
         (response) => response.is_correct !== true
@@ -297,6 +381,7 @@ function buildQuestionQualityInsights(questionsByDifficulty = {}, responses = []
     items.push(buildInsightItem(undefined, questionResponses, questions.length + index, questionId));
   });
 
+  // Sorts insight items by their original question order.
   const sortByQuestionOrder = (a, b) => {
     const questionNumberDifference = Number(a.questionNumber) - Number(b.questionNumber);
     if (Number.isFinite(questionNumberDifference) && questionNumberDifference !== 0) {
@@ -329,6 +414,7 @@ function buildQuestionQualityInsights(questionsByDifficulty = {}, responses = []
   };
 }
 
+// Shows score distribution and question-quality insights for instructors.
 function InstructorScoreDistribution() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -347,8 +433,9 @@ function InstructorScoreDistribution() {
   const [showReviewInsights, setShowReviewInsights] = useState(false);
   const [showImproveInsights, setShowImproveInsights] = useState(false);
 
-  // Always fetch fresh data from database
+  // Always fetches fresh session, player, and response data from the database.
   useEffect(() => {
+    // Resolves the session and loads data needed for distribution charts.
     async function load() {
       setLoading(true);
       
@@ -428,6 +515,7 @@ function InstructorScoreDistribution() {
     load();
   }, [sessionId, initialGameCode]);
 
+  // Builds ranked leaderboard rows for summary metrics and tables.
   const ranked = useMemo(
     () => calculateLeaderboard(
       students,
@@ -448,12 +536,13 @@ function InstructorScoreDistribution() {
 
   const maxPossibleScore = ranked[0]?.maxPossibleScore || highestScore || 0;
 
-  // Build score-distribution buckets using the actual maximum possible score.
+  // Builds score-distribution buckets using the actual maximum possible score.
   const buckets = useMemo(() => {
     return getScoreDistributionBuckets(scores, maxPossibleScore);
   }, [scores, maxPossibleScore]);
 
   const maxBucketCount = Math.max(...buckets.counts, 1);
+  // Computes question review and improvement insight lists.
   const questionQualityInsights = useMemo(
     () => buildQuestionQualityInsights(questionsByDifficulty, responses),
     [questionsByDifficulty, responses]
@@ -465,6 +554,7 @@ function InstructorScoreDistribution() {
     ? questionQualityInsights.tooEasy
     : [];
 
+  // Logs the size of the auto-review queue for instructor diagnostics.
   useEffect(() => {
     console.log(
       "[Auto Review Queue] items count",
@@ -472,6 +562,7 @@ function InstructorScoreDistribution() {
     );
   }, [needsReviewItems.length]);
 
+  // Finds and displays the question with the most incorrect responses.
   const handleShowMostMissedQuestion = () => {
     const responsesWithQuestion = responses.filter((response) => response.question_id);
 

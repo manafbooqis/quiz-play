@@ -3,10 +3,16 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { getDifficultyPoints } from "../../utils/leaderboard";
 
+/**
+ * Checks whether a session should move students to final results.
+ * @param {object} session - Session row from Supabase.
+ * @returns {boolean} True when the quiz is finished.
+ */
 function isFinalSessionStatus(session) {
   return session?.status === "finished" || session?.current_phase === "final_results";
 }
 
+// Lets a student choose the difficulty for the current round.
 function Difficulty() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -65,6 +71,7 @@ function Difficulty() {
 
   const resolvedQuestionCountRef = useRef(resolvedQuestionCount);
 
+  // Keeps the latest resolved question count available to async timeout handlers.
   useEffect(() => {
     resolvedQuestionCountRef.current = resolvedQuestionCount;
   }, [resolvedQuestionCount]);
@@ -78,6 +85,7 @@ function Difficulty() {
     resolvedQuestionCount
   });
 
+  // Restores answered question IDs so exhausted difficulties stay disabled.
   useEffect(() => {
     if (!hasSessionData) return;
     const localKey = `quizplay_answered_questions_${gameCode}_${playerId}`;
@@ -87,7 +95,7 @@ function Difficulty() {
     }
   }, [hasSessionData, gameCode, playerId]);
 
-  // Shared round timer logic
+  // Starts or resumes the shared round timer used by difficulty and question screens.
   useEffect(() => {
     if (!hasSessionData || !timePerQuestion) return;
 
@@ -131,6 +139,7 @@ function Difficulty() {
     return () => clearInterval(interval);
   }, [hasSessionData, timePerQuestion, answeredIds.length, gameCode, playerId]);
 
+  // Records a zero-point response if time expires before a difficulty is selected.
   const handleDifficultyTimeout = async () => {
     try {
       // Resolve session ID safely
@@ -307,15 +316,18 @@ function Difficulty() {
     }
   };
 
+  // Stores the latest timeout handler for the interval callback.
   useEffect(() => {
     handleDifficultyTimeoutRef.current = handleDifficultyTimeout;
   });
 
+  // Loads and watches the session so students leave difficulty selection when the quiz ends.
   useEffect(() => {
     if (!hasSessionData || (!sessionId && !gameCode)) return;
 
     let isMounted = true;
 
+    // Navigates once to final results when Supabase reports a final state.
     const goToFinalResults = (finalSession) => {
       if (finalNavigationDoneRef.current) return;
       finalNavigationDoneRef.current = true;
@@ -332,6 +344,7 @@ function Difficulty() {
       });
     };
 
+    // Loads the current session state before subscribing to live changes.
     const loadSession = async () => {
       const query = supabase.from("sessions").select("*");
       const { data } = sessionId
@@ -384,6 +397,7 @@ function Difficulty() {
     };
   }, [gameCode, hasSessionData, navigate, sessionId, studentName, playerId]);
 
+  // Keeps the invalid-session guard reactive without changing the rendered fallback.
   useEffect(() => {
     if (!hasSessionData) return;
   }, [hasSessionData]);
@@ -405,6 +419,7 @@ function Difficulty() {
     );
   }
 
+  // Starts the selected difficulty question and passes round timer state forward.
   const handleDifficultySelect = async (difficulty, points) => {
     // Use round-based question selection to match instructor preview
     const resolvedCurrentRound =
@@ -517,6 +532,7 @@ function Difficulty() {
     }
   };
 
+  // Counts unanswered questions remaining for a difficulty card.
   const getAvailableCount = (difficulty) => {
     const bank = questionsByDifficulty[difficulty] || [];
     return bank.filter(q => 

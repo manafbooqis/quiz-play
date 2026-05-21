@@ -1,3 +1,8 @@
+/**
+ * Resolves the best display name available for a player.
+ * @param {object} player - Player record from session_players or legacy state.
+ * @returns {string} Display name used in leaderboard rows.
+ */
 function getPlayerName(player) {
   return (
     player?.student_name ||
@@ -7,6 +12,11 @@ function getPlayerName(player) {
   );
 }
 
+/**
+ * Builds all identifiers that can match a player to response rows.
+ * @param {object} player - Player record from session_players or legacy state.
+ * @returns {Array<string>} Non-empty keys for matching responses.
+ */
 function getPlayerKeys(player) {
   return [
     player?.id,
@@ -19,14 +29,29 @@ function getPlayerKeys(player) {
     .filter(Boolean);
 }
 
+/**
+ * Chooses the canonical ID exposed on leaderboard rows.
+ * @param {object} player - Player record from session_players or legacy state.
+ * @returns {string} Stable player identifier.
+ */
 function getCanonicalPlayerId(player) {
   return normalizeKey(player?.id) || normalizeKey(player?.student_name) || getPlayerName(player);
 }
 
+/**
+ * Reads the timestamp used to break leaderboard ties.
+ * @param {object} response - Response row from Supabase.
+ * @returns {number} Milliseconds since epoch.
+ */
 function getResponseTime(response) {
   return new Date(response?.answered_at || response?.created_at || 0).getTime();
 }
 
+/**
+ * Normalizes IDs and names before map/set lookups.
+ * @param {unknown} value - Raw key candidate.
+ * @returns {string} Trimmed string key.
+ */
 function normalizeKey(value) {
   return String(value ?? "").trim();
 }
@@ -37,15 +62,30 @@ export const DIFFICULTY_POINTS = {
   hard: 50,
 };
 
+/**
+ * Gets the configured point value for a difficulty.
+ * @param {string} difficulty - Difficulty label such as easy, medium, or hard.
+ * @returns {number} Point value for correct answers.
+ */
 export function getDifficultyPoints(difficulty) {
   const key = normalizeKey(difficulty).toLowerCase();
   return DIFFICULTY_POINTS[key] || 0;
 }
 
+/**
+ * Resolves a question ID across generated and stored question shapes.
+ * @param {object} question - Question object from a bank or config.
+ * @returns {string} Normalized question ID.
+ */
 function getQuestionId(question) {
   return normalizeKey(question?.id || question?.question_id || question?.qid);
 }
 
+/**
+ * Reads the difficulty label from supported question properties.
+ * @param {object} question - Question object from a bank or config.
+ * @returns {string|undefined} Difficulty label when present.
+ */
 function getQuestionDifficulty(question) {
   return (
     question?.difficulty ||
@@ -55,6 +95,11 @@ function getQuestionDifficulty(question) {
   );
 }
 
+/**
+ * Resolves a question's possible points from explicit or difficulty values.
+ * @param {object} question - Question object from a bank or config.
+ * @returns {number} Possible points for the question.
+ */
 function getQuestionPoints(question) {
   const explicitPoints = Number(
     question?.points_possible ??
@@ -66,6 +111,11 @@ function getQuestionPoints(question) {
   return getDifficultyPoints(getQuestionDifficulty(question));
 }
 
+/**
+ * Builds a lookup of question IDs to possible point values.
+ * @param {object} scoringConfig - Session scoring and question configuration.
+ * @returns {Map<string, number>} Point values by normalized question ID.
+ */
 function getQuestionPointMap(scoringConfig = {}) {
   const questionsByDifficulty =
     scoringConfig?.questions_by_difficulty ||
@@ -103,6 +153,12 @@ function getQuestionPointMap(scoringConfig = {}) {
   return map;
 }
 
+/**
+ * Determines total quiz questions from session config or response history.
+ * @param {number} sessionQuestionCount - Configured question count.
+ * @param {Array<object>} responses - Response rows for the session.
+ * @returns {number} Total number of questions represented.
+ */
 export function getTotalQuestions(sessionQuestionCount, responses = []) {
   const count = Number(sessionQuestionCount) || 0;
   if (count > 0) return count;
@@ -115,6 +171,12 @@ export function getTotalQuestions(sessionQuestionCount, responses = []) {
   return answeredQuestionIds.size;
 }
 
+/**
+ * Infers the common points-per-question value for legacy displays.
+ * @param {object} scoringConfig - Session scoring configuration.
+ * @param {Array<object>} responses - Response rows for the session.
+ * @returns {number} Most likely point value per correct answer.
+ */
 export function getPointsPerQuestion(scoringConfig = {}, responses = []) {
   const configuredPoints = Number(
     scoringConfig?.points_per_question ??
@@ -142,6 +204,12 @@ export function getPointsPerQuestion(scoringConfig = {}, responses = []) {
     })[0][0];
 }
 
+/**
+ * Resolves the possible points represented by a response row.
+ * @param {object} response - Response row from Supabase.
+ * @param {Map<string, number>} questionPointMap - Known point values by question ID.
+ * @returns {number} Possible points for that response.
+ */
 function getResponsePossiblePoints(response, questionPointMap = new Map()) {
   const explicitPossible = Number(
     response?.points_possible ?? response?.point_value ?? response?.possible_points
@@ -158,6 +226,13 @@ function getResponsePossiblePoints(response, questionPointMap = new Map()) {
   return awardedPoints > 0 ? awardedPoints : 0;
 }
 
+/**
+ * Calculates the maximum possible score for the quiz.
+ * @param {number} totalQuestions - Total configured or inferred question count.
+ * @param {object} scoringConfig - Session scoring and question configuration.
+ * @param {Array<object>} responses - Response rows used as fallback evidence.
+ * @returns {number} Maximum possible score.
+ */
 export function getMaxPossibleScore(
   totalQuestions = 0,
   scoringConfig = {},
@@ -228,6 +303,13 @@ export function getMaxPossibleScore(
   return Math.round(Number(totalQuestions || 0) * DIFFICULTY_POINTS.hard);
 }
 
+/**
+ * Groups scores into fixed ranges for distribution charts.
+ * @param {Array<number>} scores - Student scores to bucket.
+ * @param {number} maxPossibleScore - Upper bound for chart scaling.
+ * @param {number} bucketCount - Number of buckets to create.
+ * @returns {{labels: Array<string>, counts: Array<number>, ranges: Array<Array<number>>}} Bucket labels, counts, and ranges.
+ */
 export function getScoreDistributionBuckets(scores = [], maxPossibleScore = 0, bucketCount = 5) {
   const safeMax = Math.max(Number(maxPossibleScore) || 0, ...scores, 1);
   const bucketSize = Math.ceil(safeMax / bucketCount) || 1;
@@ -252,6 +334,14 @@ export function getScoreDistributionBuckets(scores = [], maxPossibleScore = 0, b
   return { labels, counts, ranges };
 }
 
+/**
+ * Builds ranked leaderboard rows from players and responses.
+ * @param {Array<object>} players - Session player rows.
+ * @param {Array<object>} responses - Response rows for the session.
+ * @param {number} sessionQuestionCount - Configured quiz question count.
+ * @param {object} scoringConfig - Session scoring and question configuration.
+ * @returns {Array<object>} Ranked leaderboard rows with score, accuracy, and rank.
+ */
 export function calculateLeaderboard(
   players = [],
   responses = [],
