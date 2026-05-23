@@ -11,6 +11,13 @@ Documentation update on 2026-05-21:
 - Main files documented: `src/pages/student/JoinGame.jsx`, `src/pages/student/Lobby.jsx`, `src/pages/student/Difficulty.jsx`, `src/pages/student/Question.jsx`, `src/pages/student/RoundResults.jsx`, `src/pages/student/FinalResults.jsx`, `src/pages/student/WaitingForOthers.jsx`, `src/pages/instructor/DashboardOfficial.jsx`, `src/pages/instructor/SessionOfficial.jsx`, `src/pages/instructor/InstructorLiveQuiz.jsx`, `src/pages/instructor/InstructorFinalResults.jsx`, `src/pages/instructor/InstructorScoreDistribution.jsx`, `src/utils/leaderboard.js`, `api/generate-questions.js`, and `server.js`.
 - No behavior, UI design, scoring logic, routing, Supabase schema/RLS, or AI generation behavior was changed.
 
+Feature cleanup on 2026-05-23:
+
+- Removed the Most Incorrect Questions / Most Missed Question feature from the instructor Score Distribution page.
+- Files changed for this cleanup: `src/pages/instructor/InstructorScoreDistribution.jsx` and `PROJECT_FULL_AUDIT_REPORT.md`.
+- Remaining instructor analytics include Questions Analysis, response distribution per question, Score Distribution chart/buckets, average/highest/lowest score cards, student rankings, and Smart Review Insights.
+- Scoring logic, leaderboard logic, student flow, Supabase schema/RLS, and AI generation were not changed.
+
 ## 1. Executive Summary
 
 The project is on `main` at commit `74422bb Remove Vercel configuration`, one commit after `bf8a78c Fix instructor live quiz hook warnings`. The branch reports as up to date with `origin/main`, but the working tree is not clean.
@@ -133,8 +140,8 @@ Quiz flow:
 AI generation:
 
 - `src/pages/instructor/DashboardOfficial.jsx` calls `/api/generate-questions`.
-- Upload UI accepts `.txt,.md,.doc,.docx,.pdf,.csv,.json,.html`.
-- `api/generate-questions.js` supports extraction for PDF, TXT, CSV, JSON, MD, DOCX, and PPTX at the API layer.
+- Upload UI accepts PDF, TXT, CSV, JSON, MD, HTML/HTM, DOCX, and PPTX.
+- `api/generate-questions.js` supports extraction for PDF, TXT, CSV, JSON, MD, HTML/HTM, DOCX, and PPTX at the API layer.
 - API validation rejects invalid question structures and filters low-quality generated questions.
 
 Database/migrations:
@@ -156,7 +163,6 @@ Currently missing or incomplete:
 
 - No deployment config file is tracked for Vercel or Netlify.
 - Supabase migrations do not fully represent all columns used by the current app, including `session_players`, `sessions.questions_by_difficulty`, `sessions.question_count`, `sessions.time_per_question`, `sessions.current_phase`, `responses.round_results_seen_at`, `responses.difficulty`, and `responses.points_possible`.
-- `DashboardOfficial.jsx` upload input does not list `.pptx` in its `accept` attribute, although `api/generate-questions.js` supports PPTX extraction.
 - Normal answer submissions do not store `responses.difficulty` or `responses.points_possible`.
 - Current `HEAD` does not include the local streak bonus source changes; the feature exists only in the uncommitted working tree.
 
@@ -315,12 +321,14 @@ Implemented:
 - `nextRound()` finalizes when the next round exceeds configured question count.
 - Live rankings use `calculateLeaderboard(...)`.
 - Instructor final results and Score Distribution load database state rather than relying only on navigation state.
+- The Most Incorrect Questions / Most Missed Question button, state, handler, and result card were removed from `InstructorScoreDistribution.jsx`.
+- Remaining instructor analytics are Questions Analysis, per-question response distribution, Score Distribution buckets, summary score cards, student rankings, and Smart Review Insights.
+- `questions-preview.jsx` now shows only `Questions saved successfully.` after Save Changes; the broken post-save `Open Live Control` and `Back to Dashboard` actions were removed because saved/reused question-bank edits may not have the session route state needed by those destinations and could lead to `No session data found`.
 
 Risks:
 
 - `InstructorLiveQuiz.jsx` contains complex status, response, timer, navigation, and ranking logic in one file.
 - Student-side finish fallback duplicates instructor-owned finalization.
-- Dashboard upload UI accepts `.doc` but API support is for DOCX/PPTX, not legacy DOC.
 - The removed Vercel config may affect API routing depending on deployment provider.
 
 ## 9. AI Question Generation Review
@@ -336,17 +344,58 @@ Current support:
 
 - PDF: supported via `pdf-parse`.
 - TXT: supported as text.
-- CSV: supported as text.
-- JSON: supported as JSON/text extraction.
-- MD: supported as text.
+- CSV: supported as text when the extension resolves to `text/plain` or the MIME type is `text/csv`.
+- JSON: supported as UTF-8 text when the extension resolves to `application/json`.
+- MD: supported as text when the extension resolves to `text/plain` or the MIME type is `text/markdown`.
+- HTML/HTM: supported as text because the extension resolves to `text/html`, and the extractor accepts `text/*`.
 - DOCX: supported by Office extraction helpers in `api/generate-questions.js`.
 - PPTX: supported by Office extraction helpers in `api/generate-questions.js`.
+- Legacy DOC: not supported by the extraction logic.
 
-Mismatch:
+Upload file type review and fix on 2026-05-23:
 
-- Upload input in `DashboardOfficial.jsx` accepts `.txt,.md,.doc,.docx,.pdf,.csv,.json,.html`.
-- `.pptx` is supported by the API but not accepted by the UI file picker.
-- `.doc` is accepted by the UI but not listed in the API-supported formats.
+- The UI/API upload format mismatch was fixed in `src/pages/instructor/DashboardOfficial.jsx` and `api/generate-questions.js`.
+- UI file input `accept` value in `DashboardOfficial.jsx` includes `.pdf`, `.txt`, `.csv`, `.json`, `.md`, `.html`, `.htm`, `.docx`, `.pptx`, and matching MIME types.
+- UI validation allowlist `SUPPORTED_UPLOAD_TYPES` includes PDF, plain text, CSV, JSON, Markdown, HTML, DOCX, and PPTX MIME types.
+- UI file-type resolver normalizes supported extensions before falling back to browser MIME values, so missing or generic MIME types still work for supported extensions.
+- User-facing upload text says: `Supported formats: PDF, TXT, CSV, JSON, MD, HTML, DOCX, and PPTX`.
+- UI unsupported-file message says: `Unsupported file type. Please upload a PDF, TXT, CSV, JSON, MD, HTML, DOCX, or PPTX file, or write questions manually.`
+- UI readable-PDF message says: `This PDF does not contain readable text. Please upload a text-based PDF, use a TXT file, or write questions manually.`
+- API unsupported-file message says: `Unsupported file type. Please upload PDF, TXT, CSV, JSON, MD, HTML, DOCX, or PPTX.`
+- API Office extraction errors mention DOCX and PPTX.
+- API empty-text fallback message mentions only text-based PDF, TXT, or manual entry.
+- Legacy DOC and PPT remain unsupported and are blocked by frontend validation before the API call.
+
+Post-fix UI/API alignment table:
+
+| Format | Accepted by UI input | Passes UI validation | Supported by API extraction | Current status |
+| --- | --- | --- | --- | --- |
+| `.pdf` | Yes | Yes | Yes | Matched |
+| `.txt` | Yes | Yes | Yes | Matched |
+| `.csv` | Yes | Yes | Yes | Matched |
+| `.json` | Yes | Yes | Yes | Matched |
+| `.md` | Yes | Yes | Yes | Matched |
+| `.html` / `.htm` | Yes | Yes | Yes | Matched |
+| `.docx` | Yes | Yes | Yes | Matched |
+| `.pptx` | Yes | Yes | Yes | Matched |
+| `.doc` | No | No | No | Not supported |
+| `.ppt` | No | No | No | Not supported |
+
+Specific verification:
+
+- `.pptx` is supported by the API through `normalizeMimeType(...)`, `isPptxMime(...)`, and `extractPptxText(...)`.
+- `.pptx` is accepted by the upload input and passes the UI allowlist.
+- `.doc` and `.ppt` are not accepted by the upload input.
+- `.doc` is not supported by the API extraction logic; only DOCX is handled.
+- `.ppt` is not supported by the API extraction logic; only PPTX is handled.
+- `.html` and `.htm` are accepted by the upload input and pass UI validation.
+- `.html` and `.htm` are supported by the API as `text/html`.
+
+Final supported upload list:
+
+- Supported: PDF, TXT, CSV, JSON, MD, HTML/HTM, DOCX, and PPTX.
+- Unsupported: legacy DOC and PPT.
+- `server.js` does not need a file-type change; it only routes `/api/generate-questions`.
 
 Environment dependencies:
 
@@ -630,22 +679,23 @@ Flow:
 35. Verify `Question.jsx` navigates to Round Results when `show_round_results = true` even if `status` is not refreshed locally.
 36. Verify `Question.jsx` navigates to Round Results when `current_phase = "round_results"` if that convention is used.
 37. Verify `WaitingForOthers.jsx` navigates to Final Results when `status = "finished"` or `current_phase = "final_results"`.
+38. After a completed quiz, reopen a saved question bank, edit a question in `questions-preview.jsx`, click Save Changes, and confirm the success panel only shows `Questions saved successfully.` without `Open Live Control` or `Back to Dashboard`.
 
 AI generation:
 
-38. Upload TXT and generate valid easy/medium/hard banks.
-39. Upload PDF with extractable text and generate valid banks.
-40. Upload CSV and generate valid banks.
-41. Upload JSON and generate valid banks.
-42. Upload MD and generate valid banks.
-43. Upload DOCX and generate valid banks.
-44. Upload PPTX directly if UI support is added, or verify API behavior separately.
+39. Upload TXT and generate valid easy/medium/hard banks.
+40. Upload PDF with extractable text and generate valid banks.
+41. Upload CSV and generate valid banks.
+42. Upload JSON and generate valid banks.
+43. Upload MD and generate valid banks.
+44. Upload DOCX and generate valid banks.
+45. Upload PPTX directly if UI support is added, or verify API behavior separately.
 
 RLS/schema:
 
-45. Student response insert succeeds when `responses.player_id` is a `session_players.id`.
-46. `round_results_seen_at` update succeeds.
-47. Students can read sessions in `waiting`, `choosing_difficulty`, `active`, `round_results`, and `finished`.
+46. Student response insert succeeds when `responses.player_id` is a `session_players.id`.
+47. `round_results_seen_at` update succeeds.
+48. Students can read sessions in `waiting`, `choosing_difficulty`, `active`, `round_results`, and `finished`.
 
 ## 18. Quick Wins
 

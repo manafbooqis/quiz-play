@@ -499,7 +499,7 @@ async function extractFileText({ fileBase64, fileMimeType, fileName }) {
   }
   
   // Unsupported file types
-  throw new Error("Unsupported file type. Please upload PDF, TXT, CSV, JSON, MD, DOCX, or PPTX.");
+  throw new Error("Unsupported file type. Please upload PDF, TXT, CSV, JSON, MD, HTML, DOCX, or PPTX.");
 }
 
 // Handles AI question generation requests for uploaded instructional material.

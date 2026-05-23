@@ -95,11 +95,22 @@ function DashboardOfficial() {
   const MAX_TIME = 120;
   const TIME_STEP = 10;
   const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
+  const SUPPORTED_UPLOAD_FORMATS_TEXT =
+    "PDF, TXT, CSV, JSON, MD, HTML, DOCX, or PPTX";
+  const UNSUPPORTED_UPLOAD_MESSAGE =
+    `Unsupported file type. Please upload a ${SUPPORTED_UPLOAD_FORMATS_TEXT} file, or write questions manually.`;
   const READABLE_PDF_MESSAGE =
     "This PDF does not contain readable text. Please upload a text-based PDF, use a TXT file, or write questions manually.";
   const SUPPORTED_UPLOAD_TYPES = [
     "application/pdf",
     "text/plain",
+    "text/csv",
+    "application/csv",
+    "application/json",
+    "text/markdown",
+    "text/html",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   ];
   const isGuestUser =
     currentUser?.is_anonymous || currentUser?.user_metadata?.is_guest === true;
@@ -344,14 +355,50 @@ function DashboardOfficial() {
   // Resolves browser MIME quirks by checking both MIME type and file extension.
   function getUploadFileType(file) {
     const fileName = file?.name?.toLowerCase() || "";
-    const mimeType = file?.type || "";
+    const mimeType = (file?.type || "").trim().toLowerCase();
 
-    if (mimeType === "application/pdf" || fileName.endsWith(".pdf")) {
+    if (fileName.endsWith(".doc") || fileName.endsWith(".ppt")) {
+      return mimeType || "application/octet-stream";
+    }
+
+    if (fileName.endsWith(".pdf")) {
       return "application/pdf";
     }
 
-    if (mimeType === "text/plain" || fileName.endsWith(".txt")) {
+    if (fileName.endsWith(".txt")) {
       return "text/plain";
+    }
+
+    if (fileName.endsWith(".csv")) {
+      return "text/csv";
+    }
+
+    if (mimeType === "application/csv") {
+      return "text/csv";
+    }
+
+    if (fileName.endsWith(".json")) {
+      return "application/json";
+    }
+
+    if (fileName.endsWith(".md")) {
+      return "text/markdown";
+    }
+
+    if (fileName.endsWith(".html") || fileName.endsWith(".htm")) {
+      return "text/html";
+    }
+
+    if (fileName.endsWith(".docx")) {
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    }
+
+    if (fileName.endsWith(".pptx")) {
+      return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    }
+
+    if (SUPPORTED_UPLOAD_TYPES.includes(mimeType)) {
+      return mimeType;
     }
 
     return mimeType || "application/octet-stream";
@@ -366,7 +413,7 @@ function DashboardOfficial() {
     const normalizedType = getUploadFileType(file);
 
     if (!SUPPORTED_UPLOAD_TYPES.includes(normalizedType)) {
-      return "Unsupported file type. Please upload a PDF or TXT file, or write questions manually.";
+      return UNSUPPORTED_UPLOAD_MESSAGE;
     }
 
     if (file.size <= 0) {
@@ -374,7 +421,7 @@ function DashboardOfficial() {
     }
 
     if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-      return "This file is too large. Please upload a PDF or TXT file smaller than 10 MB.";
+      return `This file is too large. Please upload a supported file smaller than 10 MB. Supported formats: ${SUPPORTED_UPLOAD_FORMATS_TEXT}.`;
     }
 
     return "";
@@ -406,7 +453,7 @@ function DashboardOfficial() {
     }
 
     if (rawMessage.includes("Unsupported file type")) {
-      return "Unsupported file type. Please upload a PDF or TXT file, or write questions manually.";
+      return UNSUPPORTED_UPLOAD_MESSAGE;
     }
 
     return rawMessage;
@@ -1146,7 +1193,7 @@ function DashboardOfficial() {
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".pdf,.txt,application/pdf,text/plain"
+                        accept=".pdf,.txt,.csv,.json,.md,.html,.htm,.docx,.pptx,application/pdf,text/plain,text/csv,application/json,text/markdown,text/html,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
                         className="hidden"
                         onChange={(event) => {
                           const file = event.target.files?.[0] ?? null;
@@ -1176,7 +1223,9 @@ function DashboardOfficial() {
                         <div className="text-center py-4">
                           <div className="text-2xl mb-2 text-cyan-600">📁</div>
                           <p className="font-semibold text-slate-900 mb-2">Choose File</p>
-                          <p className="text-sm text-slate-600 mb-4">or drag and drop your PDF or TXT file</p>
+                          <p className="text-sm text-slate-600 mb-4">
+                            Supported formats: PDF, DOCX ,and PPTX
+                          </p>
                           <button
                             type="button"
                             className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-medium rounded-lg transition"

@@ -429,7 +429,6 @@ function InstructorScoreDistribution() {
   const [questionsByDifficulty, setQuestionsByDifficulty] = useState({});
   const [sessionQuestionCount, setSessionQuestionCount] = useState(0);
   const [sessionScoringConfig, setSessionScoringConfig] = useState({});
-  const [mostMissedResult, setMostMissedResult] = useState(null);
   const [showReviewInsights, setShowReviewInsights] = useState(false);
   const [showImproveInsights, setShowImproveInsights] = useState(false);
 
@@ -562,85 +561,6 @@ function InstructorScoreDistribution() {
     );
   }, [needsReviewItems.length]);
 
-  // Finds and displays the question with the most incorrect responses.
-  const handleShowMostMissedQuestion = () => {
-    const responsesWithQuestion = responses.filter((response) => response.question_id);
-
-    if (responsesWithQuestion.length === 0) {
-      setMostMissedResult({
-        message: "No question-level answer data is available yet.",
-      });
-      return;
-    }
-
-    const questions = Object.values(questionsByDifficulty || {})
-      .flat()
-      .filter(Boolean);
-    const questionById = questions.reduce((acc, question) => {
-      const id = getQuestionId(question);
-      if (id) acc[String(id)] = question;
-      return acc;
-    }, {});
-
-    const grouped = responsesWithQuestion.reduce((acc, response) => {
-      const questionId = String(response.question_id);
-      const question = questionById[questionId];
-      const selectedAnswer = Number(response.selected_answer);
-      const correctAnswer = Number(
-        question?.correctAnswer ??
-          question?.correct_answer ??
-          question?.correct_option
-      );
-      const canCompareAnswers =
-        question &&
-        Number.isFinite(selectedAnswer) &&
-        Number.isFinite(correctAnswer);
-      const isCorrect =
-        typeof response.is_correct === "boolean"
-          ? response.is_correct
-          : canCompareAnswers
-          ? selectedAnswer === correctAnswer
-          : null;
-
-      if (!acc[questionId]) {
-        acc[questionId] = {
-          questionId,
-          total: 0,
-          incorrect: 0,
-          question,
-        };
-      }
-
-      acc[questionId].total += 1;
-      if (isCorrect === false) acc[questionId].incorrect += 1;
-      return acc;
-    }, {});
-
-    const mostMissed = Object.values(grouped)
-      .filter((item) => item.total > 0)
-      .sort((a, b) => {
-        if (b.incorrect !== a.incorrect) return b.incorrect - a.incorrect;
-        const bRate = b.incorrect / b.total;
-        const aRate = a.incorrect / a.total;
-        return bRate - aRate;
-      })[0];
-
-    if (!mostMissed || mostMissed.incorrect === 0) {
-      setMostMissedResult({
-        message: "No missed questions found yet.",
-      });
-      return;
-    }
-
-    setMostMissedResult({
-      questionText: getQuestionText(mostMissed.question, mostMissed.questionId),
-      correctAnswer: getCorrectAnswerText(mostMissed.question),
-      incorrect: mostMissed.incorrect,
-      total: mostMissed.total,
-      incorrectRate: Math.round((mostMissed.incorrect / mostMissed.total) * 100),
-    });
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -658,12 +578,6 @@ function InstructorScoreDistribution() {
           <p className="text-sm text-slate-500">Game Code: {gameCode || "—"}</p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={handleShowMostMissedQuestion}
-            className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-semibold text-sm shadow-sm transition"
-          >
-            Most Incorrect Question
-          </button>
           <button
             onClick={() =>
               navigate("/instructor/final-results", {
@@ -720,57 +634,6 @@ function InstructorScoreDistribution() {
               </div>
             ))}
           </div>
-
-          {mostMissedResult && (
-            <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200">
-              <div className="flex flex-col gap-6">
-                <div>
-                  <p className="text-xs font-bold text-cyan-600 uppercase tracking-widest mb-2">
-                    Most Missed Question
-                  </p>
-                  {mostMissedResult.message ? (
-                    <p className="text-slate-600 font-medium">
-                      {mostMissedResult.message}
-                    </p>
-                  ) : (
-                    <h2 className="text-2xl font-bold text-slate-800 leading-snug">
-                      {mostMissedResult.questionText}
-                    </h2>
-                  )}
-                </div>
-
-                {!mostMissedResult.message && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4">
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
-                        Correct Answer
-                      </p>
-                      <p className="text-slate-800 font-semibold">
-                        {mostMissedResult.correctAnswer}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl bg-rose-50 border border-rose-100 p-4">
-                      <p className="text-xs font-bold text-rose-400 uppercase tracking-widest mb-2">
-                        Incorrect Answers
-                      </p>
-                      <p className="text-rose-700 font-bold text-2xl">
-                        {mostMissedResult.incorrect} / {mostMissedResult.total}
-                      </p>
-                      <p className="text-xs text-rose-500 mt-1">students</p>
-                    </div>
-                    <div className="rounded-2xl bg-amber-50 border border-amber-100 p-4">
-                      <p className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-2">
-                        Incorrect Rate
-                      </p>
-                      <p className="text-amber-700 font-bold text-2xl">
-                        {mostMissedResult.incorrectRate}%
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
 
           {/* Smart Review Insights */}
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200">
