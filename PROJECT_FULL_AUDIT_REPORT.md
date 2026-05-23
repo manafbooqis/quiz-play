@@ -18,6 +18,12 @@ Feature cleanup on 2026-05-23:
 - Remaining instructor analytics include Questions Analysis, response distribution per question, Score Distribution chart/buckets, average/highest/lowest score cards, student rankings, and Smart Review Insights.
 - Scoring logic, leaderboard logic, student flow, Supabase schema/RLS, and AI generation were not changed.
 
+React hook lint fix on 2026-05-23:
+
+- Fixed the remaining `react-hooks/exhaustive-deps` warning in `src/pages/student/RoundResults.jsx` by adding `questionCount` to the dependency list of the data-loading effect that already used it as a fallback for `session.question_count`.
+- This change preserves round results display, countdown behavior, waiting state, navigation to Difficulty/Final Results, End Quiz behavior, streak bonus display, scoring, and leaderboard logic.
+- `npx eslint src/pages/student/RoundResults.jsx` now passes with no warnings.
+
 ## 1. Executive Summary
 
 The project is on `main` at commit `74422bb Remove Vercel configuration`, one commit after `bf8a78c Fix instructor live quiz hook warnings`. The branch reports as up to date with `origin/main`, but the working tree is not clean.
@@ -588,6 +594,7 @@ Risks:
 Commands run:
 
 ```text
+npx eslint src/pages/student/RoundResults.jsx
 npm run lint
 npm run build
 ```
@@ -595,7 +602,7 @@ npm run build
 Lint:
 
 - `npm run lint` passed.
-- Latest unused-file audit run on 2026-05-23 also passed with one existing warning in `src/pages/student/RoundResults.jsx`: React Hook `useEffect` has a missing dependency `questionCount`.
+- Latest hook-dependency fix run on 2026-05-23 passed with no ESLint errors or warnings.
 
 Build:
 
@@ -615,6 +622,7 @@ Escalated/outside-sandbox build:
 
 - Passed.
 - Latest unused-file audit run on 2026-05-23 also passed after the same sandbox failure.
+- Latest hook-dependency fix run on 2026-05-23 also passed after the same sandbox failure.
 - Output included:
 
 ```text

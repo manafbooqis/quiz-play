@@ -644,7 +644,7 @@ function RoundResults() {
     }
 
     loadData();
-  }, [gameCode, studentName, playerId, sessionId, currentRound, navigate, goToFinalResults]);
+  }, [gameCode, studentName, playerId, sessionId, currentRound, questionCount, navigate, goToFinalResults]);
 
   if (loading) {
     return (
