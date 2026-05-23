@@ -168,11 +168,54 @@ Currently missing or incomplete:
 
 Old or likely unused files:
 
-- `src/pages/student/Result.jsx` is routed but appears superseded by `RoundResults.jsx` and `FinalResults.jsx`.
-- `src/pages/student/Leaderboard.jsx` exists but is not part of the main current result path.
-- `src/pages/CreateSession.jsx` is routed under `/instructor/create-session`, while the main instructor flow appears to use `DashboardOfficial.jsx`, `SessionOfficial.jsx`, and `questions-preview.jsx`.
-- `clear_loop.js` and `clear_session.js` are local utility scripts and should be documented or removed later if not used.
-- `functions/index.js` and `functions/package.json` exist separately from the current Vite/API route approach and need deployment-context clarification.
+- `src/pages/student/Result.jsx` and the `/student/result` route were removed on 2026-05-23 because they were a legacy result page superseded by `RoundResults.jsx` and `FinalResults.jsx`.
+- `src/pages/student/Leaderboard.jsx` was removed on 2026-05-23 because it was not imported, routed, or used by the current main student flow.
+- `src/pages/CreateSession.jsx` and the `/instructor/create-session` route were removed on 2026-05-23 because they were a legacy direct session-creation path; the current instructor session creation flow remains `DashboardOfficial.jsx`.
+- `clear_loop.js` and `clear_session.js` were removed on 2026-05-23 because they were unused manual Supabase cleanup utilities and were not referenced by app code or package scripts.
+- `.firebaserc` and `functions/` were removed on 2026-05-23 because Firebase was legacy to the current Render + Express + Supabase + OpenRouter architecture.
+
+Unused or obsolete file review on 2026-05-23:
+
+- `src/firebase.js`, `firebase.json`, `vercel.json`, and `netlify.toml` do not exist in the current workspace.
+- Root `package.json` has no Firebase dependencies and no Firebase scripts.
+- Root `package.json` current scripts are `dev`, `build`, `lint`, `start`, and `preview`; none reference the removed cleanup scripts or Firebase functions.
+- Current Render-style deployment uses `server.js` plus `api/generate-questions.js`; Firebase functions are no longer part of the repo.
+- Supabase appears to have replaced Firebase for the active app data/auth flow.
+- Production flow remains Render + `server.js` + `api/generate-questions.js` + Supabase/OpenRouter; removing the cleanup scripts did not change app logic or deployment.
+
+Firebase legacy removal on 2026-05-23:
+
+- Removed `.firebaserc`.
+- Removed the legacy `functions/` directory, including `functions/index.js`, `functions/package.json`, `functions/package-lock.json`, `functions/.eslintrc.js`, and `functions/.gitignore`.
+- Root app code does not import Firebase. After removal, `git grep -n "firebase"`, `git grep -n "firebase-functions"`, `git grep -n "firebase-admin"`, and `git grep -n "OPENAI_API_KEY"` only match this audit report, not active app code.
+- Root `package.json` does not include `firebase`, `firebase-admin`, or `firebase-functions`, and no root script references Firebase.
+- Current production-style app flow calls `/api/generate-questions`, served by `server.js` and implemented in `api/generate-questions.js`, using Supabase plus OpenRouter environment variables.
+- Supabase and OpenRouter remain the active services for data/auth and AI generation.
+
+| File | Current usage | Evidence | Risk if removed | Recommendation |
+| --- | --- | --- | --- | --- |
+| `src/pages/student/WaitingForOthers.jsx` | Routed but not used by the current main student answer flow. | Imported and routed in `src/App.jsx` as `/student/waiting-for-others`; `git grep -n "waiting-for-others"` finds only the route and report text; no current page navigates to it. | Removing only the file would break the existing route import. Removing route + file could break direct bookmarks or any fallback flow still relying on that URL. | Keep for now, but unused in main flow. Remove later only with `App.jsx` import/route cleanup and manual fallback-flow testing. |
+| `src/pages/student/Result.jsx` | Removed on 2026-05-23. | `git grep -n "Result"` and `git grep -n "/student/result"` showed only the legacy `App.jsx` import/route plus report text; current student result flow uses `Question.jsx`, `RoundResults.jsx`, and `FinalResults.jsx`. | Low risk after removing the route/import together with the file. Direct old links to `/student/result` no longer resolve. | Removed. Current student result flow remains unchanged through `RoundResults.jsx` and `FinalResults.jsx`. |
+| `src/pages/student/Leaderboard.jsx` | Removed on 2026-05-23. | `git grep -n "Leaderboard"` showed no `App.jsx` import/route and no active source references outside the file itself; shared leaderboard behavior lives in `src/utils/leaderboard.js` and was not removed. | Low risk because the page was not routed or imported. | Removed. Keep `src/utils/leaderboard.js`; it remains used by final results, round results, instructor live rankings, and score distribution. |
+| `src/pages/CreateSession.jsx` | Removed on 2026-05-23. | `git grep -n "CreateSession"` and `git grep -n "/instructor/create-session"` showed only the legacy `App.jsx` import/route plus report text; no current navigation links/buttons pointed to the route. | Low risk after removing the route/import together with the file. Direct old links to `/instructor/create-session` no longer resolve. | Removed. Current instructor session creation remains in `DashboardOfficial.jsx`; do not remove or alter that flow. |
+| `clear_loop.js` | Removed on 2026-05-23. | `git grep -n "clear_loop"` found only report text; `package.json`, `src/`, `api/`, `server.js`, and `README.md` did not reference it. It was a manual loop that cleared `current_question_id` on the latest session. | Low risk because it was not part of app scripts or production flow. | Removed. |
+| `clear_session.js` | Removed on 2026-05-23. | `git grep -n "clear_session"` found only report text; `package.json`, `src/`, `api/`, `server.js`, and `README.md` did not reference it. It was a one-off manual cleanup for `current_question_id`. | Low risk because it was not part of app scripts or production flow. | Removed. |
+| `functions/index.js` | Removed on 2026-05-23. | Legacy Firebase HTTPS function using Firestore, `firebase-functions`, `firebase-admin`, and `OPENAI_API_KEY`; current app uses `server.js` plus `api/generate-questions.js`. | Low risk for current Render/Supabase/OpenRouter path. | Removed with the Firebase cleanup. |
+| `functions/package.json` and `functions/package-lock.json` | Removed on 2026-05-23. | Firebase-only package metadata and Firebase deploy/emulator scripts; root package did not use them. | Low risk for current root scripts and Render deployment. | Removed with the Firebase cleanup. |
+| `functions/.eslintrc.js` and `functions/.gitignore` | Removed on 2026-05-23. | Supporting files for the removed Firebase functions folder. | Low risk after deleting the folder contents. | Removed with the Firebase cleanup. |
+| `.firebaserc` | Removed on 2026-05-23. | Firebase project pointer for `quizplay-6bc74`; no active root scripts used Firebase. | Low risk for current Render deployment. | Removed with the Firebase cleanup. |
+| `src/firebase.js` | Not present. | `Test-Path src/firebase.js` returned `False`; Firebase import greps (`from './firebase`, `from '../firebase`, `from '../../firebase`) returned no source matches. | None. | No action needed. |
+| `firebase.json` | Not present. | `Test-Path firebase.json` returned `False`. | None. | No action needed. |
+| `vercel.json` / `netlify.toml` | Not present. | `Test-Path vercel.json` and `Test-Path netlify.toml` returned `False`; previous audit already notes `vercel.json` removal. | None for current files; deployment should continue through Render/Express config. | No action needed unless switching deployment providers later. |
+
+Cleanup sequence recommendation:
+
+1. Keep `WaitingForOthers.jsx` until the team intentionally removes `/student/waiting-for-others` from `App.jsx` and verifies direct-link fallback behavior is unnecessary.
+2. `Leaderboard.jsx` has already been removed; do not remove `src/utils/leaderboard.js`.
+3. `Result.jsx` has already been removed with its `App.jsx` import/route; current student results remain `RoundResults.jsx` and `FinalResults.jsx`.
+4. `CreateSession.jsx` has already been removed with its `App.jsx` import/route; current session creation remains `DashboardOfficial.jsx`.
+5. Firebase legacy files have already been removed; keep current deployment on Render through `server.js` and `api/generate-questions.js`.
+6. The unused `clear_*.js` manual Supabase cleanup scripts have already been removed.
 
 ## 5. Critical Bugs / High-Risk Issues
 
@@ -470,7 +513,6 @@ Routes currently include:
 - `/student/lobby`
 - `/student/difficulty`
 - `/student/question`
-- `/student/result`
 - `/student/final-results`
 - `/student/waiting-for-others`
 - `/student/round-results`
@@ -479,7 +521,6 @@ Routes currently include:
 - `/instructor/dashboard-official`
 - `/instructor/session-official`
 - `/instructor/questions-preview`
-- `/instructor/create-session`
 - `/instructor/live-quiz`
 - `/instructor/final-results`
 - `/instructor/score-distribution`
@@ -493,7 +534,6 @@ Strengths:
 Risks:
 
 - Route state is required for many transitions and may be missing after reload or direct navigation.
-- `/student/result` and `/student/leaderboard` style older pages are not clearly part of the current flow.
 - Many pages duplicate final-status and session-status navigation checks.
 
 ## 12. UI / UX Issues
@@ -560,6 +600,7 @@ npm run build
 Lint:
 
 - `npm run lint` passed.
+- Latest unused-file audit run on 2026-05-23 also passed with one existing warning in `src/pages/student/RoundResults.jsx`: React Hook `useEffect` has a missing dependency `questionCount`.
 
 Build:
 
@@ -578,6 +619,7 @@ Likely cause:
 Escalated/outside-sandbox build:
 
 - Passed.
+- Latest unused-file audit run on 2026-05-23 also passed after the same sandbox failure.
 - Output included:
 
 ```text

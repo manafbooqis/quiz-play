@@ -1,13 +1,11 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import Home from "./pages/Home";
-import CreateSession from "./pages/CreateSession";
 
 import JoinGame from "./pages/student/JoinGame";
 import Lobby from "./pages/student/Lobby";
 import Difficulty from "./pages/student/Difficulty";
 import Question from "./pages/student/Question";
-import Result from "./pages/student/Result";
 import FinalResults from "./pages/student/FinalResults";
 import WaitingForOthers from "./pages/student/WaitingForOthers";
 import RoundResults from "./pages/student/RoundResults";
@@ -31,7 +29,6 @@ function App() {
         <Route path="/student/lobby" element={<Lobby />} />
         <Route path="/student/difficulty" element={<Difficulty />} />
         <Route path="/student/question" element={<Question />} />
-        <Route path="/student/result" element={<Result />} />
         <Route path="/student/final-results" element={<FinalResults />} />
         <Route path="/student/waiting-for-others" element={<WaitingForOthers />} />
         <Route path="/student/round-results" element={<RoundResults />} />
@@ -41,7 +38,6 @@ function App() {
         <Route path="/instructor/dashboard-official" element={<DashboardOfficial />} />
         <Route path="/instructor/session-official" element={<SessionOfficial />} />
         <Route path="/instructor/questions-preview" element={<QuestionsPreview />} />
-        <Route path="/instructor/create-session" element={<CreateSession />} />
         <Route path="/instructor/live-quiz" element={<InstructorLiveQuiz />} />
         <Route path="/instructor/final-results" element={<InstructorFinalResults />} />
         <Route path="/instructor/score-distribution" element={<InstructorScoreDistribution />} />
