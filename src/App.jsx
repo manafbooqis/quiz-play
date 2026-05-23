@@ -7,7 +7,6 @@ import Lobby from "./pages/student/Lobby";
 import Difficulty from "./pages/student/Difficulty";
 import Question from "./pages/student/Question";
 import FinalResults from "./pages/student/FinalResults";
-import WaitingForOthers from "./pages/student/WaitingForOthers";
 import RoundResults from "./pages/student/RoundResults";
 
 import DashboardOfficial from "./pages/instructor/DashboardOfficial";
@@ -30,7 +29,6 @@ function App() {
         <Route path="/student/difficulty" element={<Difficulty />} />
         <Route path="/student/question" element={<Question />} />
         <Route path="/student/final-results" element={<FinalResults />} />
-        <Route path="/student/waiting-for-others" element={<WaitingForOthers />} />
         <Route path="/student/round-results" element={<RoundResults />} />
 
         <Route path="/instructor/login" element={<LoginTeacher />} />

@@ -8,7 +8,7 @@ Documentation update on 2026-05-21:
 
 - Added function-level comments across the main student flow, instructor flow, shared leaderboard helpers, AI question-generation API, and Express server entrypoint.
 - Documented reusable helpers with short JSDoc where appropriate and added concise comments for page-local handlers plus major `useEffect`, `useMemo`, and `useCallback` blocks.
-- Main files documented: `src/pages/student/JoinGame.jsx`, `src/pages/student/Lobby.jsx`, `src/pages/student/Difficulty.jsx`, `src/pages/student/Question.jsx`, `src/pages/student/RoundResults.jsx`, `src/pages/student/FinalResults.jsx`, `src/pages/student/WaitingForOthers.jsx`, `src/pages/instructor/DashboardOfficial.jsx`, `src/pages/instructor/SessionOfficial.jsx`, `src/pages/instructor/InstructorLiveQuiz.jsx`, `src/pages/instructor/InstructorFinalResults.jsx`, `src/pages/instructor/InstructorScoreDistribution.jsx`, `src/utils/leaderboard.js`, `api/generate-questions.js`, and `server.js`.
+- Main files documented at the time: `src/pages/student/JoinGame.jsx`, `src/pages/student/Lobby.jsx`, `src/pages/student/Difficulty.jsx`, `src/pages/student/Question.jsx`, `src/pages/student/RoundResults.jsx`, `src/pages/student/FinalResults.jsx`, the now-removed `src/pages/student/WaitingForOthers.jsx`, `src/pages/instructor/DashboardOfficial.jsx`, `src/pages/instructor/SessionOfficial.jsx`, `src/pages/instructor/InstructorLiveQuiz.jsx`, `src/pages/instructor/InstructorFinalResults.jsx`, `src/pages/instructor/InstructorScoreDistribution.jsx`, `src/utils/leaderboard.js`, `api/generate-questions.js`, and `server.js`.
 - No behavior, UI design, scoring logic, routing, Supabase schema/RLS, or AI generation behavior was changed.
 
 Feature cleanup on 2026-05-23:
@@ -129,12 +129,11 @@ Quiz flow:
 
 - `src/pages/instructor/InstructorLiveQuiz.jsx` has `finishQuiz()` and writes `sessions.status = "finished"`.
 - `nextRound()` calls `finishQuiz()` when the next round exceeds `question_count`.
-- Student pages including Lobby, Difficulty, Question, RoundResults, WaitingForOthers, and FinalResults preserve or recover `playerId` / `sessionPlayerId`.
+- Student pages including Lobby, Difficulty, Question, RoundResults, and FinalResults preserve or recover `playerId` / `sessionPlayerId`.
 - `src/pages/student/Question.jsx` now keeps students on the Question page after answer submission, disables choices, and shows a neutral waiting message.
 - Result details are revealed only after the shared session transitions to `round_results` and the student reaches `RoundResults.jsx`.
-- `Question.jsx` and `WaitingForOthers.jsx` now detect `round_results` through realtime session updates plus a polling fallback.
+- `Question.jsx` detects `round_results` through realtime session updates plus a polling fallback.
 - Student navigation treats `status === "round_results"`, `current_phase === "round_results"`, or `show_round_results === true` as the Round Results phase.
-- `src/pages/student/WaitingForOthers.jsx` preserves `playerId` / `sessionPlayerId` when navigating.
 - `src/pages/student/RoundResults.jsx` displays the selected answer and correct answer using `getOptionLetter(...)` and `getCorrectOptionLetter(...)`.
 
 AI generation:
@@ -170,6 +169,7 @@ Old or likely unused files:
 
 - `src/pages/student/Result.jsx` and the `/student/result` route were removed on 2026-05-23 because they were a legacy result page superseded by `RoundResults.jsx` and `FinalResults.jsx`.
 - `src/pages/student/Leaderboard.jsx` was removed on 2026-05-23 because it was not imported, routed, or used by the current main student flow.
+- `src/pages/student/WaitingForOthers.jsx` and the `/student/waiting-for-others` route were removed on 2026-05-23 because no current page navigated to that route. The current after-answer flow keeps students in the waiting state inside `Question.jsx`, then navigates to `RoundResults.jsx` when the shared session phase becomes `round_results`.
 - `src/pages/CreateSession.jsx` and the `/instructor/create-session` route were removed on 2026-05-23 because they were a legacy direct session-creation path; the current instructor session creation flow remains `DashboardOfficial.jsx`.
 - `clear_loop.js` and `clear_session.js` were removed on 2026-05-23 because they were unused manual Supabase cleanup utilities and were not referenced by app code or package scripts.
 - `.firebaserc` and `functions/` were removed on 2026-05-23 because Firebase was legacy to the current Render + Express + Supabase + OpenRouter architecture.
@@ -194,7 +194,7 @@ Firebase legacy removal on 2026-05-23:
 
 | File | Current usage | Evidence | Risk if removed | Recommendation |
 | --- | --- | --- | --- | --- |
-| `src/pages/student/WaitingForOthers.jsx` | Routed but not used by the current main student answer flow. | Imported and routed in `src/App.jsx` as `/student/waiting-for-others`; `git grep -n "waiting-for-others"` finds only the route and report text; no current page navigates to it. | Removing only the file would break the existing route import. Removing route + file could break direct bookmarks or any fallback flow still relying on that URL. | Keep for now, but unused in main flow. Remove later only with `App.jsx` import/route cleanup and manual fallback-flow testing. |
+| `src/pages/student/WaitingForOthers.jsx` | Removed on 2026-05-23. | Before removal, `git grep -n "WaitingForOthers"`, `git grep -n "waiting-for-others"`, and `git grep -n "/student/waiting"` found only the `src/App.jsx` import/route plus report text; no current page navigated to `/student/waiting-for-others`. | Low risk after removing the route/import together with the file. Direct old links to `/student/waiting-for-others` no longer resolve. | Removed. Current after-answer flow remains `Question.jsx` waiting state to `RoundResults.jsx`. |
 | `src/pages/student/Result.jsx` | Removed on 2026-05-23. | `git grep -n "Result"` and `git grep -n "/student/result"` showed only the legacy `App.jsx` import/route plus report text; current student result flow uses `Question.jsx`, `RoundResults.jsx`, and `FinalResults.jsx`. | Low risk after removing the route/import together with the file. Direct old links to `/student/result` no longer resolve. | Removed. Current student result flow remains unchanged through `RoundResults.jsx` and `FinalResults.jsx`. |
 | `src/pages/student/Leaderboard.jsx` | Removed on 2026-05-23. | `git grep -n "Leaderboard"` showed no `App.jsx` import/route and no active source references outside the file itself; shared leaderboard behavior lives in `src/utils/leaderboard.js` and was not removed. | Low risk because the page was not routed or imported. | Removed. Keep `src/utils/leaderboard.js`; it remains used by final results, round results, instructor live rankings, and score distribution. |
 | `src/pages/CreateSession.jsx` | Removed on 2026-05-23. | `git grep -n "CreateSession"` and `git grep -n "/instructor/create-session"` showed only the legacy `App.jsx` import/route plus report text; no current navigation links/buttons pointed to the route. | Low risk after removing the route/import together with the file. Direct old links to `/instructor/create-session` no longer resolve. | Removed. Current instructor session creation remains in `DashboardOfficial.jsx`; do not remove or alter that flow. |
@@ -210,7 +210,7 @@ Firebase legacy removal on 2026-05-23:
 
 Cleanup sequence recommendation:
 
-1. Keep `WaitingForOthers.jsx` until the team intentionally removes `/student/waiting-for-others` from `App.jsx` and verifies direct-link fallback behavior is unnecessary.
+1. `WaitingForOthers.jsx` has already been removed with its `App.jsx` import/route; current student after-answer flow remains `Question.jsx` waiting state to `RoundResults.jsx`.
 2. `Leaderboard.jsx` has already been removed; do not remove `src/utils/leaderboard.js`.
 3. `Result.jsx` has already been removed with its `App.jsx` import/route; current student results remain `RoundResults.jsx` and `FinalResults.jsx`.
 4. `CreateSession.jsx` has already been removed with its `App.jsx` import/route; current session creation remains `DashboardOfficial.jsx`.
@@ -302,7 +302,6 @@ Main files:
 - `src/pages/student/Difficulty.jsx`
 - `src/pages/student/Question.jsx`
 - `src/pages/student/RoundResults.jsx`
-- `src/pages/student/WaitingForOthers.jsx`
 - `src/pages/student/FinalResults.jsx`
 
 Implemented:
@@ -316,9 +315,7 @@ Implemented:
 - `Question.jsx` disables the answer buttons and shows `Answer submitted! Waiting for other students...` without revealing correctness, correct answer, points, or streak bonus.
 - `Question.jsx` preserves submitted result state and uses the shared session `round_results` status to navigate to `RoundResults.jsx`.
 - `Question.jsx` polls the shared session row every 1.5 seconds as a fallback when Supabase realtime does not deliver the phase-change event.
-- `WaitingForOthers.jsx` also uses realtime plus a 1.5 second polling fallback for `round_results` and `final_results`.
-- `WaitingForOthers.jsx` no longer navigates to Round Results solely because the local timer reaches zero; it waits for the shared session phase.
-- `WaitingForOthers.jsx` is still imported and routed in `src/App.jsx`, but no current student page navigates to `/student/waiting-for-others`.
+- `WaitingForOthers.jsx` and `/student/waiting-for-others` were removed after confirming no current page navigates there.
 - The current after-answer flow uses `Question.jsx` as the waiting page, so `WaitingForOthers.jsx` is not used for the main answer-submission path.
 - Timeout handling writes a zero-point incorrect response when no prior response exists.
 - Round Results marks `round_results_seen_at` and waits for all players.
@@ -326,17 +323,16 @@ Implemented:
 
 WaitingForOthers usage review:
 
-- `git grep -n "WaitingForOthers"` found only `src/App.jsx`, `src/pages/student/WaitingForOthers.jsx`, and this audit report.
-- `git grep -n "waiting-for-others"` found only the route in `src/App.jsx` and this audit report.
-- `git grep -n "/student/waiting"` found only the route in `src/App.jsx` and this audit report.
-- `src/App.jsx` still imports `WaitingForOthers` and routes `/student/waiting-for-others`.
+- Before removal, `git grep -n "WaitingForOthers"` found only `src/App.jsx`, `src/pages/student/WaitingForOthers.jsx`, and this audit report.
+- Before removal, `git grep -n "waiting-for-others"` found only the route in `src/App.jsx` and this audit report.
+- Before removal, `git grep -n "/student/waiting"` found only the route in `src/App.jsx` and this audit report.
+- `src/App.jsx` no longer imports `WaitingForOthers` or routes `/student/waiting-for-others`.
 - No current app code calls `navigate("/student/waiting-for-others")`.
 - Current student pages checked: `Question.jsx`, `Difficulty.jsx`, `RoundResults.jsx`, `Lobby.jsx`, and `FinalResults.jsx`.
 - No current main-flow path navigates to `WaitingForOthers.jsx`.
-- Current role: old/dead route or direct-URL fallback only.
-- Recommendation: Option B for now: keep the file but stop using it in the after-answer flow. This is already the current behavior.
-- Do not delete it yet unless `src/App.jsx` import/route and any external bookmarks/docs are intentionally removed in the same cleanup. Deleting the file now while the route remains would break the app build.
-- If removed later, first remove the import and route from `src/App.jsx`, then run lint/build and manually verify no direct URL or deployment fallback depends on it.
+- Previous role: old/dead route or direct-URL fallback only.
+- Removed on 2026-05-23 by deleting the route/import and the page together.
+- Current after-answer flow: `Question.jsx` waiting state to `RoundResults.jsx` when the shared session phase becomes `round_results`.
 
 Risks:
 
@@ -514,7 +510,6 @@ Routes currently include:
 - `/student/difficulty`
 - `/student/question`
 - `/student/final-results`
-- `/student/waiting-for-others`
 - `/student/round-results`
 - `/instructor/login`
 - `/instructor/register`
@@ -720,7 +715,7 @@ Flow:
 34. Disable or miss a Supabase realtime event, then verify `Question.jsx` still navigates to Round Results through the polling fallback within a few seconds.
 35. Verify `Question.jsx` navigates to Round Results when `show_round_results = true` even if `status` is not refreshed locally.
 36. Verify `Question.jsx` navigates to Round Results when `current_phase = "round_results"` if that convention is used.
-37. Verify `WaitingForOthers.jsx` navigates to Final Results when `status = "finished"` or `current_phase = "final_results"`.
+37. Verify the removed `/student/waiting-for-others` route is not used by the current student flow; after answering, `Question.jsx` should remain in its waiting state until `RoundResults.jsx`.
 38. After a completed quiz, reopen a saved question bank, edit a question in `questions-preview.jsx`, click Save Changes, and confirm the success panel only shows `Questions saved successfully.` without `Open Live Control` or `Back to Dashboard`.
 
 AI generation:
