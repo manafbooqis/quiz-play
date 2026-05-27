@@ -139,6 +139,64 @@ function getCorrectOptionLetter(question) {
   return optionIndex >= 0 && optionIndex <= 3 ? getOptionLetter(optionIndex) : "";
 }
 
+/**
+ * Resolves a question identifier across generated and stored question shapes.
+ * @param {object} question - Question object from a bank or route state.
+ * @returns {string} Question identifier or an empty string.
+ */
+function getQuestionId(question) {
+  return String(question?.id || question?.question_id || question?.qid || "").trim();
+}
+
+/**
+ * Reads question text from common generated and stored question fields.
+ * @param {object} question - Question object from a bank or route state.
+ * @returns {string} Question text or an empty string.
+ */
+function getQuestionText(question) {
+  return (
+    getTextValue(question?.question) ||
+    getTextValue(question?.questionText) ||
+    getTextValue(question?.question_text) ||
+    getTextValue(question?.text) ||
+    getTextValue(question?.prompt)
+  );
+}
+
+/**
+ * Finds the answered question in available question banks.
+ * @param {Array<object>} sources - Candidate question bank containers.
+ * @param {string} questionId - Answered question ID.
+ * @param {string} difficulty - Current difficulty label.
+ * @returns {object|null} Matching question object when available.
+ */
+function findQuestionInSources(sources, questionId, difficulty) {
+  const normalizedQuestionId = String(questionId || "").trim();
+
+  for (const source of sources) {
+    if (!source || typeof source !== "object") continue;
+
+    const difficultyQuestions = Array.isArray(source?.[difficulty])
+      ? source[difficulty]
+      : [];
+    const allQuestions = [
+      ...difficultyQuestions,
+      ...Object.values(source)
+        .filter(Array.isArray)
+        .flat(),
+    ];
+
+    const match = allQuestions.find(
+      (question) =>
+        normalizedQuestionId &&
+        getQuestionId(question) === normalizedQuestionId
+    );
+    if (match) return match;
+  }
+
+  return null;
+}
+
 // Shows the student's round result and waits until the group is ready to continue.
 function RoundResults() {
   const navigate = useNavigate();
@@ -165,9 +223,12 @@ function RoundResults() {
   const selectedAnswer = state?.selectedAnswer ?? null;
   const currentDifficulty = state?.currentDifficulty ?? "";
   const currentQuestion = state?.currentQuestion ?? null;
+  const currentQuestionId =
+    state?.currentQuestionId ||
+    getQuestionId(currentQuestion) ||
+    "";
   const questionCount = state?.questionCount ?? 1;
   const selectedOptionLetter = getOptionLetter(selectedAnswer);
-  const correctOptionLetter = getCorrectOptionLetter(currentQuestion);
   
   const [sessionData, setSessionData] = useState(null);
   const [roundResults, setRoundResults] = useState([]);
@@ -183,6 +244,27 @@ function RoundResults() {
   const countdownNavigationDoneRef = useRef(false);
   const previousRoundRef = useRef(currentRound);
   const finalNavigationDoneRef = useRef(false);
+
+  const resolvedQuestion =
+    currentQuestion ||
+    findQuestionInSources(
+      [
+        state?.questionsByDifficulty,
+        state?.questions_by_difficulty,
+        sessionData?.questions_by_difficulty,
+        sessionData?.questionsByDifficulty,
+        savedSession?.questionsByDifficulty,
+        savedSession?.questions_by_difficulty,
+      ],
+      currentQuestionId,
+      currentDifficulty
+    );
+  const questionText =
+    getTextValue(state?.questionText) ||
+    getTextValue(state?.question_text) ||
+    getQuestionText(resolvedQuestion) ||
+    "Question text unavailable";
+  const correctOptionLetter = getCorrectOptionLetter(resolvedQuestion);
 
   // Navigates once to final results when the session is finished.
   const goToFinalResults = useCallback((session) => {
@@ -302,8 +384,8 @@ function RoundResults() {
           .in("player_id", [playerId, studentName].filter(Boolean));
 
         // Add question_id filter if available
-        if (state?.currentQuestionId) {
-          updateQuery.eq("question_id", String(state.currentQuestionId));
+        if (currentQuestionId) {
+          updateQuery.eq("question_id", String(currentQuestionId));
         }
 
         const { data, error } = await updateQuery
@@ -315,13 +397,13 @@ function RoundResults() {
           console.warn("[RoundResultsSeenMark] No response row found to update", {
             playerId,
             currentRound,
-            currentQuestionId: state?.currentQuestionId
+            currentQuestionId
           });
         } else {
           console.log("[RoundResultsSeenMark]", {
             playerId,
             currentRound,
-            currentQuestionId: state?.currentQuestionId,
+            currentQuestionId,
             markedAt: new Date().toISOString(),
             updatedRows: data.length
           });
@@ -332,7 +414,7 @@ function RoundResults() {
     };
 
     markStudentSeen();
-  }, [gameCode, studentName, playerId, sessionId, currentRound, state?.currentQuestionId]);
+  }, [gameCode, studentName, playerId, sessionId, currentRound, currentQuestionId]);
 
   // Polls players and responses to decide when the whole group can continue.
   useEffect(() => {
@@ -447,7 +529,7 @@ function RoundResults() {
           waitingCount: waiting.length,
           allReady: newAllReady,
           currentRound,
-          currentQuestionId: state?.currentQuestionId,
+          currentQuestionId,
           latestSeenTime,
           targetTime
         });
@@ -471,7 +553,7 @@ function RoundResults() {
     studentName,
     sessionId,
     currentRound,
-    state?.currentQuestionId,
+    currentQuestionId,
     targetTime,
     sessionData,
     questionCount,
@@ -820,27 +902,25 @@ function RoundResults() {
               </div>
               
               {/* Question Details */}
-              {currentQuestion && (
-                <div className="text-left bg-slate-900/60 backdrop-blur-md rounded-2xl p-6 border border-cyan-400/30">
-                  <p className="text-lg font-semibold mb-3 text-cyan-200">Question:</p>
-                  <p className="text-white mb-4 leading-relaxed">{currentQuestion.question_text || currentQuestion.questionText}</p>
-                  
-                  <div className="grid grid-cols-2 gap-6">
-                    <div>
-                      <p className="font-semibold text-cyan-200 mb-2">Your Answer:</p>
-                      <p className="text-white text-lg font-medium">
-                        {selectedOptionLetter || "-"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-emerald-200 mb-2">Correct Answer:</p>
-                      <p className="text-white text-lg font-medium">
-                        {correctOptionLetter || "Correct answer is not available"}
-                      </p>
-                    </div>
+              <div className="text-left bg-slate-900/60 backdrop-blur-md rounded-2xl p-6 border border-cyan-400/30">
+                <p className="text-lg font-semibold mb-3 text-cyan-200">Question:</p>
+                <p className="text-white mb-4 leading-relaxed">{questionText}</p>
+                
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <p className="font-semibold text-cyan-200 mb-2">Your Answer:</p>
+                    <p className="text-white text-lg font-medium">
+                      {selectedOptionLetter || "-"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-emerald-200 mb-2">Correct Answer:</p>
+                    <p className="text-white text-lg font-medium">
+                      {correctOptionLetter || "Correct answer is not available"}
+                    </p>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           </div>
 

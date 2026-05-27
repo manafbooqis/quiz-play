@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { calculateLeaderboard } from "../../utils/leaderboard";
@@ -97,6 +97,8 @@ function InstructorLiveQuiz() {
 
   // Prevent repeated navigation to results
   const hasNavigatedToResultsRef = useRef(false);
+  const hasAutoFinishedRef = useRef(false);
+  const finishInFlightRef = useRef(false);
   const hasEndedCurrentQuestionRef = useRef(false);
   const autoNextRoundRef = useRef(false);
   const endRoundRef = useRef(null);
@@ -131,6 +133,70 @@ function InstructorLiveQuiz() {
       return qid && !usedIds.includes(qid);
     });
   };
+
+  // Opens the instructor results view once with the latest known result data.
+  const navigateToFinalResults = useCallback((overrides = {}) => {
+    if (hasNavigatedToResultsRef.current) return;
+    hasNavigatedToResultsRef.current = true;
+
+    const resultStudents = overrides.students || students;
+    const resultResponses = overrides.responses || responses;
+    const resultSession = overrides.session || sessionData || {};
+
+    navigate("/instructor/final-results", {
+      state: {
+        sessionId,
+        gameCode,
+        students: resultStudents,
+        responses: resultResponses,
+        questionsByDifficulty,
+        questionCount: Number(
+          resultSession?.question_count || resultSession?.questionCount || 0
+        ),
+      },
+    });
+  }, [
+    gameCode,
+    navigate,
+    questionsByDifficulty,
+    responses,
+    sessionData,
+    sessionId,
+    students,
+  ]);
+
+  // Marks the quiz finished and opens the instructor results view.
+  const finishQuiz = useCallback(async (overrides = {}) => {
+    if (!sessionId || finishInFlightRef.current) return;
+
+    finishInFlightRef.current = true;
+    try {
+      const { data, error: updateError } = await supabase
+        .from("sessions")
+        .update({
+          status: "finished",
+          quiz_finished_at: new Date().toISOString(),
+          show_round_results: false,
+          current_question_ends_at: new Date().toISOString(),
+        })
+        .eq("id", sessionId)
+        .select("*")
+        .single();
+
+      if (updateError) throw updateError;
+
+      setSessionData((prev) => ({ ...prev, ...data }));
+      navigateToFinalResults({
+        ...overrides,
+        session: data || overrides.session,
+      });
+
+    } catch (err) {
+      console.error("Error finishing quiz:", err);
+      setError("Failed to finish quiz");
+      finishInFlightRef.current = false;
+    }
+  }, [navigateToFinalResults, sessionId]);
 
   // Loads live quiz data and subscribes to session/response changes.
   useEffect(() => {
@@ -248,17 +314,84 @@ function InstructorLiveQuiz() {
     sessionData?.current_question_id,
   ]);
 
-  // Polls completion status and moves to final results when everyone is done.
+  // Navigates if the session was finished by another client or a realtime update.
   useEffect(() => {
-    if (!sessionId || !sessionData) return;
+    if (sessionData?.status !== "finished") return;
+    navigateToFinalResults({ session: sessionData });
+  }, [navigateToFinalResults, sessionData]);
+
+  // Polls completion status and finalizes when every joined player is done.
+  useEffect(() => {
+    if (!sessionId || !sessionData || sessionData.status === "finished") return undefined;
+
+    const isJoinedPlayer = (player) => {
+      const status = String(
+        player?.status || player?.player_status || player?.state || "joined"
+      ).toLowerCase();
+      return !["left", "removed", "inactive", "disconnected", "kicked"].includes(status);
+    };
+
+    const countAnsweredQuestionsForPlayer = (player, responseList) => {
+      const playerKeys = [player?.id, player?.student_name]
+        .filter(Boolean)
+        .map(String);
+      const answeredQuestionIds = new Set();
+
+      responseList.forEach((response) => {
+        if (!playerKeys.includes(String(response?.player_id))) return;
+        const questionId = String(response?.question_id || "").trim();
+        if (questionId) answeredQuestionIds.add(questionId);
+      });
+
+      return answeredQuestionIds.size;
+    };
 
     const interval = setInterval(async () => {
-      if (hasNavigatedToResultsRef.current) {
+      if (hasAutoFinishedRef.current || hasNavigatedToResultsRef.current) {
         clearInterval(interval);
         return;
       }
 
-      // Fetch fresh responses from Supabase
+      const { data: freshSession, error: sessionError } = await supabase
+        .from("sessions")
+        .select("*")
+        .eq("id", sessionId)
+        .maybeSingle();
+
+      if (sessionError || !freshSession) {
+        if (sessionError) console.error("Polling: error fetching session", sessionError);
+        return;
+      }
+
+      setSessionData(freshSession);
+
+      if (freshSession.status === "finished") {
+        clearInterval(interval);
+        navigateToFinalResults({ session: freshSession });
+        return;
+      }
+
+      const questionCount = Number(
+        freshSession.question_count || freshSession.questionCount || 0
+      );
+
+      if (questionCount <= 0) return;
+
+      const { data: freshStudents, error: playersError } = await supabase
+        .from("session_players")
+        .select("*")
+        .eq("session_id", sessionId);
+
+      if (playersError) {
+        console.error("Polling: error fetching players", playersError);
+        return;
+      }
+
+      const joinedPlayers = (freshStudents || []).filter(isJoinedPlayer);
+      setStudents(freshStudents || []);
+
+      if (joinedPlayers.length === 0) return;
+
       const { data: freshResponses, error: respError } = await supabase
         .from("responses")
         .select("*")
@@ -269,59 +402,26 @@ function InstructorLiveQuiz() {
         return;
       }
 
-      const questionCount = Number(
-        sessionData.question_count || sessionData.questionCount || 3
+      setResponses(freshResponses || []);
+
+      const allCompleted = joinedPlayers.every(
+        (player) =>
+          countAnsweredQuestionsForPlayer(player, freshResponses || []) >= questionCount
       );
 
-      // Count responses per player
-      const responsesByPlayer = {};
-      (freshResponses || []).forEach((r) => {
-        const pid = r.player_id;
-        responsesByPlayer[pid] = (responsesByPlayer[pid] || 0) + 1;
+      if (!allCompleted) return;
+
+      clearInterval(interval);
+      hasAutoFinishedRef.current = true;
+      await finishQuiz({
+        students: joinedPlayers,
+        responses: freshResponses || [],
+        session: freshSession,
       });
-
-      // Check every joined student
-      let allCompleted = students.length > 0;
-      students.forEach((student) => {
-        const pid = student.id || student.student_name;
-        const count = responsesByPlayer[pid] || 0;
-        if (count < questionCount) allCompleted = false;
-      });
-
-      if (allCompleted) {
-        clearInterval(interval);
-        if (hasNavigatedToResultsRef.current) return;
-        hasNavigatedToResultsRef.current = true;
-
-        
-        // Update session status to finished
-        try {
-          await supabase
-            .from("sessions")
-            .update({ status: "finished", quiz_finished_at: new Date().toISOString() })
-            .eq("id", sessionId);
-        } catch (err) {
-          console.error("Error updating session status:", err);
-        }
-
-        // Update local responses state before navigating
-        setResponses(freshResponses || []);
-
-        navigate("/instructor/final-results", {
-          state: {
-            sessionId,
-            gameCode,
-            students,
-            responses: freshResponses || [],
-            questionsByDifficulty,
-            questionCount: Number(sessionData.question_count || sessionData.questionCount || 0),
-          },
-        });
-      }
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [sessionId, sessionData, students, navigate, gameCode, questionsByDifficulty]);
+  }, [finishQuiz, navigateToFinalResults, sessionData, sessionId]);
 
   // Check if round is truly active (has both status and question)
   const isRoundActive =
@@ -518,40 +618,6 @@ function InstructorLiveQuiz() {
         console.error("Error moving to next round — full:", JSON.stringify(err, null, 2));
         setError("Failed to move to next round");
       }
-    }
-  };
-
-  // Marks the quiz finished and opens the instructor results view.
-  const finishQuiz = async () => {
-    try {
-      const { error: updateError } = await supabase
-        .from("sessions")
-        .update({
-          status: "finished",
-          quiz_finished_at: new Date().toISOString(),
-          show_round_results: false,
-          current_question_ends_at: new Date().toISOString(),
-        })
-        .eq("id", sessionId)
-        .select("*")
-        .single();
-
-      if (updateError) throw updateError;
-      
-      navigate("/instructor/final-results", {
-        state: {
-          sessionId,
-          gameCode,
-          students,
-          responses,
-          questionsByDifficulty,
-          questionCount: Number(sessionData?.question_count || sessionData?.questionCount || 0),
-        }
-      });
-
-    } catch (err) {
-      console.error("Error finishing quiz:", err);
-      setError("Failed to finish quiz");
     }
   };
 
@@ -853,7 +919,7 @@ function InstructorLiveQuiz() {
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
               <h2 className="text-xl font-bold mb-4">Quiz Controls</h2>
               <button
-                onClick={finishQuiz}
+                onClick={() => finishQuiz()}
                 className="w-full px-4 py-3 rounded-xl bg-red-500 text-white hover:bg-red-600 transition font-semibold"
               >
                 End Quiz

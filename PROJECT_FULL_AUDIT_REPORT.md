@@ -24,6 +24,25 @@ React hook lint fix on 2026-05-23:
 - This change preserves round results display, countdown behavior, waiting state, navigation to Difficulty/Final Results, End Quiz behavior, streak bonus display, scoring, and leaderboard logic.
 - `npx eslint src/pages/student/RoundResults.jsx` now passes with no warnings.
 
+Automatic quiz finalization update on 2026-05-27:
+
+- `src/pages/instructor/InstructorLiveQuiz.jsx` now automatically finalizes the quiz when every joined/active session player has answered the configured `question_count`.
+- The instructor auto-finalization rule counts unique answered question IDs per joined player from `responses`; it does not finish when there are zero joined players, and it does not finish while any joined player has fewer than `question_count` answered questions.
+- Automatic completion calls the same `finishQuiz()` path used by the manual End Quiz button, preserving final score calculation, streak bonus behavior, leaderboard calculation, and student answer submission.
+- Instructor navigation now also reacts to `sessions.status = "finished"` from realtime/polling updates and opens the same instructor final results route used after manual End Quiz.
+- Manual test cases to run:
+  - One student completes all questions: instructor reaches analysis/results automatically.
+  - Two students join and only one finishes: instructor remains in the live quiz and does not finish yet.
+  - Two students join and both finish: instructor reaches analysis/results automatically.
+  - Instructor clicks End Quiz before all students finish: manual early finish still works and students continue to Final Results.
+
+Round Results question text update on 2026-05-27:
+
+- `src/pages/student/RoundResults.jsx` now displays the answered question text in the result card instead of leaving the Question area blank.
+- Question text is resolved from route state, common question object fields (`question`, `questionText`, `question_text`, `text`, `prompt`), and available session/local question banks using the answered `currentQuestionId`.
+- If the text cannot be recovered, the result card shows `Question text unavailable` rather than an empty area.
+- Manual test case: answer a question, wait for Round Results, and confirm the card shows the question text above the Your Answer and Correct Answer option letters.
+
 ## 1. Executive Summary
 
 The project is on `main` at commit `74422bb Remove Vercel configuration`, one commit after `bf8a78c Fix instructor live quiz hook warnings`. The branch reports as up to date with `origin/main`, but the working tree is not clean.

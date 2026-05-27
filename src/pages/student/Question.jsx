@@ -95,6 +95,22 @@ function getQuestionId(question, fallbackId) {
   );
 }
 
+/**
+ * Reads question text from generated or stored question shapes.
+ * @param {object} question - Question object from the bank.
+ * @returns {string} Question text, or an empty string when missing.
+ */
+function getQuestionText(question) {
+  return (
+    question?.question ||
+    question?.questionText ||
+    question?.question_text ||
+    question?.text ||
+    question?.prompt ||
+    ""
+  );
+}
+
 // Displays the active student question and records answers or timeouts.
 function Question() {
   const navigate = useNavigate();
@@ -177,6 +193,9 @@ function Question() {
       result?.currentQuestionId ||
       getQuestionId(currentQuestionRef.current, session?.current_question_id || currentQuestionId),
     currentQuestion: result?.currentQuestion || currentQuestionRef.current,
+    questionText:
+      result?.questionText ||
+      getQuestionText(result?.currentQuestion || currentQuestionRef.current),
     currentDifficulty:
       result?.currentDifficulty ||
       session?.current_difficulty ||
@@ -569,6 +588,7 @@ function Question() {
             isCorrect: false,
             selectedAnswer: null,
             timedOut: true,
+            questionText: getQuestionText(currentQuestion),
             currentQuestion
           }
         });
@@ -628,6 +648,7 @@ function Question() {
             isCorrect: false,
             selectedAnswer: null,
             timedOut: true,
+            questionText: getQuestionText(currentQuestion),
             currentQuestion
           }
         });
@@ -708,6 +729,7 @@ function Question() {
           isCorrect: false,
           selectedAnswer: null,
           timedOut: true,
+          questionText: getQuestionText(currentQuestion),
           currentQuestion,
           questionsByDifficulty: sessionData?.questions_by_difficulty || {}
         }
@@ -730,6 +752,7 @@ function Question() {
           isCorrect: false,
           selectedAnswer: null,
           timedOut: true,
+          questionText: getQuestionText(currentQuestion),
           currentQuestion
         }
       });
@@ -778,6 +801,7 @@ function Question() {
           streakBonus: existingStreakBonus,
           isCorrect: existingResponse.is_correct,
           selectedAnswer: existingResponse.selected_answer,
+          questionText: getQuestionText(currentQuestionRef.current),
           currentQuestion: currentQuestionRef.current,
           questionsByDifficulty:
             state?.questionsByDifficulty ||
@@ -951,6 +975,7 @@ function Question() {
         streakBonus,
         isCorrect,
         selectedAnswer: answerToSubmit,
+        questionText: getQuestionText(currentQuestion),
         currentQuestion,
         questionsByDifficulty: resolvedQuestionsByDifficulty,
       };
