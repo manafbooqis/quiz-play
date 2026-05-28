@@ -2,12 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 
+// Defines the fixed bank sections used by generation, editing, and scoring.
 const DIFFICULTY_TABS = [
   { key: "easy", label: "Easy" },
   { key: "medium", label: "Medium" },
   { key: "hard", label: "Hard" },
 ];
 
+/**
+ * Creates a blank manual question in the shape expected by the editor and quiz flow.
+ * @param {string} difficulty - Difficulty bucket that will own the new question.
+ * @param {number} index - Position used to make the temporary ID stable enough for editing.
+ * @returns {object} Empty multiple-choice question.
+ */
 function createEmptyQuestion(difficulty, index = 0) {
   return {
     id: `${difficulty}-manual-${Date.now()}-${index}`,
@@ -18,6 +25,11 @@ function createEmptyQuestion(difficulty, index = 0) {
   };
 }
 
+/**
+ * Ensures every difficulty bank is an array before the editor reads or writes it.
+ * @param {object} value - Candidate questions grouped by difficulty.
+ * @returns {{easy: Array, medium: Array, hard: Array}} Normalized question bank.
+ */
 function normalizeQuestionsByDifficulty(value) {
   return {
     easy: Array.isArray(value?.easy) ? value.easy : [],
@@ -26,6 +38,7 @@ function normalizeQuestionsByDifficulty(value) {
   };
 }
 
+// Lets instructors review and edit a session's difficulty-grouped question bank.
 function QuestionsPreview() {
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -45,9 +58,11 @@ function QuestionsPreview() {
   const [isSaving, setIsSaving] = useState(false);
   const [sessionExistsInDb, setSessionExistsInDb] = useState(false);
 
+  // Recovers the question bank from Supabase, matching route state, or local cache.
   useEffect(() => {
     let isMounted = true;
 
+    // Loads the most authoritative question source without reusing stale banks.
     async function loadSession() {
       if (!gameCode) {
         setLoading(false);
@@ -141,7 +156,7 @@ function QuestionsPreview() {
           return;
         }
 
-        // Priority 4: Initialize empty banks if no data found
+        // Priority 4: Initialize empty banks when this is a new or unrecovered session.
         if (isMounted) {
           setSessionInfo(state || { gameCode });
           setQuestionsByDifficulty({
@@ -158,7 +173,7 @@ function QuestionsPreview() {
           return;
         }
 
-        // Don't show error if we can initialize empty banks
+        // Keep editable route-state sessions usable even if recovery had a transient failure.
         if (state?.questionsByDifficulty || state?.gameCode) {
           setLoadError("");
         } else {
@@ -178,10 +193,12 @@ function QuestionsPreview() {
     };
   }, [gameCode, sessionId, state]);
 
+  // Resets selection when switching difficulty tabs so edits target the new bank.
   useEffect(() => {
     setSelectedIndex(0);
   }, [difficulty]);
 
+  // Clears save feedback after a short delay without affecting editor state.
   useEffect(() => {
     if (!saveMessage) {
       return undefined;
@@ -192,6 +209,7 @@ function QuestionsPreview() {
   }, [saveMessage]);
 
   const list = questionsByDifficulty[difficulty] ?? [];
+  // Clamps the selected question index after deletes or bank recovery changes the list length.
   const safeSelectedIndex = useMemo(() => {
     if (!list.length) return 0;
     return Math.min(selectedIndex, list.length - 1);
@@ -202,6 +220,7 @@ function QuestionsPreview() {
     0
   );
 
+  // Applies an immutable update to the currently selected question.
   function updateCurrentQuestion(updater) {
     setQuestionsByDifficulty((prev) => {
       const updatedList = [...(prev[difficulty] ?? [])];
@@ -219,6 +238,7 @@ function QuestionsPreview() {
     });
   }
 
+  // Updates one answer option while preserving the generated question shape.
   function handleChoiceChange(choiceIndex, value) {
     updateCurrentQuestion((question) => {
       const nextChoices = [...(question.options ?? question.choices ?? ["", "", "", ""])];
@@ -231,6 +251,7 @@ function QuestionsPreview() {
     });
   }
 
+  // Adds a blank question to the active difficulty bank and selects it.
   function handleAddQuestion() {
     setQuestionsByDifficulty((prev) => {
       const nextList = [...(prev[difficulty] ?? [])];
@@ -245,6 +266,7 @@ function QuestionsPreview() {
     setSelectedIndex(list.length);
   }
 
+  // Removes the selected question and moves selection to the nearest remaining item.
   function handleDeleteQuestion() {
     if (!list.length) {
       return;
@@ -264,6 +286,7 @@ function QuestionsPreview() {
     setSelectedIndex((prev) => Math.max(0, prev - 1));
   }
 
+  // Persists edited questions locally and updates Supabase when the session exists there.
   async function handleSaveQuestions() {
     if (!gameCode) {
       return;

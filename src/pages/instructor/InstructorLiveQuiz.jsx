@@ -27,7 +27,7 @@ function InstructorLiveQuiz() {
   const [roundResults, setRoundResults] = useState(null);
   const [instructorTimeLeft, setInstructorTimeLeft] = useState(0);
 
-  // Phase 3: Instructor monitoring state
+  // Instructor monitoring state derived from live session and response rows.
   const [selectedMonitorDifficulty, setSelectedMonitorDifficulty] = useState("easy");
   const [currentRound, setCurrentRound] = useState(1);
   const [answeredCount, setAnsweredCount] = useState(0);
@@ -95,7 +95,7 @@ function InstructorLiveQuiz() {
     return String(correct);
   };
 
-  // Prevent repeated navigation to results
+  // Guard refs prevent duplicate finalization, navigation, and automatic round transitions.
   const hasNavigatedToResultsRef = useRef(false);
   const hasAutoFinishedRef = useRef(false);
   const finishInFlightRef = useRef(false);
@@ -324,6 +324,7 @@ function InstructorLiveQuiz() {
   useEffect(() => {
     if (!sessionId || !sessionData || sessionData.status === "finished") return undefined;
 
+    // Treat only active roster members as required for automatic quiz completion.
     const isJoinedPlayer = (player) => {
       const status = String(
         player?.status || player?.player_status || player?.state || "joined"
@@ -331,6 +332,7 @@ function InstructorLiveQuiz() {
       return !["left", "removed", "inactive", "disconnected", "kicked"].includes(status);
     };
 
+    // Counts unique answered questions so retries or duplicate rows cannot inflate completion.
     const countAnsweredQuestionsForPlayer = (player, responseList) => {
       const playerKeys = [player?.id, player?.student_name]
         .filter(Boolean)
@@ -711,6 +713,7 @@ function InstructorLiveQuiz() {
     sessionData?.questionCount,
   ]);
 
+  // Keep scheduled auto-end and auto-next callbacks pointing at the latest stateful handlers.
   endRoundRef.current = endRound;
   nextRoundRef.current = nextRound;
 

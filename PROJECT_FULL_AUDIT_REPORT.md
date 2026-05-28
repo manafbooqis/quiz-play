@@ -11,6 +11,13 @@ Documentation update on 2026-05-21:
 - Main files documented at the time: `src/pages/student/JoinGame.jsx`, `src/pages/student/Lobby.jsx`, `src/pages/student/Difficulty.jsx`, `src/pages/student/Question.jsx`, `src/pages/student/RoundResults.jsx`, `src/pages/student/FinalResults.jsx`, the now-removed `src/pages/student/WaitingForOthers.jsx`, `src/pages/instructor/DashboardOfficial.jsx`, `src/pages/instructor/SessionOfficial.jsx`, `src/pages/instructor/InstructorLiveQuiz.jsx`, `src/pages/instructor/InstructorFinalResults.jsx`, `src/pages/instructor/InstructorScoreDistribution.jsx`, `src/utils/leaderboard.js`, `api/generate-questions.js`, and `server.js`.
 - No behavior, UI design, scoring logic, routing, Supabase schema/RLS, or AI generation behavior was changed.
 
+Comment cleanup on 2026-05-28:
+
+- Filled the remaining useful comment gaps found in the function-level documentation review.
+- Files documented in this pass: `src/pages/instructor/questions-preview.jsx`, `src/pages/instructor/DashboardOfficial.jsx`, `src/pages/instructor/InstructorLiveQuiz.jsx`, and `src/pages/student/Question.jsx`.
+- Added focused comments for question-bank editing helpers, major recovery/selection hooks, upload validation constants, instructor auto-finish helper logic, scheduled callback refs, streak bonus constants, and the answer-theme config.
+- No behavior, UI design, routing, scoring, Supabase schema/RLS, or AI generation behavior was changed.
+
 Feature cleanup on 2026-05-23:
 
 - Removed the Most Incorrect Questions / Most Missed Question feature from the instructor Score Distribution page.

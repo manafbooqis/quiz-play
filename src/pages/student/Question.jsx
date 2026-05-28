@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../../lib/supabase";
 import { getDifficultyPoints } from "../../utils/leaderboard";
 
+// Awards a small extra bonus every third consecutive correct answer.
 const STREAK_BONUS_INTERVAL = 3;
 const STREAK_BONUS_POINTS = 5;
 
@@ -1184,7 +1185,7 @@ function Question() {
         {/* Answer Cards with A/B/C/D Color Themes */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-4 w-full">
             {options.map((option, index) => {
-              // Color themes for each answer option
+              // Maps each option slot to a stable visual theme so answers keep consistent colors.
               const answerThemes = {
                 0: { // A - Cyan/Teal
                   bg: 'from-cyan-500/20 to-teal-500/20',

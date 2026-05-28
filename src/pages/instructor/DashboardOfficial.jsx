@@ -89,6 +89,7 @@ function DashboardOfficial() {
 
   const [savedQuestionBanks, setSavedQuestionBanks] = useState([]);
 
+  // Upload and quiz bounds kept together so validation, labels, and API payloads stay aligned.
   const MIN_QUESTIONS = 3;
   const MAX_QUESTIONS = 20;
   const MIN_TIME = 10;
@@ -101,6 +102,7 @@ function DashboardOfficial() {
     `Unsupported file type. Please upload a ${SUPPORTED_UPLOAD_FORMATS_TEXT} file, or write questions manually.`;
   const READABLE_PDF_MESSAGE =
     "This PDF does not contain readable text. Please upload a text-based PDF, use a TXT file, or write questions manually.";
+  // MIME allowlist accepted by the dashboard before sending uploads to the API extractor.
   const SUPPORTED_UPLOAD_TYPES = [
     "application/pdf",
     "text/plain",
@@ -507,7 +509,6 @@ function DashboardOfficial() {
 
   // Creates a quiz session from upload, saved bank, or manual questions.
   async function handleGoToSession() {
-    // Define source type variables at the top
     const fromExistingBank = selectedSource === "bank" || useExistingBank;
 
     if (selectedSource === 'manual') {
@@ -544,9 +545,7 @@ function DashboardOfficial() {
       setError("");
       setInfoMessage("");
 
-      // ── Step 0: Read the file NOW, before any async Supabase calls ──
-      // This guarantees we always send the FRESHEST file content to the API,
-      // not stale React state from a previous render cycle.
+      // Read the selected file inside this submit flow so AI generation uses current content.
       let freshBase64 = "";
       let freshMime = "";
       let freshFileName = "";
@@ -563,7 +562,7 @@ function DashboardOfficial() {
         }
       }
 
-      // ── Step 1: Determine question source and build questionsByDifficulty ──
+      // Resolve the question source before creating the session record.
       let questionsByDifficulty = null;
       const sessionFileName = fromExistingBank
         ? selectedQuestionBank.file_name || "Existing Bank"
@@ -792,6 +791,7 @@ function DashboardOfficial() {
   const selectedUploadFileError =
     selectedSource === "upload" && selectedFile ? validateUploadFile(selectedFile) : "";
 
+  // Enables session creation only when the chosen question source is complete and valid.
   const canCreateSession =
     !isCreatingSession &&
     ((selectedSource === 'saved' && selectedQuestionBank) ||
