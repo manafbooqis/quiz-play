@@ -911,7 +911,7 @@ function DashboardOfficial() {
                           : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
                       }`}
                     >
-                      <div className="text-lg font-semibold mb-1">📚 Saved Questions</div>
+                      <div className="text-md font-semibold mb-1">📚 Saved Questions</div>
                       <div className="text-sm text-slate-600">Use existing question bank</div>
                     </button>
                   )}
@@ -930,8 +930,8 @@ function DashboardOfficial() {
                         : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <div className="text-lg font-semibold mb-1">📁 Upload File</div>
-                    <div className="text-sm text-slate-600">Import questions from file</div>
+                    <div className="text-md font-semibold mb-1">📚✨Generate Questions</div>
+                    <div className="text-sm text-slate-600">AI generates questions from your course material.</div>
                   </button>
 
                   {/* Write Manually */}
@@ -948,7 +948,7 @@ function DashboardOfficial() {
                         : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <div className="text-lg font-semibold mb-1">✏️ Write Manually</div>
+                    <div className="text-md font-semibold mb-1">✏️ Write Manually</div>
                     <div className="text-sm text-slate-600">Create questions directly in the dashboard.</div>
                     <div className="text-xs text-slate-500 mt-1">Write {questionCount * 3} questions manually.</div>
                   </button>
@@ -1404,7 +1404,7 @@ function DashboardOfficial() {
                           <span>📁 {selectedFile.name}</span>
                         )}
                         {selectedSource === 'upload' && !selectedFile && (
-                          <span>📁 Upload File</span>
+                          <span>📚✨Generate Questions</span>
                         )}
                         {selectedSource === 'manual' && (
                           <span>✏️ Manual Questions</span>
