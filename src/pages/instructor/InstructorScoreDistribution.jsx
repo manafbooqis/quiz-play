@@ -320,7 +320,7 @@ function buildQuestionQualityInsights(questionsByDifficulty = {}, responses = []
         suggestion:
           normalizedDifficulty === "hard"
             ? "This hard question may be too easy; add deeper reasoning or stronger distractors."
-            : "Consider making this question more challenging.",
+            : " Most students answered correctly",
         highPriority: normalizedDifficulty !== "easy" && correctRate === 1,
         needsReview: totalResponses > 0 && incorrectRate >= reviewThreshold,
         tooEasy:
@@ -643,7 +643,7 @@ function InstructorScoreDistribution() {
                   Smart Review Insights
                 </p>
                 <h2 className="text-2xl font-bold text-slate-800">
-                  Questions that may need reteaching or difficulty improvement
+                  Needs Review
                 </h2>
               </div>
               <div className="grid grid-cols-2 gap-2 text-center">
@@ -682,7 +682,7 @@ function InstructorScoreDistribution() {
             <div className="space-y-8">
               {showReviewInsights && (
               <section>
-                <h3 className="text-lg font-bold text-slate-800 mb-4">Needs Review</h3>
+                <h3 className="text-lg font-bold text-slate-800 mb-4">Difficult</h3>
                 {needsReviewItems.length === 0 ? (
                   <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-5">
                     <p className="font-semibold text-emerald-800">
@@ -757,7 +757,8 @@ function InstructorScoreDistribution() {
               {showImproveInsights && (
               <section>
                 <h3 className="text-lg font-bold text-slate-800 mb-4">
-                  Too Easy / Improve Difficulty
+                  Increase Difficulty
+
                 </h3>
                 {tooEasyItems.length === 0 ? (
                   <div className="rounded-2xl bg-slate-50 border border-slate-100 p-5">
