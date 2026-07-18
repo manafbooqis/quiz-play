@@ -1,16 +1,98 @@
-# React + Vite
+# Quiz Play 🎮
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An AI-powered interactive quiz platform that enables instructors to create engaging quizzes and allows students to participate in live, real-time quiz sessions through a modern and responsive web application.
 
-Currently, two official plugins are available:
+## Overview
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Quiz Play is a graduation project developed to enhance the classroom learning experience by combining artificial intelligence with interactive quizzes. The platform helps instructors create quizzes more efficiently while providing students with a competitive and engaging environment.
 
-## React Compiler
+The system supports AI-assisted question generation, live quiz sessions, real-time score tracking, leaderboards, and performance analysis through dedicated interfaces for both instructors and students.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Features
 
-## Expanding the ESLint configuration
+### Instructor
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- AI-assisted quiz generation
+- Manual quiz creation and editing
+- Question bank management
+- Live quiz management
+- Student performance monitoring
+- Score distribution and analytics
+- Question analysis dashboard
+
+### Student
+
+- Join quizzes using a session code
+- Participate in live quiz sessions
+- Real-time score updates
+- Leaderboard ranking
+- Round-by-round results
+- Final performance summary
+
+### AI Features
+
+- AI-powered question generation
+- Automatic answer generation
+- Difficulty-based question generation
+- Instructor review before publishing
+
+## Technology Stack
+
+### Frontend
+
+- React
+- JavaScript
+- Tailwind CSS
+
+### Backend
+
+- Supabase
+
+### AI Integration
+
+- OpenRouter API
+
+### Development Tools
+
+- Git
+- GitHub
+- Vercel
+
+## Project Structure
+
+```
+quiz-play/
+├── src/
+├── public/
+├── supabase/
+├── package.json
+└── README.md
+```
+
+## Getting Started
+
+### Clone the repository
+
+```bash
+git clone https://github.com/manafbooqis/quiz-play.git
+```
+
+### Install dependencies
+
+```bash
+npm install
+```
+
+### Start the development server
+
+```bash
+npm run dev
+```
+
+## Team
+
+This project was developed as a graduation project by a team of Software Engineering students at Umm Al-Qura University.
+
+## License
+
+This project was developed for educational purposes as a graduation project.
